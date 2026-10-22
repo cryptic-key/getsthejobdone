@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GetsTheJobDone logo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --accent:#ff7a1a; --accent-2:#ffb547; }
+  html, body { margin:0; height:100%; background:transparent; }
+  body { display:grid; place-items:center; overflow:hidden; }
+  .art { display:none; }
+  body[data-v="mark"] .v-mark,
+  body[data-v="horizontal-dark"] .v-horizontal,
+  body[data-v="horizontal-white"] .v-horizontal,
+  body[data-v="horizontal-black"] .v-horizontal,
+  body[data-v="og"] .v-horizontal,
+  body[data-v="stacked"] .v-stacked { display:flex; }
+
+  body[data-v="og"] .v-horizontal { gap:38px; }
+  body[data-v="og"] .v-horizontal .mark { width:172px; height:172px; }
+  body[data-v="og"] .v-horizontal .word { font-size:96px; }
+  body[data-v="og"] .v-horizontal .tag { font-size:20px; margin-top:20px; }
+
+  body[data-v="horizontal-dark"], body[data-v="stacked"], body[data-v="og"] {
+    background:
+      radial-gradient(600px 420px at 12% 20%, rgba(255,122,26,0.22), transparent 70%),
+      radial-gradient(520px 420px at 92% 90%, rgba(79,124,255,0.18), transparent 70%),
+      #0b0d12;
+  }
+
+  .mark { display:block; filter:drop-shadow(0 18px 40px rgba(255,122,26,0.35)); }
+
+  .word {
+    font-family:"Space Grotesk", system-ui, sans-serif;
+    font-weight:700;
+    letter-spacing:-0.025em;
+    line-height:1;
+    color:#eef0f5;
+  }
+  .word .done { color:var(--accent); }
+  .tag {
+    font-family:"Inter", system-ui, sans-serif;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.28em;
+    color:#9aa1b2;
+  }
+  .tag b { color:var(--accent-2); font-weight:600; }
+
+  body[data-v="horizontal-black"] .word { color:#111318; }
+  body[data-v="horizontal-black"] .word .done { color:#f26a0a; }
+  body[data-v="horizontal-black"] .tag { color:#5b6272; }
+  body[data-v="horizontal-black"] .tag b { color:#f26a0a; }
+  body[data-v="horizontal-black"] .mark { filter:none; }
+
+  .v-mark .mark { width:440px; height:440px; }
+
+  .v-horizontal { align-items:center; gap:44px; }
+  .v-horizontal .mark { width:200px; height:200px; }
+  .v-horizontal .word { font-size:112px; }
+  .v-horizontal .tag { font-size:23px; margin-top:22px; padding-left:4px; }
+
+  .v-stacked { flex-direction:column; align-items:center; text-align:center; }
+  .v-stacked .mark { width:380px; height:380px; margin-bottom:70px; }
+  .v-stacked .word { font-size:118px; }
+  .v-stacked .tag { font-size:24px; margin-top:30px; }
+  .v-stacked .rule { width:90px; height:5px; border-radius:5px; margin:34px auto 0; background:linear-gradient(90deg,var(--accent),var(--accent-2)); }
+</style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ff7a1a"/>
+        <stop offset="1" stop-color="#ffb547"/>
+      </linearGradient>
+      <symbol id="boltcheck" viewBox="0 0 64 64">
+        <rect width="64" height="64" rx="16" fill="url(#g)"/>
+        <path transform="translate(0 3)" d="M11 34 L18 27 L25 34 L34 22 L28 22 L40 8 L54 8 L45 19 L51 19 L25 50 Z" fill="#111" stroke="#111" stroke-width="2.5" stroke-linejoin="round"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="art v-mark">
+    <svg class="mark"><use href="#boltcheck"/></svg>
+  </div>
+
+  <div class="art v-horizontal">
+    <svg class="mark"><use href="#boltcheck"/></svg>
+    <div>
+      <div class="word">GetsTheJob<span class="done">Done</span></div>
+      <div class="tag">Alex <b>·</b> Electrical <b>·</b> Fire Alarm <b>·</b> Trades <b>·</b> Tech</div>
+    </div>
+  </div>
+
+  <div class="art v-stacked">
+    <svg class="mark"><use href="#boltcheck"/></svg>
+    <div class="word">GetsTheJob<span class="done">Done</span></div>
+    <div class="rule"></div>
+    <div class="tag">Alex <b>·</b> Electrical <b>·</b> Fire Alarm <b>·</b> Trades <b>·</b> Tech</div>
+  </div>
+
+  <script>
+    document.body.dataset.v = location.hash.slice(1) || "horizontal-dark";
+  </script>
+</body>
+</html>
