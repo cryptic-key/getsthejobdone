@@ -222,14 +222,15 @@
   if (ontSites) {
     const svgNS = "http://www.w3.org/2000/svg";
     const gta = [
-      [287, 341], [281, 344], [276, 347], [284, 337], [291, 337], [294, 339],
-      [298, 336], [279, 340], [289, 344], [272, 344], [283, 349], [286, 334],
+      [286, 339], [278, 344], [271, 350], [268, 338], [277, 330],
+      [287, 324], [297, 330], [306, 333], [294, 316],
     ];
     const ontario = [
-      [358, 296], [336, 328], [268, 325], [262, 350], [232, 364], [205, 384],
-      [286, 357], [276, 353], [303, 326], [240, 250], [268, 258], [166, 252],
-      [78, 256], [306, 334], [266, 344], [318, 316],
+      [358, 296], [336, 328], [256, 352], [232, 364], [205, 384], [286, 358],
+      [240, 252], [268, 262], [318, 312], [246, 336], [220, 372], [262, 300],
+      [330, 300],
     ];
+    const [vbX, vbY, vbW, vbH] = document.querySelector(".ont-map").getAttribute("viewBox").split(" ").map(Number);
 
     const addSite = ([x, y], isGta, i) => {
       const ring = document.createElementNS(svgNS, "circle");
@@ -237,7 +238,7 @@
       ring.setAttribute("class", "site-ring");
       ring.style.animationDelay = `${(i * 0.37) % 3.2}s`;
       const dot = document.createElementNS(svgNS, "circle");
-      dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("r", isGta ? 2 : 2.4);
+      dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("r", isGta ? 1.6 : 2);
       dot.setAttribute("class", isGta ? "site-dot gta" : "site-dot");
       ontSites.append(ring, dot);
     };
@@ -276,16 +277,15 @@
     };
 
     const popOnMap = () => {
-      const useGta = Math.random() < 0.65;
+      const useGta = Math.random() < 0.5;
       const list = useGta ? gta : ontario;
       const [x, y] = list[Math.floor(Math.random() * list.length)];
       const wrapBox = mapWrap.getBoundingClientRect();
       const svgBox = mapSvg.getBoundingClientRect();
-      const scale = Math.min(svgBox.width, svgBox.height) / 400;
-      const offX = svgBox.left - wrapBox.left + (svgBox.width - 400 * scale) / 2;
-      const offY = svgBox.top - wrapBox.top + (svgBox.height - 400 * scale) / 2;
-      const jitter = useGta ? (Math.random() - 0.5) * 10 : 0;
-      spawn(mapWrap, offX + (x + jitter) * scale, offY + (y + jitter) * scale - 14);
+      const scale = Math.min(svgBox.width / vbW, svgBox.height / vbH);
+      const offX = svgBox.left - wrapBox.left + (svgBox.width - vbW * scale) / 2;
+      const offY = svgBox.top - wrapBox.top + (svgBox.height - vbH * scale) / 2;
+      spawn(mapWrap, offX + (x - vbX) * scale, offY + (y - vbY) * scale - 14);
     };
 
     const popOnSkyline = () => {
