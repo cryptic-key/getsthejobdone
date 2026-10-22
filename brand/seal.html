@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gets the Job Done seal</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; height:100%; background:transparent; overflow:hidden; }
+  body { display:grid; place-items:center; }
+  .frame { width:100vw; height:100vh; display:grid; place-items:center; }
+  body[data-bg="dark"] .frame {
+    background:
+      radial-gradient(60% 55% at 15% 10%, rgba(255,122,26,0.22), transparent 70%),
+      radial-gradient(55% 55% at 92% 95%, rgba(79,124,255,0.18), transparent 70%),
+      #0b0d12;
+  }
+  svg { height:88vh; width:88vh; overflow:visible; }
+  body[data-bg="none"] svg { height:94vh; width:94vh; }
+  .sg { font-family:"Space Grotesk", system-ui, sans-serif; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="frame">
+<svg id="seal" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff7a1a"/><stop offset="1" stop-color="#ffb547"/></linearGradient>
+    <linearGradient id="sv" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#aeb4bd"/><stop offset="0.45" stop-color="#ffffff"/><stop offset="1" stop-color="#c3c8d0"/></linearGradient>
+    <linearGradient id="svV" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#b3b9c2"/></linearGradient>
+    <radialGradient id="disc" cx="0.5" cy="0.35" r="0.75"><stop offset="0" stop-color="#1d2230"/><stop offset="1" stop-color="#0e1016"/></radialGradient>
+    <filter id="gl" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feColorMatrix in="b" values="0 0 0 0 1  0 0 0 0 0.48  0 0 0 0 0.1  0 0 0 0.5 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+    <path id="arcTop" d="M62 200 A138 138 0 0 1 338 200"/>
+    <path id="arcBot" d="M45 200 A155 155 0 0 0 355 200"/>
+  </defs>
+
+  <g filter="url(#gl)"><circle cx="200" cy="200" r="180" fill="#0e1016" stroke="url(#og)" stroke-width="8"/></g>
+  <circle cx="200" cy="200" r="167" fill="none" stroke="#ff9a3a" stroke-opacity="0.35" stroke-width="1.5"/>
+  <circle cx="200" cy="200" r="120" fill="url(#disc)" stroke="#ff9a3a" stroke-opacity="0.55" stroke-width="2.5"/>
+  <circle cx="200" cy="200" r="110" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="1.5"/>
+
+  <g id="ringText">
+    <text class="sg" font-size="28" letter-spacing="5" fill="#eef0f5"><textPath href="#arcTop" startOffset="50%" text-anchor="middle">GETS THE JOB <tspan fill="#ff8a2a">DONE</tspan></textPath></text>
+    <text class="sg" font-size="24" letter-spacing="9" fill="#ffb547"><textPath href="#arcBot" startOffset="50%" text-anchor="middle">ALEX</textPath></text>
+    <g fill="url(#og)">
+      <circle cx="51" cy="216" r="4.5"/><circle cx="349" cy="216" r="4.5"/>
+      <path d="M118 322 l4 -9 l4 9 l9 4 l-9 4 l-4 9 l-4 -9 l-9 -4 Z" transform="rotate(-30 122 326)"/>
+      <path d="M274 322 l4 -9 l4 9 l9 4 l-9 4 l-4 9 l-4 -9 l-9 -4 Z" transform="rotate(30 278 326)"/>
+    </g>
+  </g>
+
+  <g filter="url(#sh)">
+    <!-- wrench -->
+    <g transform="rotate(42 200 200)">
+      <rect x="193.5" y="150" width="13" height="112" rx="6.5" fill="url(#sv)"/>
+      <circle cx="200" cy="140" r="23" fill="url(#svV)"/>
+      <path d="M190 113 H210 V134 Q200 142 190 134 Z" fill="#161a24"/>
+      <circle cx="200" cy="268" r="15" fill="url(#svV)"/>
+      <circle cx="200" cy="268" r="7" fill="#161a24"/>
+    </g>
+    <!-- hammer -->
+    <g transform="rotate(-42 200 200)">
+      <rect x="194" y="146" width="12" height="96" rx="6" fill="url(#sv)"/>
+      <rect x="191.5" y="224" width="17" height="52" rx="8.5" fill="url(#og)"/>
+      <path d="M195 236 H205 M195 246 H205 M195 256 H205" stroke="#111" stroke-opacity="0.35" stroke-width="2"/>
+      <rect x="176" y="124" width="48" height="24" rx="5" fill="url(#svV)"/>
+      <rect x="160" y="120" width="20" height="32" rx="4" fill="url(#svV)"/>
+      <path d="M222 126 C238 126 250 134 256 152 C246 146 236 146 222 148 Z" fill="url(#svV)"/>
+    </g>
+  </g>
+
+  <path d="M214 140 L175 213 L199 213 L185 264 L230 187 L206 187 L223 140 Z" fill="url(#og)" stroke="#0e1016" stroke-width="6" stroke-linejoin="round" paint-order="stroke" filter="url(#gl)"/>
+</svg>
+</div>
+<script>
+  const p = new URLSearchParams(location.hash.slice(1));
+  document.body.dataset.bg = p.get("bg") || "dark";
+  if (p.get("v") === "icon") {
+    document.getElementById("ringText").remove();
+  }
+</script>
+</body>
+</html>
