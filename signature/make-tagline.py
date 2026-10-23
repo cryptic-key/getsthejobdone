@@ -13,12 +13,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent
 SCALE = 2
-FONT_PX = 16 * SCALE
-LINE_H = 22 * SCALE
+FONT_PX = 22 * SCALE
+LINE_H = 28 * SCALE
 BG = (11, 13, 18, 255)  # #0b0d12, same as the signature card
 ORANGE = (255, 122, 26, 255)  # #ff7a1a
 GOLD = (255, 181, 71, 255)  # #ffb547
-FONT_PATH = "/usr/share/fonts/truetype/macos/Inter-SemiBold.ttf"
+FONT_CANDIDATES = [
+    Path("/tmp/SpaceGrotesk-Bold.ttf"),
+    ROOT / "SpaceGrotesk-Bold.ttf",
+    Path("/usr/share/fonts/truetype/space-grotesk/SpaceGrotesk-Bold.ttf"),
+]
 
 WORDS = [
     "get done",
@@ -35,45 +39,32 @@ WORDS = [
     "be figured out",
 ]
 
-TYPE_MS = 72
-DELETE_MS = 34
-HOLD_ON_MS = 420
-HOLD_OFF_MS = 380
+TYPE_MS = 90
+DELETE_MS = 45
+HOLD_ON_MS = 500
+HOLD_OFF_MS = 500
 HOLD_BLINKS = 2
+CARET_GAP = 4 * SCALE
+CARET_W = 2 * SCALE
+CARET_H = 22 * SCALE
 
 
-def build_gradient(width, height):
-    grad = Image.new("RGBA", (width, height))
-    px = grad.load()
-    for x in range(width):
-        t = x / max(width - 1, 1)
-        color = (
-            255,
-            int(ORANGE[1] + (GOLD[1] - ORANGE[1]) * t),
-            int(ORANGE[2] + (GOLD[2] - ORANGE[2]) * t),
-            255,
-        )
-        for y in range(height):
-            px[x, y] = color
-    return grad
+def font_path():
+    for path in FONT_CANDIDATES:
+        if path.exists():
+            return path
+    raise SystemExit("Space Grotesk Bold was not found. Download latin-700-normal.ttf to /tmp/SpaceGrotesk-Bold.ttf.")
 
 
-def render(text, caret_on, font, width, gradient):
-    mask = Image.new("L", (width, LINE_H), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.text((0, LINE_H // 2), text, font=font, fill=255, anchor="lm")
-    frame = Image.composite(gradient, Image.new("RGBA", (width, LINE_H), BG), mask)
+def render(text, caret_on, font, width):
+    frame = Image.new("RGBA", (width, LINE_H), BG)
+    draw = ImageDraw.Draw(frame)
+    draw.text((0, LINE_H // 2), text, font=font, fill=ORANGE, anchor="lm")
     if caret_on:
         text_w = int(round(font.getlength(text))) if text else 0
-        gap = 4 * SCALE
-        caret_w = SCALE + 1
-        caret_h = int(FONT_PX * 0.78)
-        x0 = text_w + gap
-        y0 = (LINE_H - caret_h) // 2
-        ImageDraw.Draw(frame).rectangle(
-            [x0, y0, x0 + caret_w - 1, y0 + caret_h - 1],
-            fill=GOLD,
-        )
+        x0 = text_w + CARET_GAP
+        y0 = (LINE_H - CARET_H) // 2
+        draw.rectangle([x0, y0, x0 + CARET_W - 1, y0 + CARET_H - 1], fill=GOLD)
     return frame
 
 
@@ -91,18 +82,17 @@ def quantize(frames):
 
 
 def main():
-    font = ImageFont.truetype(FONT_PATH, FONT_PX)
-    caret_w = SCALE + 1
-    gap = 4 * SCALE
+    font = ImageFont.truetype(font_path(), FONT_PX)
     longest = max(font.getlength(word) for word in WORDS)
-    width = int(round(longest)) + gap + caret_w + 3 * SCALE
-    gradient = build_gradient(width, LINE_H)
+    width = int(round(longest)) + CARET_GAP + CARET_W + 2 * SCALE
+    if width % 2:
+        width += 1
 
     frames = []
     durations = []
 
     def add(text, caret, ms):
-        frames.append(render(text, caret, font, width, gradient))
+        frames.append(render(text, caret, font, width))
         durations.append(ms)
 
     # First frames are the full opening phrase, so a frozen GIF still reads.
@@ -142,7 +132,7 @@ def main():
     # Contact sheet of each full word, for a visual check.
     thumbs = []
     for word in WORDS:
-        thumbs.append(render(word, True, font, width, gradient).convert("RGB"))
+        thumbs.append(render(word, True, font, width).convert("RGB"))
     sheet = Image.new("RGB", (width, LINE_H * len(thumbs)), BG[:3])
     for i, thumb in enumerate(thumbs):
         sheet.paste(thumb, (0, i * LINE_H))
