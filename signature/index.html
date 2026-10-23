@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Email signature · Gets The Job Done</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --text: #eef0f5;
+      --muted: #9aa1b2;
+      --accent: #ff7a1a;
+      --gold: #ffb547;
+      --line: rgba(255, 255, 255, 0.1);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(900px 420px at -10% -20%, rgba(255, 122, 26, 0.2), transparent 60%),
+        radial-gradient(700px 380px at 110% -10%, rgba(79, 124, 255, 0.16), transparent 55%),
+        var(--bg);
+    }
+
+    a { color: inherit; }
+
+    .wrap {
+      width: min(920px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 72px;
+    }
+
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+
+    .brand {
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      text-decoration: none;
+      font-size: 18px;
+    }
+
+    .brand span { color: var(--accent); }
+
+    .top a.home {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .top a.home:hover { color: var(--text); }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-size: clamp(32px, 5vw, 48px);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+
+    .lede {
+      margin: 0 0 22px;
+      max-width: 58ch;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.55;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 20px;
+      background: linear-gradient(120deg, var(--accent), var(--gold));
+      color: #1a1008;
+      font: 700 15px/1 Inter, "Segoe UI", sans-serif;
+      cursor: pointer;
+    }
+
+    button:hover { filter: brightness(1.05); }
+
+    button:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 3px;
+    }
+
+    #status {
+      min-height: 1.2em;
+      color: var(--gold);
+      font-size: 14px;
+    }
+
+    .stage {
+      background: #e7e9ee;
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    }
+
+    .mail {
+      max-width: 640px;
+      margin: 0 auto;
+      background: #ffffff;
+      color: #1c1f27;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(16, 18, 24, 0.06);
+    }
+
+    .mail-meta {
+      padding: 14px 22px 4px;
+      font-size: 13px;
+      color: #5c6370;
+    }
+
+    .mail-meta div { padding: 3px 0; }
+
+    .mail-meta b {
+      display: inline-block;
+      width: 64px;
+      color: #8b919c;
+      font-weight: 600;
+    }
+
+    .mail-body {
+      padding: 8px 22px 22px;
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      color: #1c1f27;
+    }
+
+    .mail-body p { margin: 14px 0 18px; }
+
+    .sig-scroll { overflow-x: auto; }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 28px;
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 14px;
+      padding: 16px 16px 8px;
+    }
+
+    .step h2 {
+      margin: 0 0 8px;
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-size: 16px;
+    }
+
+    .step ol {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .step li { margin: 0 0 8px; }
+
+    .note {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      max-width: 75ch;
+    }
+
+    details {
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    summary { cursor: pointer; }
+
+    textarea {
+      width: 100%;
+      height: 220px;
+      margin-top: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #08090d;
+      color: #d5d8e0;
+      font: 12px/1.45 ui-monospace, "Cascadia Code", monospace;
+      padding: 12px;
+      resize: vertical;
+    }
+
+    @media (max-width: 800px) {
+      .steps { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="../index.html">GetsTheJob<span>Done</span></a>
+      <a class="home" href="../index.html">Back to the site</a>
+    </div>
+
+    <p class="eyebrow">Email signature</p>
+    <h1>Paste this under your name.</h1>
+    <p class="lede">
+      Your name, the Gets The Job Done mark, and the same rotating line as the homepage.
+      The motion is an image, so it plays in Gmail and Apple Mail. If a client
+      holds it still, the line still reads “Need it to get done.”
+    </p>
+
+    <div class="actions">
+      <button type="button" id="copy">Copy signature</button>
+      <span id="status" role="status"></span>
+    </div>
+
+    <div class="stage">
+      <div class="mail">
+        <div class="mail-meta">
+          <div><b>To</b> client@example.com</div>
+          <div><b>Subject</b> Re: the service call</div>
+        </div>
+        <div class="mail-body">
+          <p>Sounds good. I’ll take a look this week and get it done.</p>
+          <div class="sig-scroll" id="signature">
+            <!--[if mso]>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="520"><tr><td width="520">
+            <![endif]-->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="520" style="width:520px; max-width:520px; border-collapse:separate; border-spacing:0; border:1px solid #2a3142; border-radius:14px; background-color:#0b0d12;">
+              <tr>
+                <td width="3" bgcolor="#ff7a1a" style="width:3px; background-color:#ff7a1a; border-radius:14px 0 0 14px; font-size:0; line-height:0; mso-line-height-rule:exactly;">&nbsp;</td>
+                <td bgcolor="#0b0d12" style="background-color:#0b0d12; background-image:linear-gradient(#0b0d12,#0b0d12); border-radius:0 14px 14px 0; padding:16px 18px 14px 16px; font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; width:100%;">
+                    <tr>
+                      <td width="80" valign="middle" style="width:80px; vertical-align:middle;">
+                        <a href="https://getsthejobdone.ca/" style="text-decoration:none;">
+                          <img src="seal.png" width="80" height="80" alt="Gets The Job Done" style="display:block; border:0; outline:none; text-decoration:none; width:80px; height:80px;" />
+                        </a>
+                      </td>
+                      <td valign="middle" style="vertical-align:middle; padding:0 0 0 14px;">
+                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; width:100%;">
+                          <tr>
+                            <td style="padding:0 0 1px 0; font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif; font-size:18px; line-height:22px; font-weight:700; color:#ffffff; mso-line-height-rule:exactly;">Alex</td>
+                          </tr>
+                          <tr>
+                            <td style="padding:0 0 7px 0; font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif; font-size:14px; line-height:18px; font-weight:700; mso-line-height-rule:exactly;">
+                              <a href="https://getsthejobdone.ca/" style="color:#ffffff; text-decoration:none;"><span style="color:#ffffff;">Gets The Job </span><span style="color:#ff7a1a;">Done</span></a>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding:0 0 8px 0;">
+                              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                                <tr>
+                                  <td valign="middle" style="vertical-align:middle; padding:0 8px 0 0; font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif; font-size:15px; line-height:22px; font-weight:600; color:#eef0f5; mso-line-height-rule:exactly;">Need it to</td>
+                                  <td valign="middle" style="vertical-align:middle; font-size:0; line-height:0;">
+                                    <!--[if !mso]><!-->
+                                    <img src="tagline.gif" width="117" height="22" alt="get done" style="display:block; border:0; outline:none; text-decoration:none; width:117px; height:22px;" />
+                                    <!--<![endif]-->
+                                    <!--[if mso]>
+                                    <span style="font-family:'Segoe UI',Helvetica,Arial,sans-serif; font-size:15px; line-height:22px; font-weight:600; color:#ff7a1a;">get done</span>
+                                    <![endif]-->
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif; font-size:13px; line-height:18px; color:#9aa1b2; mso-line-height-rule:exactly;">Licensed 309A Electrician</td>
+                          </tr>
+                          <tr>
+                            <td style="padding:0; font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif; font-size:13px; line-height:18px; color:#9aa1b2; mso-line-height-rule:exactly;">Fire Alarm &amp; Life Safety</td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colspan="2" style="padding:12px 0 0 0;">
+                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse; width:100%; border-top:1px solid #2a3142;">
+                          <tr>
+                            <td style="padding:10px 0 0 0; font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif; font-size:14px; line-height:18px; mso-line-height-rule:exactly;">
+                              <a href="mailto:Alex@GetsTheJobDone.ca" style="color:#ffb547; text-decoration:none;"><span style="color:#ffb547;">Alex@GetsTheJobDone.ca</span></a>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding:3px 0 0 0; font-family:Inter,'Segoe UI',Helvetica,Arial,sans-serif; font-size:14px; line-height:18px; mso-line-height-rule:exactly;">
+                              <a href="https://getsthejobdone.ca/" style="color:#eef0f5; text-decoration:none;"><span style="color:#eef0f5;">getsthejobdone.ca</span></a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            <!--[if mso]>
+            </td></tr></table>
+            <![endif]-->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <article class="step">
+        <h2>Gmail</h2>
+        <ol>
+          <li>Click Copy signature on a computer.</li>
+          <li>Settings → See all settings → General → Signature.</li>
+          <li>Create a signature, paste, then Save Changes at the bottom.</li>
+        </ol>
+      </article>
+      <article class="step">
+        <h2>Apple Mail</h2>
+        <ol>
+          <li>Click Copy signature.</li>
+          <li>Mail → Settings → Signatures → + and paste.</li>
+          <li>Turn off “Always match my default message font.”</li>
+        </ol>
+      </article>
+      <article class="step">
+        <h2>Outlook</h2>
+        <ol>
+          <li>Click Copy signature.</li>
+          <li>File → Options → Mail → Signatures, then paste.</li>
+          <li>Windows Outlook usually holds the line on “get done.”</li>
+        </ol>
+      </article>
+    </div>
+
+    <p class="note">
+      Inboxes strip CSS animation and scripts, so the typing line is an animated GIF hosted with the site.
+      It needs the images at getsthejobdone.ca, which means this page has to be live before the signature
+      will show its pictures in someone else’s inbox. There’s no phone number on the site, so there isn’t one here.
+    </p>
+
+    <details>
+      <summary>HTML source, if paste doesn’t keep the layout</summary>
+      <textarea id="source" readonly spellcheck="false"></textarea>
+    </details>
+  </div>
+
+  <script>
+    const ORIGIN = "https://getsthejobdone.ca/signature/";
+    const PLAIN = [
+      "Alex",
+      "Gets The Job Done",
+      "Need it to get done",
+      "Licensed 309A Electrician",
+      "Fire Alarm & Life Safety",
+      "Alex@GetsTheJobDone.ca",
+      "https://getsthejobdone.ca",
+    ].join("\n");
+
+    function absoluteHtml() {
+      const root = document.getElementById("signature");
+      const clone = root.cloneNode(true);
+      clone.querySelectorAll("img").forEach((img) => {
+        const file = img.getAttribute("src").split("/").pop().split("?")[0];
+        img.setAttribute("src", ORIGIN + file);
+      });
+      return clone.innerHTML.trim();
+    }
+
+    const source = document.getElementById("source");
+    source.value = absoluteHtml();
+
+    const status = document.getElementById("status");
+    const button = document.getElementById("copy");
+
+    function say(message) {
+      status.textContent = message;
+    }
+
+    button.addEventListener("click", async () => {
+      const html = absoluteHtml();
+      source.value = html;
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([PLAIN], { type: "text/plain" }),
+          }),
+        ]);
+        say("Copied. Paste it into your signature settings.");
+      } catch (error) {
+        document.querySelector("details").open = true;
+        source.focus();
+        source.select();
+        say("Clipboard was blocked. The source is selected — copy that.");
+      }
+    });
+  </script>
+</body>
+</html>
