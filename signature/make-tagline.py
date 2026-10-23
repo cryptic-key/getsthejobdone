@@ -136,16 +136,8 @@ def main():
         disposal=1,
     )
 
-    # Flat seal so Outlook's broken PNG transparency doesn't turn the corners white.
-    seal = Image.open(ROOT.parent / "brand" / "seal-web.png").convert("RGBA")
-    seal.thumbnail((160, 160), Image.Resampling.LANCZOS)
-    flat = Image.new("RGBA", seal.size, BG)
-    flat.alpha_composite(seal)
-    flat.convert("RGB").save(ROOT / "seal.png", optimize=True)
-
     print(f"gif {gif_path.name} {gif_path.stat().st_size} bytes")
     print(f"frames {len(frames)} size {width}x{LINE_H} display {width // SCALE}x{LINE_H // SCALE}")
-    print(f"seal { (ROOT / 'seal.png').stat().st_size } bytes")
 
     # Contact sheet of each full word, for a visual check.
     thumbs = []
