@@ -2,9 +2,9 @@
 """Build the animated tagline GIF used by the email signature.
 
 Email clients strip CSS and JavaScript, so the only motion that survives
-in Gmail and Apple Mail is an animated image. The first frame is the full
-phrase "get done" so clients that freeze GIFs (Outlook on Windows) still
-read as a finished line.
+in Gmail and Apple Mail is an animated image. Each frame is stored whole.
+Partial frames leave the previous word on screen. Outlook on Windows
+shows the text "get done" in place of this image.
 """
 
 from pathlib import Path
@@ -41,9 +41,8 @@ WORDS = [
 
 TYPE_MS = 90
 DELETE_MS = 45
-HOLD_ON_MS = 500
-HOLD_OFF_MS = 500
-HOLD_BLINKS = 2
+HOLD_MS = 2200
+BLINK_MS = 500
 CARET_GAP = 4 * SCALE
 CARET_W = 2 * SCALE
 CARET_H = 22 * SCALE
@@ -66,6 +65,32 @@ def render(text, caret_on, font, width):
         y0 = (LINE_H - CARET_H) // 2
         draw.rectangle([x0, y0, x0 + CARET_W - 1, y0 + CARET_H - 1], fill=GOLD)
     return frame
+
+
+def background_first(frames):
+    """Disposal restores the screen to palette index 0 between frames."""
+    bg = BG[:3]
+    palette = list(frames[0].getpalette())
+    count = len(palette) // 3
+    nearest = min(
+        range(count),
+        key=lambda i: sum((palette[i * 3 + c] - bg[c]) ** 2 for c in range(3)),
+    )
+    if nearest == 0:
+        return frames
+    for channel in range(3):
+        palette[channel], palette[nearest * 3 + channel] = (
+            palette[nearest * 3 + channel],
+            palette[channel],
+        )
+    table = list(range(256))
+    table[0], table[nearest] = nearest, 0
+    fixed = []
+    for frame in frames:
+        moved = frame.point(table)
+        moved.putpalette(palette)
+        fixed.append(moved)
+    return fixed
 
 
 def quantize(frames):
@@ -95,35 +120,35 @@ def main():
         frames.append(render(text, caret, font, width))
         durations.append(ms)
 
-    # First frames are the full opening phrase, so a frozen GIF still reads.
-    for _ in range(HOLD_BLINKS):
-        add(WORDS[0], True, HOLD_ON_MS)
-        add(WORDS[0], False, HOLD_OFF_MS)
-    for count in range(len(WORDS[0]) - 1, -1, -1):
-        add(WORDS[0][:count], True, DELETE_MS)
-
-    for index, word in enumerate(WORDS[1:], start=1):
+    def play(word):
         for count in range(1, len(word) + 1):
             add(word[:count], True, TYPE_MS)
-        for _ in range(HOLD_BLINKS):
-            add(word, True, HOLD_ON_MS)
-            add(word, False, HOLD_OFF_MS)
+        # Blink the caret while the finished word sits, same 1s blink as the design.
+        left = HOLD_MS
+        caret = True
+        while left > 0:
+            step = min(BLINK_MS, left)
+            add(word, caret, step)
+            caret = not caret
+            left -= step
         for count in range(len(word) - 1, -1, -1):
             add(word[:count], True, DELETE_MS)
 
-    for count in range(1, len(WORDS[0]) + 1):
-        add(WORDS[0][:count], True, TYPE_MS)
+    for word in WORDS:
+        play(word)
 
-    paletted = quantize(frames)
+    paletted = background_first(quantize(frames))
     gif_path = ROOT / "tagline.gif"
+    # Full frames, no delta compression. Optimized deltas leave the previous
+    # word on screen in some mail clients.
     paletted[0].save(
         gif_path,
         save_all=True,
         append_images=paletted[1:],
         duration=durations,
         loop=0,
-        optimize=True,
-        disposal=1,
+        optimize=False,
+        disposal=2,
     )
 
     print(f"gif {gif_path.name} {gif_path.stat().st_size} bytes")
