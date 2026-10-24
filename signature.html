@@ -10,7 +10,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
       --bg: #0b0d12;
@@ -18,9 +18,8 @@
       --muted: #9aa1b2;
       --accent: #ff7a1a;
       --accent-2: #ffb547;
-      --line: rgba(255, 255, 255, 0.1);
-      --font-display: "Space Grotesk", system-ui, sans-serif;
-      --font-body: "Inter", system-ui, sans-serif;
+      --font-display: "Space Grotesk", Inter, sans-serif;
+      --font-body: Inter, "Segoe UI", Helvetica, Arial, sans-serif;
     }
 
     * { box-sizing: border-box; }
@@ -29,8 +28,7 @@
       margin: 0;
       min-height: 100vh;
       background:
-        radial-gradient(520px 320px at 0% 0%, rgba(255, 122, 26, 0.18), transparent 70%),
-        radial-gradient(480px 320px at 100% 100%, rgba(79, 124, 255, 0.14), transparent 70%),
+        radial-gradient(520px 320px at 0% 0%, rgba(255, 122, 26, 0.16), transparent 70%),
         var(--bg);
       color: var(--text);
       font-family: var(--font-body);
@@ -41,9 +39,9 @@
     a { color: inherit; }
 
     .wrap {
-      width: min(1080px, calc(100% - 32px));
+      width: min(920px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 36px 0 64px;
+      padding: 32px 0 72px;
     }
 
     .top {
@@ -72,60 +70,209 @@
       color: var(--accent-2);
     }
 
-    h1, h2 {
+    h1 {
       font-family: var(--font-display);
       letter-spacing: -0.03em;
-      line-height: 1.1;
+      line-height: 1.05;
+      font-size: clamp(2.1rem, 5vw, 3.3rem);
       margin: 0;
     }
 
-    h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); max-width: 14ch; }
-    h2 { font-size: 1.35rem; margin-bottom: 12px; }
-
     .lede {
-      max-width: 46rem;
+      max-width: 40rem;
       color: var(--muted);
-      font-size: 1.05rem;
       margin: 14px 0 0;
     }
 
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
-      gap: 22px;
-      margin-top: 32px;
-      align-items: start;
+    .stage {
+      margin-top: 28px;
+      background: #e7e9ee;
+      border-radius: 18px;
+      padding: clamp(16px, 4vw, 32px);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
     }
 
-    .panel {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 18px;
-    }
-
-    .sheet-label, .edit-label {
-      margin: 0 0 10px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .sheet {
+    .letter {
       background: #ffffff;
-      border-radius: 14px;
-      padding: 22px 20px;
-      min-height: 168px;
-    }
-
-    #preview {
-      display: block;
-      width: 100%;
-      border: 0;
-      background: #ffffff;
+      color: #1c1f27;
+      border-radius: 12px;
       overflow: hidden;
+      box-shadow: 0 1px 2px rgba(16, 18, 24, 0.06);
+      padding: 14px clamp(14px, 3vw, 22px) 24px;
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: #5c6370;
+      padding-bottom: 4px;
+    }
+
+    .meta b {
+      display: inline-block;
+      width: 64px;
+      color: #6b717c;
+      font-weight: 600;
+    }
+
+    .letter p { margin: 8px 0 16px; }
+
+    .card {
+      width: min(520px, 100%);
+      display: flex;
+      border: 1px solid #2a3142;
+      border-radius: 14px;
+      background: #0b0d12;
+      overflow: hidden;
+      animation: cardin 0.6s ease-out both;
+    }
+
+    .bar {
+      width: 4px;
+      flex-shrink: 0;
+      background: #ff7a1a;
+      transform-origin: top;
+      animation: barin 0.7s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .card-body {
+      flex: 1;
+      min-width: 0;
+      padding: 20px 22px 18px 20px;
+      font-family: var(--font-body);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .headline {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: nowrap;
+      font-family: var(--font-display);
+      font-size: clamp(18px, 4.4vw, 22px);
+      line-height: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      animation: rise 0.5s 0.45s ease-out both;
+    }
+
+    .slot {
+      display: inline-flex;
+      align-items: center;
+      color: #ff7a1a;
+      white-space: pre;
+      min-height: 28px;
+    }
+
+    .probe {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      visibility: hidden;
+      white-space: pre;
+      font: inherit;
+      letter-spacing: inherit;
+    }
+
+    .caret {
+      width: 2px;
+      height: 0.9em;
+      margin-left: 2px;
+      background: #ffb547;
+      animation: blink 1s steps(1, end) infinite;
+    }
+
+    .name {
+      padding-top: 14px;
+      font-size: 16px;
+      line-height: 20px;
+      font-weight: 600;
+      color: #eef0f5;
+      animation: rise 0.5s 0.6s ease-out both;
+    }
+
+    .quote {
+      display: flex;
+      gap: 6px;
+      padding-top: 6px;
+      font-size: 14px;
+      line-height: 20px;
+      color: #b4bac8;
+      font-style: italic;
+      animation: rise 0.5s 0.75s ease-out both;
+    }
+
+    .quote-mark {
+      font-family: var(--font-display);
+      font-style: normal;
+      font-size: 22px;
+      line-height: 20px;
+      font-weight: 700;
+      color: #ff7a1a;
+    }
+
+    .rule {
+      height: 1px;
+      background: #2a3142;
+      margin: 16px 0 12px;
+      animation: rise 0.5s 0.9s ease-out both;
+    }
+
+    .contacts {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 18px;
+      font-size: 13px;
+      line-height: 18px;
+      animation: rise 0.5s 0.9s ease-out both;
+    }
+
+    .contacts a {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #eef0f5;
+      text-decoration: none;
+    }
+
+    .contacts a:hover { color: #ffb547; }
+
+    .contacts svg {
+      display: block;
+      flex-shrink: 0;
+    }
+
+    .site {
+      padding-top: 14px;
+      animation: rise 0.5s 1.05s ease-out both;
+    }
+
+    .site a {
+      font-family: var(--font-display);
+      font-size: 15px;
+      line-height: 20px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #ffffff;
+      text-decoration: none;
+    }
+
+    .site .done {
+      color: #ff7a1a;
+      animation: glow 3s 1.5s ease-in-out infinite;
+    }
+
+    .site .tld {
+      color: #9aa1b2;
+      font-weight: 600;
     }
 
     .actions {
@@ -133,13 +280,10 @@
       flex-wrap: wrap;
       align-items: center;
       gap: 12px;
-      margin-top: 14px;
+      margin-top: 18px;
     }
 
-    button, .ghost {
-      font: inherit;
-      cursor: pointer;
-    }
+    button { font: inherit; cursor: pointer; }
 
     .copy {
       appearance: none;
@@ -152,106 +296,55 @@
       box-shadow: 0 10px 28px rgba(255, 122, 26, 0.28);
     }
 
-    .copy:disabled {
-      cursor: wait;
-      opacity: 0.7;
-    }
-
     .copy.done {
       background: #d8ffe8;
       color: #0d3b22;
       box-shadow: none;
     }
 
-    .ghost {
-      appearance: none;
-      background: transparent;
-      color: var(--muted);
-      border: 0;
-      padding: 8px 2px;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-
     #status {
       min-height: 1.4em;
       margin: 10px 0 0;
       color: var(--accent-2);
-      font-size: 0.95rem;
     }
 
     #status.error { color: #ffb4a8; }
 
-    .hint {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 0.88rem;
+    .steps { margin-top: 22px; color: var(--text); }
+    .steps h2 {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      letter-spacing: -0.03em;
+      margin: 0 0 10px;
+    }
+    .steps ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 8px; }
+    .note { color: var(--muted); margin: 14px 0 0; font-size: 0.92rem; }
+
+    #copy-frame {
+      position: absolute;
+      width: 640px;
+      height: 420px;
+      left: -10000px;
+      top: 0;
+      border: 0;
     }
 
-    .fields {
-      display: grid;
-      gap: 12px;
+    @keyframes barin { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+    @keyframes glow {
+      0%, 100% { text-shadow: 0 0 0 rgba(255, 122, 26, 0); }
+      50% { text-shadow: 0 0 12px rgba(255, 122, 26, 0.75); }
+    }
+    @keyframes cardin {
+      from { opacity: 0; transform: translateY(12px) scale(0.98); }
+      to { opacity: 1; transform: none; }
     }
 
-    label {
-      display: grid;
-      gap: 6px;
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--muted);
-    }
-
-    input {
-      width: 100%;
-      border-radius: 10px;
-      border: 1px solid var(--line);
-      background: rgba(0, 0, 0, 0.25);
-      color: var(--text);
-      font: inherit;
-      font-size: 0.98rem;
-      padding: 10px 12px;
-    }
-
-    input:focus {
-      outline: 2px solid rgba(255, 122, 26, 0.7);
-      border-color: transparent;
-    }
-
-    .steps { margin-top: 22px; }
-
-    ol {
-      margin: 0;
-      padding-left: 1.2rem;
-      display: grid;
-      gap: 8px;
-    }
-
-    li { color: var(--text); }
-    li span, .note { color: var(--muted); }
-
-    .alts {
-      display: grid;
-      gap: 10px;
-      margin-top: 16px;
-    }
-
-    details {
-      border-top: 1px solid var(--line);
-      padding-top: 10px;
-    }
-
-    summary {
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    details ol { margin-top: 10px; }
-
-    .note { margin: 14px 0 0; font-size: 0.92rem; }
-
-    @media (max-width: 840px) {
-      .layout { grid-template-columns: 1fr; }
-      .wrap { padding-top: 22px; }
+    @media (prefers-reduced-motion: reduce) {
+      .card, .bar, .headline, .name, .quote, .rule, .contacts, .site, .caret, .site .done {
+        animation: none;
+      }
     }
   </style>
 </head>
@@ -264,295 +357,252 @@
 
     <p class="eyebrow">Email signature</p>
     <h1>Paste this into Outlook</h1>
-    <p class="lede">Copy the signature, then paste it into Outlook’s signature box. The seal, the orange bar, and the links come with it. Paste with Ctrl+V. Paste as plain text drops the design.</p>
+    <p class="lede">This is the signature card. The line types the same phrases as the site. Copy it, then paste with Ctrl+V. Outlook keeps the card and shows “Need it to get done”, because an email can’t run the typing.</p>
 
-    <div class="layout">
-      <section class="panel" aria-label="Signature preview">
-        <p class="sheet-label">What gets copied</p>
-        <div class="sheet">
-          <iframe id="preview" title="Email signature preview" scrolling="no"></iframe>
+    <div class="stage">
+      <div class="letter">
+        <div class="meta">
+          <div><b>To</b>client@example.com</div>
+          <div><b>Subject</b>Re: the service call</div>
         </div>
-        <div class="actions">
-          <button class="copy" id="copy" type="button">Copy signature</button>
-          <button class="ghost" id="select" type="button">Select it instead</button>
-        </div>
-        <p id="status" role="status"></p>
-        <p class="hint">Outlook on Windows: File → Options → Mail → Signatures. Click in the editor, then paste.</p>
+        <p>Sounds good. I’ll take a look this week and get it done.</p>
 
-        <div class="steps">
-          <h2>Save it as your signature</h2>
-          <ol>
-            <li>Click <strong>Copy signature</strong>.</li>
-            <li>In classic Outlook, open <strong>File → Options → Mail → Signatures</strong>.</li>
-            <li>Click <strong>New</strong>, name it, then click in the edit box.</li>
-            <li>Press <strong>Ctrl+V</strong>, then <strong>Save</strong>.</li>
-            <li>Choose it for <strong>New messages</strong> and <strong>Replies/forwards</strong>.</li>
-          </ol>
+        <div class="card">
+          <div class="bar" aria-hidden="true"></div>
+          <div class="card-body">
+            <div class="headline" id="headline">
+              <span>Need it to</span>
+              <span class="slot" id="slot">
+                <span id="typed">get done</span><span class="caret" aria-hidden="true"></span>
+              </span>
+              <span class="probe" id="probe">get done</span>
+            </div>
 
-          <div class="alts">
-            <details>
-              <summary>New Outlook and Outlook on the web</summary>
-              <ol>
-                <li>Open <strong>Settings → Mail → Compose and reply</strong>.</li>
-                <li>Click in the email signature box and press <strong>Ctrl+V</strong>.</li>
-                <li>Turn on the signature for new messages, then save.</li>
-              </ol>
-            </details>
-            <details>
-              <summary>Outlook for Mac</summary>
-              <ol>
-                <li>Open <strong>Outlook → Settings → Signatures</strong>.</li>
-                <li>Click <strong>+</strong>, click in the editor, and press <strong>Command+V</strong>.</li>
-                <li>Set it as the default for new mail and replies.</li>
-              </ol>
-            </details>
+            <div class="name">Alex Chong-Kee</div>
+
+            <div class="quote">
+              <span class="quote-mark" aria-hidden="true">“</span>
+              <span>If the solution doesn’t exist, I’ll build it.</span>
+            </div>
+
+            <div class="rule" aria-hidden="true"></div>
+
+            <div class="contacts">
+              <a href="tel:+16477461881">
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb547" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"></path></svg>
+                <span>(647) 746-1881</span>
+              </a>
+              <a href="mailto:Alex@GetsTheJobDone.ca">
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb547" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M22 7l-10 6L2 7"></path></svg>
+                <span>Alex@GetsTheJobDone.ca</span>
+              </a>
+            </div>
+
+            <div class="site">
+              <a href="https://getsthejobdone.ca">GetsTheJob<span class="done">Done</span><span class="tld">.ca</span></a>
+            </div>
           </div>
-          <p class="note">The seal is loaded from getsthejobdone.ca. Copy it while the picture is visible, and stay online the first time Outlook saves the signature so it can keep the image.</p>
         </div>
-      </section>
-
-      <section class="panel" aria-label="Signature details">
-        <p class="edit-label">Details</p>
-        <h2>Change a line, then copy again</h2>
-        <form class="fields" id="details" autocomplete="off">
-          <label>Name <input id="f-name" name="name" type="text" /></label>
-          <label>Brand line <input id="f-brand" name="brand" type="text" /></label>
-          <label>Title <input id="f-title" name="title" type="text" /></label>
-          <label>Second line <input id="f-title2" name="title2" type="text" /></label>
-          <label>Email <input id="f-email" name="email" type="email" /></label>
-          <label>Phone <input id="f-phone" name="phone" type="tel" placeholder="Optional" /></label>
-          <label>Website <input id="f-web" name="web" type="text" /></label>
-          <button class="ghost" id="reset" type="button">Reset details</button>
-        </form>
-      </section>
+      </div>
     </div>
+
+    <div class="actions">
+      <button class="copy" id="copy" type="button">Copy signature</button>
+    </div>
+    <p id="status" role="status"></p>
+
+    <section class="steps">
+      <h2>Save it in Outlook</h2>
+      <ol>
+        <li>Click <strong>Copy signature</strong>. That copies the dark card only, not the sample email around it.</li>
+        <li>Classic Outlook: <strong>File → Options → Mail → Signatures</strong>. Click <strong>New</strong>, then click in the edit box.</li>
+        <li>Press <strong>Ctrl+V</strong> and <strong>Save</strong>. Choose it for new messages and replies.</li>
+        <li>New Outlook and Outlook on the web: <strong>Settings → Mail → Compose and reply</strong>, then paste.</li>
+        <li>Outlook for Mac: <strong>Outlook → Settings → Signatures</strong>, then paste with <strong>Command+V</strong>.</li>
+      </ol>
+      <p class="note">Paste with Ctrl+V. Paste as plain text drops the colors. The typing stays on this page. In the email it reads “Need it to get done”.</p>
+    </section>
   </main>
 
+  <iframe id="copy-frame" title="Signature prepared for Outlook" tabindex="-1" aria-hidden="true"></iframe>
+
   <script>
-    const DEFAULTS = {
-      name: "Alex",
-      brand: "Gets the Job Done",
-      title: "Licensed 309A Electrician",
-      title2: "Fire & Life Safety Systems Coordinator",
-      email: "Alex@GetsTheJobDone.ca",
-      phone: "",
-      web: "getsthejobdone.ca"
-    };
+    const words = [
+      "get done",
+      "be wired right",
+      "be up to code",
+      "be secured",
+      "be drafted",
+      "be built",
+      "be fixed",
+      "be designed",
+      "run faster",
+      "look great",
+      "ride safer",
+      "be figured out"
+    ];
 
-    const STORAGE_KEY = "gtjd-outlook-signature";
-    const SEAL = "https://getsthejobdone.ca/brand/seal-web.png";
-    const fields = ["name", "brand", "title", "title2", "email", "phone", "web"];
-    const preview = document.getElementById("preview");
-    const statusEl = document.getElementById("status");
+    const typed = document.getElementById("typed");
+    const slot = document.getElementById("slot");
+    const probe = document.getElementById("probe");
+    const headline = document.getElementById("headline");
     const copyBtn = document.getElementById("copy");
+    const statusEl = document.getElementById("status");
+    const frame = document.getElementById("copy-frame");
 
-    function esc(value) {
-      return String(value).replace(/[&<>"']/g, (ch) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
-      }[ch]));
-    }
+    const phoneIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb547" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"></path></svg>';
+    const mailIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffb547" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M22 7l-10 6L2 7"></path></svg>';
 
-    function readForm() {
-      const data = {};
-      fields.forEach((key) => {
-        data[key] = document.getElementById("f-" + key).value.trim();
-      });
-      return data;
-    }
-
-    function writeForm(data) {
-      fields.forEach((key) => {
-        document.getElementById("f-" + key).value = data[key] || "";
-      });
-    }
-
-    function loadData() {
-      try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-        if (saved && typeof saved === "object") return { ...DEFAULTS, ...saved };
-      } catch (err) {}
-      return { ...DEFAULTS };
-    }
-
-    function saveData(data) {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (err) {}
-    }
-
-    function brandHtml(brand) {
-      const words = brand.split(/\s+/).filter(Boolean);
-      if (!words.length) return "";
-      if (words.length === 1) {
-        return '<span style="color:#c44700;">' + esc(words[0]) + "</span>";
-      }
-      const last = words.pop();
-      return esc(words.join(" ")) + ' <span style="color:#c44700;">' + esc(last) + "</span>";
-    }
-
-    function textRow(html, size, line, weight, bottom) {
-      return '<tr><td style="padding:0 0 ' + bottom + 'px 0;margin:0;font-family:Arial,Helvetica,sans-serif;font-size:' + size + 'px;line-height:' + line + 'px;font-weight:' + weight + ';color:#14161c;mso-line-height-rule:exactly;">' + html + "</td></tr>";
-    }
-
-    function safeMail(email) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "";
-      return "mailto:" + email;
-    }
-
-    function safeWeb(web) {
-      const raw = web.trim();
-      if (!raw) return null;
-      const href = /^https?:\/\//i.test(raw) ? raw : "https://" + raw;
-      try {
-        const url = new URL(href);
-        if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-        const label = raw.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-        return { href: url.href, label: label };
-      } catch (err) {
-        return null;
-      }
-    }
-
-    function safePhone(phone) {
-      const label = phone.trim();
-      if (!label) return null;
-      const dial = label.replace(/[^\d+]/g, "");
-      const href = /^\+?\d{7,15}$/.test(dial) ? "tel:" + dial : "";
-      return { href: href, label: label };
-    }
-
-    function contactRow(label, href, text) {
-      const linked = href
-        ? '<a href="' + esc(href) + '" style="color:#c44700;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;">' + esc(text) + "</a>"
-        : '<span style="color:#14161c;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;">' + esc(text) + "</span>";
-      return '<tr>'
-        + '<td style="padding:1px 12px 1px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#6d7582;mso-line-height-rule:exactly;">' + esc(label) + "</td>"
-        + '<td style="padding:1px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;">' + linked + "</td>"
-        + "</tr>";
-    }
-
-    function signatureHtml(data) {
-      const rows = [];
-      if (data.name) rows.push(textRow(esc(data.name), 20, 24, "bold", 1));
-      if (data.brand) rows.push(textRow(brandHtml(data.brand), 13, 18, "normal", 8));
-      if (data.title) rows.push(textRow(esc(data.title), 14, 19, "normal", data.title2 ? 1 : 0));
-      if (data.title2) rows.push(textRow(esc(data.title2), 14, 19, "normal", 0));
-
-      const contacts = [];
-      const emailHref = safeMail(data.email);
-      if (data.email) contacts.push(contactRow("Email", emailHref, data.email));
-      const phone = safePhone(data.phone);
-      if (phone) contacts.push(contactRow("Phone", phone.href, phone.label));
-      const web = safeWeb(data.web);
-      if (web) contacts.push(contactRow("Web", web.href, web.label));
-
-      let contactTable = "";
-      if (contacts.length) {
-        contactTable = '<tr><td height="10" style="height:10px;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>'
-          + "<tr><td style=\"padding:0;\">"
-          + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
-          + contacts.join("")
-          + "</table></td></tr>";
-      }
-
+    function outlookHtml() {
+      const font = "Segoe UI,Helvetica,Arial,sans-serif";
+      const display = "'Space Grotesk',Segoe UI,Helvetica,Arial,sans-serif";
       return ''
-        + '<table id="signature" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
-        + "<tr>"
-        + '<td valign="middle" style="padding:0;vertical-align:middle;font-size:0;line-height:0;">'
-        + '<a href="https://getsthejobdone.ca/" style="text-decoration:none;">'
-        + '<img src="' + SEAL + '" width="108" height="108" border="0" alt="Gets the Job Done" style="display:block;border:0;outline:none;text-decoration:none;width:108px;height:108px;-ms-interpolation-mode:bicubic;" />'
-        + "</a></td>"
-        + '<td width="16" style="width:16px;font-size:0;line-height:0;padding:0;">&nbsp;</td>'
-        + '<td width="3" bgcolor="#ff7a1a" style="width:3px;background-color:#ff7a1a;font-size:1px;line-height:1px;padding:0;color:#ff7a1a;">&nbsp;</td>'
-        + '<td width="16" style="width:16px;font-size:0;line-height:0;padding:0;">&nbsp;</td>'
-        + '<td valign="middle" style="padding:0;vertical-align:middle;">'
-        + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
-        + rows.join("")
-        + contactTable
-        + "</table></td>"
-        + "</tr></table>";
+        + '<table id="signature" cellpadding="0" cellspacing="0" border="0" role="presentation" width="520" style="width:520px;max-width:520px;border-collapse:separate;border-spacing:0;background-color:#0b0d12;border:1px solid #2a3142;border-radius:14px;">'
+        + '<tr>'
+        + '<td width="4" bgcolor="#ff7a1a" style="width:4px;background-color:#ff7a1a;font-size:0;line-height:0;padding:0;">&nbsp;</td>'
+        + '<td bgcolor="#0b0d12" style="background-color:#0b0d12;padding:20px 22px 18px 20px;">'
+        + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" width="100%" style="border-collapse:collapse;width:100%;">'
+        + '<tr><td style="font-family:' + display + ';font-size:22px;line-height:28px;font-weight:700;letter-spacing:-0.02em;color:#ffffff;padding:0;mso-line-height-rule:exactly;">Need it to <span style="color:#ff7a1a;">get done</span></td></tr>'
+        + '<tr><td style="font-family:' + font + ';font-size:16px;line-height:20px;font-weight:600;color:#eef0f5;padding:14px 0 0;mso-line-height-rule:exactly;">Alex Chong-Kee</td></tr>'
+        + '<tr><td style="font-family:' + font + ';font-size:14px;line-height:20px;color:#b4bac8;font-style:italic;padding:6px 0 0;mso-line-height-rule:exactly;"><span style="font-family:' + display + ';font-style:normal;font-size:22px;line-height:20px;font-weight:700;color:#ff7a1a;">&#8220;</span> If the solution doesn&#8217;t exist, I&#8217;ll build it.</td></tr>'
+        + '<tr><td height="16" style="height:16px;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>'
+        + '<tr><td height="1" bgcolor="#2a3142" style="height:1px;background-color:#2a3142;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>'
+        + '<tr><td height="12" style="height:12px;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>'
+        + '<tr><td style="padding:0;">'
+        + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;">'
+        + '<tr>'
+        + '<td valign="middle" style="padding:0 7px 0 0;line-height:0;font-size:0;">' + phoneIcon + '</td>'
+        + '<td valign="middle" style="padding:0 18px 0 0;font-family:' + font + ';font-size:13px;line-height:18px;mso-line-height-rule:exactly;"><a href="tel:+16477461881" style="color:#eef0f5;text-decoration:none;">(647) 746-1881</a></td>'
+        + '<td valign="middle" style="padding:0 7px 0 0;line-height:0;font-size:0;">' + mailIcon + '</td>'
+        + '<td valign="middle" style="padding:0;font-family:' + font + ';font-size:13px;line-height:18px;mso-line-height-rule:exactly;"><a href="mailto:Alex@GetsTheJobDone.ca" style="color:#eef0f5;text-decoration:none;">Alex@GetsTheJobDone.ca</a></td>'
+        + '</tr></table>'
+        + '</td></tr>'
+        + '<tr><td style="padding:14px 0 0;font-family:' + display + ';font-size:15px;line-height:20px;font-weight:700;letter-spacing:-0.01em;mso-line-height-rule:exactly;"><a href="https://getsthejobdone.ca" style="color:#ffffff;text-decoration:none;">GetsTheJob<span style="color:#ff7a1a;">Done</span><span style="color:#9aa1b2;font-weight:600;">.ca</span></a></td></tr>'
+        + '</table>'
+        + '</td></tr></table>';
     }
 
-    function fitFrame() {
-      const doc = preview.contentDocument;
-      if (!doc || !doc.body) return;
-      const table = doc.getElementById("signature");
-      const height = table ? table.offsetHeight : doc.body.scrollHeight;
-      preview.style.height = Math.max(height, 108) + "px";
-    }
-
-    function render() {
-      const data = readForm();
-      saveData(data);
-      const doc = preview.contentDocument;
+    function mountCopyFrame() {
+      const doc = frame.contentDocument;
       doc.open();
-      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#ffffff;color:#14161c;">'
-        + signatureHtml(data)
-        + "</body></html>");
+      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#ffffff;">' + outlookHtml() + '</body></html>');
       doc.close();
-      const img = doc.querySelector("img");
-      if (img) img.addEventListener("load", fitFrame);
-      if (img) img.addEventListener("error", () => setStatus("The seal did not load. Check your connection, then copy again.", true));
-      fitFrame();
-      requestAnimationFrame(fitFrame);
+    }
+
+    function sizeSlot() {
+      probe.style.font = getComputedStyle(typed).font;
+      probe.style.letterSpacing = getComputedStyle(typed).letterSpacing;
+      let max = 0;
+      words.forEach((word) => {
+        probe.textContent = word;
+        max = Math.max(max, probe.getBoundingClientRect().width);
+      });
+      slot.style.minWidth = Math.ceil(max + 6) + "px";
+    }
+
+    function startTyping() {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        typed.textContent = words[0];
+        headline.setAttribute("aria-label", "Need it to " + words[0]);
+        return;
+      }
+
+      let wordIndex = 0;
+      let charIndex = words[0].length;
+      let deleting = true;
+      typed.textContent = words[0];
+      headline.setAttribute("aria-label", "Need it to " + words[0]);
+
+      const tick = () => {
+        if (deleting) {
+          charIndex -= 1;
+          const word = words[wordIndex];
+          typed.textContent = word.slice(0, Math.max(charIndex, 0));
+          if (charIndex <= 0) {
+            deleting = false;
+            wordIndex = (wordIndex + 1) % words.length;
+            charIndex = 0;
+            typed.textContent = "";
+          }
+          window.setTimeout(tick, 45);
+          return;
+        }
+
+        const next = words[wordIndex];
+        charIndex += 1;
+        typed.textContent = next.slice(0, charIndex);
+        if (charIndex >= next.length) {
+          deleting = true;
+          headline.setAttribute("aria-label", "Need it to " + next);
+          window.setTimeout(tick, 1800);
+        } else {
+          window.setTimeout(tick, 85);
+        }
+      };
+
+      window.setTimeout(tick, 2200);
     }
 
     function setStatus(message, isError) {
       statusEl.textContent = message;
       statusEl.className = isError ? "error" : "";
-      copyBtn.classList.toggle("done", !isError && message.indexOf("Copied") === 0);
-      if (!isError && message.indexOf("Copied") === 0) copyBtn.textContent = "Copied";
-      else copyBtn.textContent = "Copy signature";
+      const copied = !isError && message.indexOf("Copied") === 0;
+      copyBtn.classList.toggle("done", copied);
+      copyBtn.textContent = copied ? "Copied" : "Copy signature";
     }
 
-    function selectSignature() {
-      const doc = preview.contentDocument;
-      const node = doc && doc.getElementById("signature");
-      if (!node) return false;
+    function copySignature() {
+      mountCopyFrame();
+      const doc = frame.contentDocument;
+      const node = doc.getElementById("signature");
+      if (!node) {
+        setStatus("The signature is not ready yet.", true);
+        return;
+      }
       const range = doc.createRange();
       range.selectNode(node);
       const selection = doc.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
-      preview.contentWindow.focus();
-      return true;
-    }
-
-    function copySignature() {
-      if (!selectSignature()) {
-        setStatus("The signature is not ready yet.", true);
+      frame.contentWindow.focus();
+      let ok = false;
+      try { ok = doc.execCommand("copy"); } catch (err) { ok = false; }
+      if (ok) {
+        selection.removeAllRanges();
+        setStatus("Copied. In Outlook, click the signature box and press Ctrl+V.");
         return;
       }
-      let ok = false;
-      try { ok = preview.contentDocument.execCommand("copy"); } catch (err) { ok = false; }
-      if (ok) {
-        preview.contentDocument.getSelection().removeAllRanges();
-        setStatus("Copied. In Outlook, click the signature box and press Ctrl+V.");
-      } else {
-        setStatus("The signature is selected. Press Ctrl+C, then paste it into Outlook.", true);
+      const html = node.outerHTML;
+      const text = "Need it to get done\nAlex Chong-Kee\nIf the solution doesn’t exist, I’ll build it.\n(647) 746-1881\nAlex@GetsTheJobDone.ca\nhttps://getsthejobdone.ca";
+      if (navigator.clipboard && window.ClipboardItem) {
+        navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([text], { type: "text/plain" })
+          })
+        ]).then(() => {
+          setStatus("Copied. In Outlook, click the signature box and press Ctrl+V.");
+        }).catch(() => {
+          setStatus("Press Ctrl+C after clicking Copy signature again.", true);
+        });
+        return;
       }
+      setStatus("Press Ctrl+C, then paste it into Outlook.", true);
     }
 
-    writeForm(loadData());
-    document.getElementById("details").addEventListener("input", () => {
-      copyBtn.classList.remove("done");
-      render();
-    });
-    document.getElementById("reset").addEventListener("click", () => {
-      writeForm(DEFAULTS);
-      render();
-      setStatus("Details reset.");
-      copyBtn.classList.remove("done");
-      copyBtn.textContent = "Copy signature";
-    });
+    function boot() {
+      sizeSlot();
+      mountCopyFrame();
+      startTyping();
+    }
+
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(boot);
+    } else {
+      window.addEventListener("load", boot);
+    }
+    window.addEventListener("resize", sizeSlot);
     copyBtn.addEventListener("click", copySignature);
-    document.getElementById("select").addEventListener("click", () => {
-      if (selectSignature()) setStatus("Selected. Press Ctrl+C, then paste into Outlook.");
-    });
-    render();
-    window.addEventListener("load", fitFrame);
   </script>
 </body>
 </html>
