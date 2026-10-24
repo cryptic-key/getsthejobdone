@@ -1,0 +1,16 @@
+# Signature files are linked from email, not from the site.
+# Email apps request the image URL directly and do not read this file.
+# Each crawler group below repeats the block on purpose: a specific
+# User-agent only follows its own group, not the * group.
+
+User-agent: *
+Disallow: /signature/
+
+User-agent: Googlebot
+Disallow: /signature/
+
+User-agent: Googlebot-Image
+Disallow: /signature/
+
+User-agent: Bingbot
+Disallow: /signature/
