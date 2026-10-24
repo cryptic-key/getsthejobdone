@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Outlook email signature | Gets The Job Done</title>
+  <meta name="description" content="Copy the Gets The Job Done email signature and paste it into Outlook." />
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#0b0d12" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --text: #eef0f5;
+      --muted: #9aa1b2;
+      --accent: #ff7a1a;
+      --accent-2: #ffb547;
+      --line: rgba(255, 255, 255, 0.1);
+      --font-display: "Space Grotesk", system-ui, sans-serif;
+      --font-body: "Inter", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(520px 320px at 0% 0%, rgba(255, 122, 26, 0.18), transparent 70%),
+        radial-gradient(480px 320px at 100% 100%, rgba(79, 124, 255, 0.14), transparent 70%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    a { color: inherit; }
+
+    .wrap {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 64px;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+
+    .brand span { color: var(--accent); }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+
+    h1, h2 {
+      font-family: var(--font-display);
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); max-width: 14ch; }
+    h2 { font-size: 1.35rem; margin-bottom: 12px; }
+
+    .lede {
+      max-width: 46rem;
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin: 14px 0 0;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      gap: 22px;
+      margin-top: 32px;
+      align-items: start;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+    }
+
+    .sheet-label, .edit-label {
+      margin: 0 0 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .sheet {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 22px 20px;
+      min-height: 168px;
+    }
+
+    #preview {
+      display: block;
+      width: 100%;
+      border: 0;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    button, .ghost {
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .copy {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 13px 22px;
+      font-weight: 700;
+      color: #14120f;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 10px 28px rgba(255, 122, 26, 0.28);
+    }
+
+    .copy:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
+    .copy.done {
+      background: #d8ffe8;
+      color: #0d3b22;
+      box-shadow: none;
+    }
+
+    .ghost {
+      appearance: none;
+      background: transparent;
+      color: var(--muted);
+      border: 0;
+      padding: 8px 2px;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    #status {
+      min-height: 1.4em;
+      margin: 10px 0 0;
+      color: var(--accent-2);
+      font-size: 0.95rem;
+    }
+
+    #status.error { color: #ffb4a8; }
+
+    .hint {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .fields {
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    input {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.25);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.98rem;
+      padding: 10px 12px;
+    }
+
+    input:focus {
+      outline: 2px solid rgba(255, 122, 26, 0.7);
+      border-color: transparent;
+    }
+
+    .steps { margin-top: 22px; }
+
+    ol {
+      margin: 0;
+      padding-left: 1.2rem;
+      display: grid;
+      gap: 8px;
+    }
+
+    li { color: var(--text); }
+    li span, .note { color: var(--muted); }
+
+    .alts {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    details {
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    details ol { margin-top: 10px; }
+
+    .note { margin: 14px 0 0; font-size: 0.92rem; }
+
+    @media (max-width: 840px) {
+      .layout { grid-template-columns: 1fr; }
+      .wrap { padding-top: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <a class="brand" href="index.html">Gets the Job <span>Done</span></a>
+      <a href="index.html">Back to the site</a>
+    </div>
+
+    <p class="eyebrow">Email signature</p>
+    <h1>Paste this into Outlook</h1>
+    <p class="lede">Copy the signature, then paste it into Outlook’s signature box. The seal, the orange bar, and the links come with it. Paste with Ctrl+V. Paste as plain text drops the design.</p>
+
+    <div class="layout">
+      <section class="panel" aria-label="Signature preview">
+        <p class="sheet-label">What gets copied</p>
+        <div class="sheet">
+          <iframe id="preview" title="Email signature preview" scrolling="no"></iframe>
+        </div>
+        <div class="actions">
+          <button class="copy" id="copy" type="button">Copy signature</button>
+          <button class="ghost" id="select" type="button">Select it instead</button>
+        </div>
+        <p id="status" role="status"></p>
+        <p class="hint">Outlook on Windows: File → Options → Mail → Signatures. Click in the editor, then paste.</p>
+
+        <div class="steps">
+          <h2>Save it as your signature</h2>
+          <ol>
+            <li>Click <strong>Copy signature</strong>.</li>
+            <li>In classic Outlook, open <strong>File → Options → Mail → Signatures</strong>.</li>
+            <li>Click <strong>New</strong>, name it, then click in the edit box.</li>
+            <li>Press <strong>Ctrl+V</strong>, then <strong>Save</strong>.</li>
+            <li>Choose it for <strong>New messages</strong> and <strong>Replies/forwards</strong>.</li>
+          </ol>
+
+          <div class="alts">
+            <details>
+              <summary>New Outlook and Outlook on the web</summary>
+              <ol>
+                <li>Open <strong>Settings → Mail → Compose and reply</strong>.</li>
+                <li>Click in the email signature box and press <strong>Ctrl+V</strong>.</li>
+                <li>Turn on the signature for new messages, then save.</li>
+              </ol>
+            </details>
+            <details>
+              <summary>Outlook for Mac</summary>
+              <ol>
+                <li>Open <strong>Outlook → Settings → Signatures</strong>.</li>
+                <li>Click <strong>+</strong>, click in the editor, and press <strong>Command+V</strong>.</li>
+                <li>Set it as the default for new mail and replies.</li>
+              </ol>
+            </details>
+          </div>
+          <p class="note">The seal is loaded from getsthejobdone.ca. Copy it while the picture is visible, and stay online the first time Outlook saves the signature so it can keep the image.</p>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Signature details">
+        <p class="edit-label">Details</p>
+        <h2>Change a line, then copy again</h2>
+        <form class="fields" id="details" autocomplete="off">
+          <label>Name <input id="f-name" name="name" type="text" /></label>
+          <label>Brand line <input id="f-brand" name="brand" type="text" /></label>
+          <label>Title <input id="f-title" name="title" type="text" /></label>
+          <label>Second line <input id="f-title2" name="title2" type="text" /></label>
+          <label>Email <input id="f-email" name="email" type="email" /></label>
+          <label>Phone <input id="f-phone" name="phone" type="tel" placeholder="Optional" /></label>
+          <label>Website <input id="f-web" name="web" type="text" /></label>
+          <button class="ghost" id="reset" type="button">Reset details</button>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const DEFAULTS = {
+      name: "Alex",
+      brand: "Gets the Job Done",
+      title: "Licensed 309A Electrician",
+      title2: "Fire & Life Safety Systems Coordinator",
+      email: "Alex@GetsTheJobDone.ca",
+      phone: "",
+      web: "getsthejobdone.ca"
+    };
+
+    const STORAGE_KEY = "gtjd-outlook-signature";
+    const SEAL = "https://getsthejobdone.ca/brand/seal-web.png";
+    const fields = ["name", "brand", "title", "title2", "email", "phone", "web"];
+    const preview = document.getElementById("preview");
+    const statusEl = document.getElementById("status");
+    const copyBtn = document.getElementById("copy");
+
+    function esc(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[ch]));
+    }
+
+    function readForm() {
+      const data = {};
+      fields.forEach((key) => {
+        data[key] = document.getElementById("f-" + key).value.trim();
+      });
+      return data;
+    }
+
+    function writeForm(data) {
+      fields.forEach((key) => {
+        document.getElementById("f-" + key).value = data[key] || "";
+      });
+    }
+
+    function loadData() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+        if (saved && typeof saved === "object") return { ...DEFAULTS, ...saved };
+      } catch (err) {}
+      return { ...DEFAULTS };
+    }
+
+    function saveData(data) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (err) {}
+    }
+
+    function brandHtml(brand) {
+      const words = brand.split(/\s+/).filter(Boolean);
+      if (!words.length) return "";
+      if (words.length === 1) {
+        return '<span style="color:#c44700;">' + esc(words[0]) + "</span>";
+      }
+      const last = words.pop();
+      return esc(words.join(" ")) + ' <span style="color:#c44700;">' + esc(last) + "</span>";
+    }
+
+    function textRow(html, size, line, weight, bottom) {
+      return '<tr><td style="padding:0 0 ' + bottom + 'px 0;margin:0;font-family:Arial,Helvetica,sans-serif;font-size:' + size + 'px;line-height:' + line + 'px;font-weight:' + weight + ';color:#14161c;mso-line-height-rule:exactly;">' + html + "</td></tr>";
+    }
+
+    function safeMail(email) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "";
+      return "mailto:" + email;
+    }
+
+    function safeWeb(web) {
+      const raw = web.trim();
+      if (!raw) return null;
+      const href = /^https?:\/\//i.test(raw) ? raw : "https://" + raw;
+      try {
+        const url = new URL(href);
+        if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+        const label = raw.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+        return { href: url.href, label: label };
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function safePhone(phone) {
+      const label = phone.trim();
+      if (!label) return null;
+      const dial = label.replace(/[^\d+]/g, "");
+      const href = /^\+?\d{7,15}$/.test(dial) ? "tel:" + dial : "";
+      return { href: href, label: label };
+    }
+
+    function contactRow(label, href, text) {
+      const linked = href
+        ? '<a href="' + esc(href) + '" style="color:#c44700;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;">' + esc(text) + "</a>"
+        : '<span style="color:#14161c;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;">' + esc(text) + "</span>";
+      return '<tr>'
+        + '<td style="padding:1px 12px 1px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#6d7582;mso-line-height-rule:exactly;">' + esc(label) + "</td>"
+        + '<td style="padding:1px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;">' + linked + "</td>"
+        + "</tr>";
+    }
+
+    function signatureHtml(data) {
+      const rows = [];
+      if (data.name) rows.push(textRow(esc(data.name), 20, 24, "bold", 1));
+      if (data.brand) rows.push(textRow(brandHtml(data.brand), 13, 18, "normal", 8));
+      if (data.title) rows.push(textRow(esc(data.title), 14, 19, "normal", data.title2 ? 1 : 0));
+      if (data.title2) rows.push(textRow(esc(data.title2), 14, 19, "normal", 0));
+
+      const contacts = [];
+      const emailHref = safeMail(data.email);
+      if (data.email) contacts.push(contactRow("Email", emailHref, data.email));
+      const phone = safePhone(data.phone);
+      if (phone) contacts.push(contactRow("Phone", phone.href, phone.label));
+      const web = safeWeb(data.web);
+      if (web) contacts.push(contactRow("Web", web.href, web.label));
+
+      let contactTable = "";
+      if (contacts.length) {
+        contactTable = '<tr><td height="10" style="height:10px;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>'
+          + "<tr><td style=\"padding:0;\">"
+          + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
+          + contacts.join("")
+          + "</table></td></tr>";
+      }
+
+      return ''
+        + '<table id="signature" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
+        + "<tr>"
+        + '<td valign="middle" style="padding:0;vertical-align:middle;font-size:0;line-height:0;">'
+        + '<a href="https://getsthejobdone.ca/" style="text-decoration:none;">'
+        + '<img src="' + SEAL + '" width="108" height="108" border="0" alt="Gets the Job Done" style="display:block;border:0;outline:none;text-decoration:none;width:108px;height:108px;-ms-interpolation-mode:bicubic;" />'
+        + "</a></td>"
+        + '<td width="16" style="width:16px;font-size:0;line-height:0;padding:0;">&nbsp;</td>'
+        + '<td width="3" bgcolor="#ff7a1a" style="width:3px;background-color:#ff7a1a;font-size:1px;line-height:1px;padding:0;color:#ff7a1a;">&nbsp;</td>'
+        + '<td width="16" style="width:16px;font-size:0;line-height:0;padding:0;">&nbsp;</td>'
+        + '<td valign="middle" style="padding:0;vertical-align:middle;">'
+        + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
+        + rows.join("")
+        + contactTable
+        + "</table></td>"
+        + "</tr></table>";
+    }
+
+    function fitFrame() {
+      const doc = preview.contentDocument;
+      if (!doc || !doc.body) return;
+      const table = doc.getElementById("signature");
+      const height = table ? table.offsetHeight : doc.body.scrollHeight;
+      preview.style.height = Math.max(height, 108) + "px";
+    }
+
+    function render() {
+      const data = readForm();
+      saveData(data);
+      const doc = preview.contentDocument;
+      doc.open();
+      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#ffffff;color:#14161c;">'
+        + signatureHtml(data)
+        + "</body></html>");
+      doc.close();
+      const img = doc.querySelector("img");
+      if (img) img.addEventListener("load", fitFrame);
+      if (img) img.addEventListener("error", () => setStatus("The seal did not load. Check your connection, then copy again.", true));
+      fitFrame();
+      requestAnimationFrame(fitFrame);
+    }
+
+    function setStatus(message, isError) {
+      statusEl.textContent = message;
+      statusEl.className = isError ? "error" : "";
+      copyBtn.classList.toggle("done", !isError && message.indexOf("Copied") === 0);
+      if (!isError && message.indexOf("Copied") === 0) copyBtn.textContent = "Copied";
+      else copyBtn.textContent = "Copy signature";
+    }
+
+    function selectSignature() {
+      const doc = preview.contentDocument;
+      const node = doc && doc.getElementById("signature");
+      if (!node) return false;
+      const range = doc.createRange();
+      range.selectNode(node);
+      const selection = doc.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      preview.contentWindow.focus();
+      return true;
+    }
+
+    function copySignature() {
+      if (!selectSignature()) {
+        setStatus("The signature is not ready yet.", true);
+        return;
+      }
+      let ok = false;
+      try { ok = preview.contentDocument.execCommand("copy"); } catch (err) { ok = false; }
+      if (ok) {
+        preview.contentDocument.getSelection().removeAllRanges();
+        setStatus("Copied. In Outlook, click the signature box and press Ctrl+V.");
+      } else {
+        setStatus("The signature is selected. Press Ctrl+C, then paste it into Outlook.", true);
+      }
+    }
+
+    writeForm(loadData());
+    document.getElementById("details").addEventListener("input", () => {
+      copyBtn.classList.remove("done");
+      render();
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      writeForm(DEFAULTS);
+      render();
+      setStatus("Details reset.");
+      copyBtn.classList.remove("done");
+      copyBtn.textContent = "Copy signature";
+    });
+    copyBtn.addEventListener("click", copySignature);
+    document.getElementById("select").addEventListener("click", () => {
+      if (selectSignature()) setStatus("Selected. Press Ctrl+C, then paste into Outlook.");
+    });
+    render();
+    window.addEventListener("load", fitFrame);
+  </script>
+</body>
+</html>
