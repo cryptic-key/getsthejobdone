@@ -4,23 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Outlook email signature | Gets The Job Done</title>
-  <meta name="description" content="Copy the Gets The Job Done email signature and paste it into Outlook." />
+  <meta name="description" content="Fill in the email signature template and paste it into Outlook." />
   <meta name="robots" content="noindex" />
   <meta name="theme-color" content="#0b0d12" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
       --bg: #0b0d12;
       --text: #eef0f5;
       --muted: #9aa1b2;
       --accent: #ff7a1a;
-      --accent-2: #ffb547;
+      --gold: #ffb547;
       --line: rgba(255, 255, 255, 0.1);
-      --font-display: "Space Grotesk", system-ui, sans-serif;
-      --font-body: "Inter", system-ui, sans-serif;
     }
 
     * { box-sizing: border-box; }
@@ -28,323 +26,271 @@
     body {
       margin: 0;
       min-height: 100vh;
-      background:
-        radial-gradient(520px 320px at 0% 0%, rgba(255, 122, 26, 0.18), transparent 70%),
-        radial-gradient(480px 320px at 100% 100%, rgba(79, 124, 255, 0.14), transparent 70%),
-        var(--bg);
       color: var(--text);
-      font-family: var(--font-body);
-      font-size: 16px;
-      line-height: 1.5;
+      font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(900px 420px at -10% -20%, rgba(255, 122, 26, 0.2), transparent 60%),
+        radial-gradient(700px 380px at 110% -10%, rgba(79, 124, 255, 0.16), transparent 55%),
+        var(--bg);
     }
 
     a { color: inherit; }
 
     .wrap {
-      width: min(1080px, calc(100% - 32px));
+      width: min(980px, calc(100% - 32px));
       margin: 0 auto;
-      padding: 36px 0 64px;
+      padding: 28px 0 72px;
     }
 
     .top {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
       gap: 16px;
-      margin-bottom: 28px;
+      margin-bottom: 36px;
     }
 
     .brand {
-      font-family: var(--font-display);
+      font-family: "Space Grotesk", Inter, sans-serif;
       font-weight: 700;
+      letter-spacing: -0.03em;
       text-decoration: none;
-      letter-spacing: -0.02em;
+      font-size: 18px;
     }
 
     .brand span { color: var(--accent); }
 
+    .top a.home {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
     .eyebrow {
       margin: 0 0 8px;
-      font-size: 0.78rem;
-      font-weight: 600;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 700;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: var(--accent-2);
     }
 
-    h1, h2 {
-      font-family: var(--font-display);
+    h1 {
+      margin: 0 0 10px;
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-size: clamp(32px, 5vw, 48px);
+      line-height: 1.05;
       letter-spacing: -0.03em;
-      line-height: 1.1;
-      margin: 0;
     }
-
-    h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); max-width: 14ch; }
-    h2 { font-size: 1.35rem; margin-bottom: 12px; }
 
     .lede {
-      max-width: 46rem;
+      margin: 0 0 22px;
+      max-width: 62ch;
       color: var(--muted);
-      font-size: 1.05rem;
-      margin: 14px 0 0;
+      font-size: 17px;
+      line-height: 1.55;
     }
 
     .layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.75fr);
       gap: 22px;
-      margin-top: 32px;
       align-items: start;
     }
 
-    .panel {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 18px;
+    .stage {
+      background: #e7e9ee;
+      border-radius: 18px;
+      padding: 22px;
     }
 
-    .sheet-label, .edit-label {
-      margin: 0 0 10px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .sheet {
+    .mail {
       background: #ffffff;
-      border-radius: 14px;
-      padding: 22px 20px;
-      min-height: 168px;
-    }
-
-    #preview {
-      display: block;
-      width: 100%;
-      border: 0;
-      background: #ffffff;
+      color: #1c1f27;
+      border-radius: 12px;
       overflow: hidden;
     }
 
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 12px;
-      margin-top: 14px;
-    }
+    .mail-body { padding: 22px; }
 
-    button, .ghost {
-      font: inherit;
-      cursor: pointer;
-    }
-
-    .copy {
-      appearance: none;
-      border: 0;
-      border-radius: 999px;
-      padding: 13px 22px;
-      font-weight: 700;
-      color: #14120f;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      box-shadow: 0 10px 28px rgba(255, 122, 26, 0.28);
-    }
-
-    .copy:disabled {
-      cursor: wait;
-      opacity: 0.7;
-    }
-
-    .copy.done {
-      background: #d8ffe8;
-      color: #0d3b22;
-      box-shadow: none;
-    }
-
-    .ghost {
-      appearance: none;
-      background: transparent;
-      color: var(--muted);
-      border: 0;
-      padding: 8px 2px;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-
-    #status {
-      min-height: 1.4em;
-      margin: 10px 0 0;
-      color: var(--accent-2);
-      font-size: 0.95rem;
-    }
-
-    #status.error { color: #ffb4a8; }
-
-    .hint {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
+    .sig-scroll { overflow-x: auto; }
 
     .fields {
       display: grid;
       gap: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .fields h2 {
+      margin: 0;
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-size: 16px;
     }
 
     label {
       display: grid;
       gap: 6px;
-      font-size: 0.82rem;
-      font-weight: 600;
       color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
 
-    input {
+    input, textarea {
       width: 100%;
       border-radius: 10px;
       border: 1px solid var(--line);
-      background: rgba(0, 0, 0, 0.25);
+      background: rgba(0, 0, 0, 0.28);
       color: var(--text);
-      font: inherit;
-      font-size: 0.98rem;
+      font: 16px/1.4 Inter, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
       padding: 10px 12px;
     }
 
-    input:focus {
-      outline: 2px solid rgba(255, 122, 26, 0.7);
+    textarea { min-height: 74px; resize: vertical; }
+
+    input:focus, textarea:focus {
+      outline: 2px solid var(--gold);
       border-color: transparent;
     }
 
-    .steps { margin-top: 22px; }
-
-    ol {
-      margin: 0;
-      padding-left: 1.2rem;
-      display: grid;
-      gap: 8px;
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-top: 18px;
     }
 
-    li { color: var(--text); }
-    li span, .note { color: var(--muted); }
-
-    .alts {
-      display: grid;
-      gap: 10px;
-      margin-top: 16px;
-    }
-
-    details {
-      border-top: 1px solid var(--line);
-      padding-top: 10px;
-    }
-
-    summary {
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 20px;
+      background: linear-gradient(120deg, var(--accent), var(--gold));
+      color: #1a1008;
+      font: 700 15px/1 Inter, "Segoe UI", sans-serif;
       cursor: pointer;
-      font-weight: 600;
     }
 
-    details ol { margin-top: 10px; }
+    button:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 3px;
+    }
 
-    .note { margin: 14px 0 0; font-size: 0.92rem; }
+    #status {
+      min-height: 1.2em;
+      color: var(--gold);
+      font-size: 14px;
+    }
+
+    .steps {
+      margin-top: 28px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 14px;
+      padding: 16px 16px 8px;
+    }
+
+    .steps h2 {
+      margin: 0 0 8px;
+      font-family: "Space Grotesk", Inter, sans-serif;
+      font-size: 16px;
+    }
+
+    .steps ol {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .steps li { margin: 0 0 8px; }
+
+    .note {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      max-width: 75ch;
+    }
 
     @media (max-width: 840px) {
       .layout { grid-template-columns: 1fr; }
-      .wrap { padding-top: 22px; }
     }
   </style>
 </head>
 <body>
-  <main class="wrap">
+  <div class="wrap">
     <div class="top">
-      <a class="brand" href="index.html">Gets the Job <span>Done</span></a>
-      <a href="index.html">Back to the site</a>
+      <a class="brand" href="index.html">GetsTheJob<span>Done</span></a>
+      <a class="home" href="index.html">Back to the site</a>
     </div>
 
     <p class="eyebrow">Email signature</p>
-    <h1>Paste this into Outlook</h1>
-    <p class="lede">Copy the signature, then paste it into Outlook’s signature box. The seal, the orange bar, and the links come with it. Paste with Ctrl+V. Paste as plain text drops the design.</p>
+    <h1>Paste this into Outlook.</h1>
+    <p class="lede">
+      The boxes start empty for your name, phone, and email. What you type stays in this browser.
+      Copy the card, then paste it with Ctrl+V. Windows Outlook keeps the first line on “get done.”
+    </p>
 
     <div class="layout">
-      <section class="panel" aria-label="Signature preview">
-        <p class="sheet-label">What gets copied</p>
-        <div class="sheet">
-          <iframe id="preview" title="Email signature preview" scrolling="no"></iframe>
-        </div>
-        <div class="actions">
-          <button class="copy" id="copy" type="button">Copy signature</button>
-          <button class="ghost" id="select" type="button">Select it instead</button>
-        </div>
-        <p id="status" role="status"></p>
-        <p class="hint">Outlook on Windows: File → Options → Mail → Signatures. Click in the editor, then paste.</p>
-
-        <div class="steps">
-          <h2>Save it as your signature</h2>
-          <ol>
-            <li>Click <strong>Copy signature</strong>.</li>
-            <li>In classic Outlook, open <strong>File → Options → Mail → Signatures</strong>.</li>
-            <li>Click <strong>New</strong>, name it, then click in the edit box.</li>
-            <li>Press <strong>Ctrl+V</strong>, then <strong>Save</strong>.</li>
-            <li>Choose it for <strong>New messages</strong> and <strong>Replies/forwards</strong>.</li>
-          </ol>
-
-          <div class="alts">
-            <details>
-              <summary>New Outlook and Outlook on the web</summary>
-              <ol>
-                <li>Open <strong>Settings → Mail → Compose and reply</strong>.</li>
-                <li>Click in the email signature box and press <strong>Ctrl+V</strong>.</li>
-                <li>Turn on the signature for new messages, then save.</li>
-              </ol>
-            </details>
-            <details>
-              <summary>Outlook for Mac</summary>
-              <ol>
-                <li>Open <strong>Outlook → Settings → Signatures</strong>.</li>
-                <li>Click <strong>+</strong>, click in the editor, and press <strong>Command+V</strong>.</li>
-                <li>Set it as the default for new mail and replies.</li>
-              </ol>
-            </details>
+      <div class="stage">
+        <div class="mail">
+          <div class="mail-body">
+            <div class="sig-scroll" id="signature"></div>
           </div>
-          <p class="note">The seal is loaded from getsthejobdone.ca. Copy it while the picture is visible, and stay online the first time Outlook saves the signature so it can keep the image.</p>
         </div>
-      </section>
+      </div>
 
-      <section class="panel" aria-label="Signature details">
-        <p class="edit-label">Details</p>
-        <h2>Change a line, then copy again</h2>
-        <form class="fields" id="details" autocomplete="off">
-          <label>Name <input id="f-name" name="name" type="text" /></label>
-          <label>Brand line <input id="f-brand" name="brand" type="text" /></label>
-          <label>Title <input id="f-title" name="title" type="text" /></label>
-          <label>Second line <input id="f-title2" name="title2" type="text" /></label>
-          <label>Email <input id="f-email" name="email" type="email" /></label>
-          <label>Phone <input id="f-phone" name="phone" type="tel" placeholder="Optional" /></label>
-          <label>Website <input id="f-web" name="web" type="text" /></label>
-          <button class="ghost" id="reset" type="button">Reset details</button>
-        </form>
-      </section>
+      <form class="fields" id="details" autocomplete="off">
+        <h2>Edit the template</h2>
+        <label>Opening line <input id="f-lead" name="lead" type="text" /></label>
+        <label>Name <input id="f-name" name="name" type="text" placeholder="Name" /></label>
+        <label>Quote <textarea id="f-quote" name="quote"></textarea></label>
+        <label>Phone <input id="f-phone" name="phone" type="tel" placeholder="Phone" autocomplete="off" /></label>
+        <label>Email <input id="f-email" name="email" type="text" placeholder="Email" autocomplete="off" inputmode="email" /></label>
+        <label>Website <input id="f-web" name="web" type="text" /></label>
+      </form>
     </div>
-  </main>
+
+    <div class="actions">
+      <button type="button" id="copy">Copy signature</button>
+      <span id="status" role="status"></span>
+    </div>
+
+    <div class="steps">
+      <h2>Outlook</h2>
+      <ol>
+        <li>Fill in the boxes you want on the signature.</li>
+        <li>Click Copy signature.</li>
+        <li>File → Options → Mail → Signatures, click in the editor, then press Ctrl+V.</li>
+      </ol>
+    </div>
+
+    <p class="note">
+      The moving line is a picture at getsthejobdone.ca/signature/tagline.gif. Search crawlers are asked to skip that folder.
+      Mail apps still load it.
+    </p>
+  </div>
 
   <script>
+    const ORIGIN = "https://getsthejobdone.ca/signature/";
+    const STORAGE_KEY = "gtjd-signature-blanks";
     const DEFAULTS = {
-      name: "Alex",
-      brand: "Gets the Job Done",
-      title: "Licensed 309A Electrician",
-      title2: "Fire & Life Safety Systems Coordinator",
-      email: "Alex@GetsTheJobDone.ca",
+      lead: "Need it to",
+      name: "",
+      quote: "“If the solution doesn’t exist, I’ll build it.”",
       phone: "",
+      email: "",
       web: "getsthejobdone.ca"
     };
-
-    const STORAGE_KEY = "gtjd-outlook-signature";
-    const SEAL = "https://getsthejobdone.ca/brand/seal-web.png";
-    const fields = ["name", "brand", "title", "title2", "email", "phone", "web"];
-    const preview = document.getElementById("preview");
-    const statusEl = document.getElementById("status");
-    const copyBtn = document.getElementById("copy");
+    const fields = Object.keys(DEFAULTS);
 
     function esc(value) {
       return String(value).replace(/[&<>"']/g, (ch) => ({
@@ -359,200 +305,204 @@
     function readForm() {
       const data = {};
       fields.forEach((key) => {
-        data[key] = document.getElementById("f-" + key).value.trim();
+        data[key] = document.getElementById("f-" + key).value;
       });
       return data;
     }
 
     function writeForm(data) {
       fields.forEach((key) => {
-        document.getElementById("f-" + key).value = data[key] || "";
+        document.getElementById("f-" + key).value = data[key] == null ? "" : data[key];
       });
     }
 
     function loadData() {
+      const data = { ...DEFAULTS };
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-        if (saved && typeof saved === "object") return { ...DEFAULTS, ...saved };
+        if (saved && typeof saved === "object") {
+          fields.forEach((key) => {
+            if (typeof saved[key] === "string") data[key] = saved[key];
+          });
+        }
       } catch (err) {}
-      return { ...DEFAULTS };
+      return data;
     }
 
     function saveData(data) {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (err) {}
     }
 
-    function brandHtml(brand) {
-      const words = brand.split(/\s+/).filter(Boolean);
-      if (!words.length) return "";
-      if (words.length === 1) {
-        return '<span style="color:#c44700;">' + esc(words[0]) + "</span>";
-      }
-      const last = words.pop();
-      return esc(words.join(" ")) + ' <span style="color:#c44700;">' + esc(last) + "</span>";
+    function quoted(text) {
+      let body = text.trim();
+      body = body.replace(/^[“"']\s*/, "").replace(/\s*[”"']$/, "");
+      return { open: "“", body: body, close: "”" };
     }
 
-    function textRow(html, size, line, weight, bottom) {
-      return '<tr><td style="padding:0 0 ' + bottom + 'px 0;margin:0;font-family:Arial,Helvetica,sans-serif;font-size:' + size + 'px;line-height:' + line + 'px;font-weight:' + weight + ';color:#14161c;mso-line-height-rule:exactly;">' + html + "</td></tr>";
+    function phoneHref(phone) {
+      const dial = phone.replace(/[^\d+]/g, "");
+      return /^\+?\d{7,15}$/.test(dial) ? "tel:" + dial : "";
     }
 
-    function safeMail(email) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "";
-      return "mailto:" + email;
+    function mailHref(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "mailto:" + email : "";
     }
 
-    function safeWeb(web) {
+    function webParts(web) {
       const raw = web.trim();
       if (!raw) return null;
       const href = /^https?:\/\//i.test(raw) ? raw : "https://" + raw;
       try {
         const url = new URL(href);
         if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-        const label = raw.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-        return { href: url.href, label: label };
+        return { href: url.href, label: raw.replace(/^https?:\/\//i, "").replace(/\/$/, "") };
       } catch (err) {
         return null;
       }
     }
 
-    function safePhone(phone) {
-      const label = phone.trim();
-      if (!label) return null;
-      const dial = label.replace(/[^\d+]/g, "");
-      const href = /^\+?\d{7,15}$/.test(dial) ? "tel:" + dial : "";
-      return { href: href, label: label };
+    function line(html, size, weight, color, top) {
+      return '<tr><td style="padding:' + top + 'px 0 0 0;font-family:Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:' + size + 'px;line-height:20px;font-weight:' + weight + ';color:' + color + ';mso-line-height-rule:exactly;">' + html + "</td></tr>";
     }
 
-    function contactRow(label, href, text) {
-      const linked = href
-        ? '<a href="' + esc(href) + '" style="color:#c44700;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;">' + esc(text) + "</a>"
-        : '<span style="color:#14161c;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;">' + esc(text) + "</span>";
-      return '<tr>'
-        + '<td style="padding:1px 12px 1px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#6d7582;mso-line-height-rule:exactly;">' + esc(label) + "</td>"
-        + '<td style="padding:1px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;">' + linked + "</td>"
-        + "</tr>";
+    function contactCell(icon, href, text) {
+      const inner = href
+        ? '<a href="' + esc(href) + '" style="color:#eef0f5;text-decoration:none;"><span style="color:#eef0f5;">' + esc(text) + "</span></a>"
+        : '<span style="color:#eef0f5;">' + esc(text) + "</span>";
+      return ''
+        + '<td valign="middle" width="14" style="width:14px;vertical-align:middle;font-size:0;line-height:0;">'
+        + '<img src="signature/' + icon + '" width="14" height="14" alt="" style="display:block;border:0;outline:none;text-decoration:none;width:14px;height:14px;" />'
+        + "</td>"
+        + '<td valign="middle" style="vertical-align:middle;padding:0 18px 0 7px;font-family:Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:13px;line-height:18px;mso-line-height-rule:exactly;">'
+        + inner
+        + "</td>";
     }
 
-    function signatureHtml(data) {
+    function signatureInner(data) {
+      const lead = data.lead.trim();
+      const name = data.name.trim();
+      const phone = data.phone.trim();
+      const email = data.email.trim();
+      const quote = quoted(data.quote);
+      const web = webParts(data.web);
       const rows = [];
-      if (data.name) rows.push(textRow(esc(data.name), 20, 24, "bold", 1));
-      if (data.brand) rows.push(textRow(brandHtml(data.brand), 13, 18, "normal", 8));
-      if (data.title) rows.push(textRow(esc(data.title), 14, 19, "normal", data.title2 ? 1 : 0));
-      if (data.title2) rows.push(textRow(esc(data.title2), 14, 19, "normal", 0));
 
-      const contacts = [];
-      const emailHref = safeMail(data.email);
-      if (data.email) contacts.push(contactRow("Email", emailHref, data.email));
-      const phone = safePhone(data.phone);
-      if (phone) contacts.push(contactRow("Phone", phone.href, phone.label));
-      const web = safeWeb(data.web);
-      if (web) contacts.push(contactRow("Web", web.href, web.label));
+      rows.push(
+        "<tr><td style=\"padding:0;\">"
+        + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">'
+        + "<tr>"
+        + '<td valign="middle" style="vertical-align:middle;padding:0 7px 0 0;font-family:\'Space Grotesk\',Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:22px;line-height:28px;font-weight:700;letter-spacing:-0.02em;color:#ffffff;mso-line-height-rule:exactly;">'
+        + esc(lead || "Need it to")
+        + "</td>"
+        + '<td valign="middle" style="vertical-align:middle;font-size:0;line-height:0;">'
+        + "<!--[if !mso]><!-->"
+        + '<img src="signature/tagline.gif" width="161" height="28" alt="get done" style="display:block;border:0;outline:none;text-decoration:none;width:161px;height:28px;" />'
+        + "<!--<![endif]-->"
+        + "<!--[if mso]>"
+        + '<span style="font-family:\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:22px;line-height:28px;font-weight:700;color:#ff7a1a;">get done</span>'
+        + "<![endif]-->"
+        + "</td></tr></table></td></tr>"
+      );
 
-      let contactTable = "";
-      if (contacts.length) {
-        contactTable = '<tr><td height="10" style="height:10px;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>'
-          + "<tr><td style=\"padding:0;\">"
-          + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
-          + contacts.join("")
-          + "</table></td></tr>";
+      if (name) rows.push(line(esc(name), 16, 600, "#eef0f5", 14));
+
+      if (quote.body) {
+        rows.push(
+          '<tr><td style="padding:6px 0 0 0;">'
+          + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>'
+          + '<td valign="top" style="vertical-align:top;padding:0 6px 0 0;font-family:\'Space Grotesk\',Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:22px;line-height:20px;font-weight:700;color:#ff7a1a;mso-line-height-rule:exactly;">'
+          + esc(quote.open) + "</td>"
+          + '<td valign="top" style="vertical-align:top;font-family:Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;font-style:italic;color:#b4bac8;mso-line-height-rule:exactly;">'
+          + esc(quote.body)
+          + '<span style="color:#ff7a1a;font-style:normal;font-weight:700;font-family:\'Space Grotesk\',Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:22px;line-height:20px;">'
+          + esc(quote.close) + "</span></td>"
+          + "</tr></table></td></tr>"
+        );
+      }
+
+      rows.push(
+        '<tr><td style="padding:16px 0 12px 0;font-size:0;line-height:0;">'
+        + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;"><tr>'
+        + '<td height="1" bgcolor="#2a3142" style="height:1px;background-color:#2a3142;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td>'
+        + "</tr></table></td></tr>"
+      );
+
+      if (phone || email) {
+        let cells = "";
+        if (phone) cells += contactCell("phone.png", phoneHref(phone), phone);
+        if (email) cells += contactCell("mail.png", mailHref(email), email);
+        rows.push(
+          '<tr><td style="padding:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>'
+          + cells + "</tr></table></td></tr>"
+        );
+      }
+
+      if (web) {
+        const label = /^getsthejobdone\.ca$/i.test(web.label)
+          ? '<span style="color:#ffffff;">GetsTheJob</span><span style="color:#ff7a1a;">Done</span><span style="color:#9aa1b2;font-weight:600;">.ca</span>'
+          : '<span style="color:#ffffff;">' + esc(web.label) + "</span>";
+        rows.push(
+          '<tr><td style="padding:14px 0 0 0;font-family:\'Space Grotesk\',Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;font-size:15px;line-height:20px;font-weight:700;letter-spacing:-0.01em;mso-line-height-rule:exactly;">'
+          + '<a href="' + esc(web.href) + '" style="color:#ffffff;text-decoration:none;">' + label + "</a></td></tr>"
+        );
       }
 
       return ''
-        + '<table id="signature" cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
+        + "<!--[if mso]><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"520\"><tr><td width=\"520\"><![endif]-->"
+        + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="520" style="width:520px;max-width:520px;border-collapse:separate;border-spacing:0;border:1px solid #2a3142;border-radius:14px;background-color:#0b0d12;">'
         + "<tr>"
-        + '<td valign="middle" style="padding:0;vertical-align:middle;font-size:0;line-height:0;">'
-        + '<a href="https://getsthejobdone.ca/" style="text-decoration:none;">'
-        + '<img src="' + SEAL + '" width="108" height="108" border="0" alt="Gets the Job Done" style="display:block;border:0;outline:none;text-decoration:none;width:108px;height:108px;-ms-interpolation-mode:bicubic;" />'
-        + "</a></td>"
-        + '<td width="16" style="width:16px;font-size:0;line-height:0;padding:0;">&nbsp;</td>'
-        + '<td width="3" bgcolor="#ff7a1a" style="width:3px;background-color:#ff7a1a;font-size:1px;line-height:1px;padding:0;color:#ff7a1a;">&nbsp;</td>'
-        + '<td width="16" style="width:16px;font-size:0;line-height:0;padding:0;">&nbsp;</td>'
-        + '<td valign="middle" style="padding:0;vertical-align:middle;">'
-        + '<table cellpadding="0" cellspacing="0" border="0" role="presentation" style="border-collapse:collapse;border-spacing:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">'
+        + '<td width="4" bgcolor="#ff7a1a" style="width:4px;background-color:#ff7a1a;border-radius:14px 0 0 14px;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td>'
+        + '<td bgcolor="#0b0d12" style="background-color:#0b0d12;background-image:linear-gradient(#0b0d12,#0b0d12);border-radius:0 14px 14px 0;padding:20px 22px 18px 20px;font-family:Inter,\'Segoe UI\',Helvetica,Arial,sans-serif;">'
+        + '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;width:100%;">'
         + rows.join("")
-        + contactTable
-        + "</table></td>"
-        + "</tr></table>";
+        + "</table></td></tr></table>"
+        + "<!--[if mso]></td></tr></table><![endif]-->";
     }
 
-    function fitFrame() {
-      const doc = preview.contentDocument;
-      if (!doc || !doc.body) return;
-      const table = doc.getElementById("signature");
-      const height = table ? table.offsetHeight : doc.body.scrollHeight;
-      preview.style.height = Math.max(height, 108) + "px";
+    function plainText(data) {
+      const quote = quoted(data.quote);
+      const lines = [((data.lead.trim() || "Need it to") + " get done").trim()];
+      if (data.name.trim()) lines.push(data.name.trim());
+      if (quote.body) lines.push(quote.open + quote.body + quote.close);
+      if (data.phone.trim()) lines.push(data.phone.trim());
+      if (data.email.trim()) lines.push(data.email.trim());
+      const web = webParts(data.web);
+      if (web) lines.push(web.href);
+      return lines.join("\n");
+    }
+
+    function absoluteHtml(html) {
+      return html.replace(/src="signature\//g, 'src="' + ORIGIN);
     }
 
     function render() {
       const data = readForm();
       saveData(data);
-      const doc = preview.contentDocument;
-      doc.open();
-      doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#ffffff;color:#14161c;">'
-        + signatureHtml(data)
-        + "</body></html>");
-      doc.close();
-      const img = doc.querySelector("img");
-      if (img) img.addEventListener("load", fitFrame);
-      if (img) img.addEventListener("error", () => setStatus("The seal did not load. Check your connection, then copy again.", true));
-      fitFrame();
-      requestAnimationFrame(fitFrame);
-    }
-
-    function setStatus(message, isError) {
-      statusEl.textContent = message;
-      statusEl.className = isError ? "error" : "";
-      copyBtn.classList.toggle("done", !isError && message.indexOf("Copied") === 0);
-      if (!isError && message.indexOf("Copied") === 0) copyBtn.textContent = "Copied";
-      else copyBtn.textContent = "Copy signature";
-    }
-
-    function selectSignature() {
-      const doc = preview.contentDocument;
-      const node = doc && doc.getElementById("signature");
-      if (!node) return false;
-      const range = doc.createRange();
-      range.selectNode(node);
-      const selection = doc.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      preview.contentWindow.focus();
-      return true;
-    }
-
-    function copySignature() {
-      if (!selectSignature()) {
-        setStatus("The signature is not ready yet.", true);
-        return;
-      }
-      let ok = false;
-      try { ok = preview.contentDocument.execCommand("copy"); } catch (err) { ok = false; }
-      if (ok) {
-        preview.contentDocument.getSelection().removeAllRanges();
-        setStatus("Copied. In Outlook, click the signature box and press Ctrl+V.");
-      } else {
-        setStatus("The signature is selected. Press Ctrl+C, then paste it into Outlook.", true);
-      }
+      document.getElementById("signature").innerHTML = signatureInner(data);
     }
 
     writeForm(loadData());
     document.getElementById("details").addEventListener("input", () => {
-      copyBtn.classList.remove("done");
+      document.getElementById("status").textContent = "";
       render();
     });
-    document.getElementById("reset").addEventListener("click", () => {
-      writeForm(DEFAULTS);
-      render();
-      setStatus("Details reset.");
-      copyBtn.classList.remove("done");
-      copyBtn.textContent = "Copy signature";
-    });
-    copyBtn.addEventListener("click", copySignature);
-    document.getElementById("select").addEventListener("click", () => {
-      if (selectSignature()) setStatus("Selected. Press Ctrl+C, then paste into Outlook.");
+    document.getElementById("copy").addEventListener("click", async () => {
+      const data = readForm();
+      const html = absoluteHtml(signatureInner(data));
+      const status = document.getElementById("status");
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([plainText(data)], { type: "text/plain" }),
+          }),
+        ]);
+        status.textContent = "Copied. In Outlook, click the signature box and press Ctrl+V.";
+      } catch (error) {
+        status.textContent = "Clipboard was blocked. Select the card and press Ctrl+C.";
+      }
     });
     render();
-    window.addEventListener("load", fitFrame);
   </script>
 </body>
 </html>
