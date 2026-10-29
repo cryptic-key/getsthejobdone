@@ -1,0 +1,14 @@
+# Signature pictures are for email clients. Crawlers that honor robots.txt stay out.
+# A specific User-agent only follows its own group, so the block is repeated.
+
+User-agent: *
+Disallow: /signature/
+
+User-agent: Googlebot
+Disallow: /signature/
+
+User-agent: Googlebot-Image
+Disallow: /signature/
+
+User-agent: Bingbot
+Disallow: /signature/
