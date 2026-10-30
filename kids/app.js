@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal"];
+const COLOR_HEX = { leaf: "#2f7d5a", sun: "#e3a31a", sky: "#3c7f92", clay: "#a24b34", plum: "#6e6284", teal: "#2f6f6a" };
+const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "kid-shop", "me"]);
 const KID_TOKEN = "chart-kid-token";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
@@ -222,6 +224,7 @@ async function run(work, message, next) {
     else route = { ...route, error: "" };
     draft = {};
     render();
+    if (db.session?.role === "kid" && message) celebrate();
   } catch (error) {
     route = { ...route, error: nice(error) };
     render();
@@ -234,20 +237,86 @@ function mark() {
   return `<span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5 9.2 17 19 7"/></svg></span>`;
 }
 
+function face(color) {
+  const fill = COLOR_HEX[color] || COLOR_HEX.leaf;
+  return `<svg class="face" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="34" r="26" fill="${fill}"/><circle cx="22" cy="30" r="4" fill="#fff"/><circle cx="42" cy="30" r="4" fill="#fff"/><circle cx="23" cy="31" r="2" fill="#24312c"/><circle cx="43" cy="31" r="2" fill="#24312c"/><path d="M22 42 Q32 50 42 42" fill="none" stroke="#24312c" stroke-width="3" stroke-linecap="round"/></svg>`;
+}
+
+function worldScene(color) {
+  const fill = COLOR_HEX[color] || COLOR_HEX.leaf;
+  return `<div class="stage" aria-hidden="true">
+    <svg class="stage-art" viewBox="0 0 360 170">
+      <rect width="360" height="170" fill="#8ec8d4"/>
+      <g class="sun">
+        <g class="rays">
+          <line x1="300" y1="14" x2="300" y2="22"/><line x1="300" y1="50" x2="300" y2="58"/>
+          <line x1="278" y1="36" x2="286" y2="36"/><line x1="314" y1="36" x2="322" y2="36"/>
+          <line x1="284" y1="20" x2="290" y2="26"/><line x1="310" y1="46" x2="316" y2="52"/>
+          <line x1="284" y1="52" x2="290" y2="46"/><line x1="310" y1="26" x2="316" y2="20"/>
+        </g>
+        <circle cx="300" cy="36" r="14" fill="#f6c945" stroke="#24312c" stroke-width="3"/>
+      </g>
+      <g class="cloud cloud-a"><ellipse cx="48" cy="42" rx="22" ry="12"/><ellipse cx="66" cy="38" rx="14" ry="10"/></g>
+      <g class="cloud cloud-b"><ellipse cx="168" cy="30" rx="18" ry="10"/><ellipse cx="184" cy="28" rx="12" ry="8"/></g>
+      <path d="M0 118 C70 78 130 138 210 102 C270 76 320 112 360 92 V170 H0 Z" fill="#c5e3b4"/>
+      <path d="M0 142 C90 112 150 162 236 132 C300 112 330 146 360 128 V170 H0 Z" fill="#6eaf72"/>
+      <g class="hero">
+        <ellipse cx="78" cy="150" rx="24" ry="6" fill="#24312c" opacity=".18"/>
+        <g class="hero-bob">
+          <circle cx="78" cy="116" r="22" fill="${fill}" stroke="#24312c" stroke-width="3"/>
+          <circle cx="70" cy="112" r="3.4" fill="#fff"/><circle cx="86" cy="112" r="3.4" fill="#fff"/>
+          <circle cx="71" cy="113" r="1.6" fill="#24312c"/><circle cx="87" cy="113" r="1.6" fill="#24312c"/>
+          <path d="M70 122 Q78 129 86 122" fill="none" stroke="#24312c" stroke-width="2.4" stroke-linecap="round"/>
+        </g>
+      </g>
+      <g transform="translate(196 104)"><g class="floater coin-a"><circle r="9" fill="#f6c945" stroke="#24312c" stroke-width="2.4"/><circle r="4" fill="none" stroke="#24312c" stroke-width="1.6"/></g></g>
+      <g transform="translate(252 92)"><g class="floater star-a"><path d="M0 -9 L2.4 -2.6 L9 -2.2 L3.6 2.2 L5.4 9 L0 5.2 L-5.4 9 L-3.6 2.2 L-9 -2.2 L-2.4 -2.6 Z" fill="#fffdf8" stroke="#24312c" stroke-width="1.6"/></g></g>
+    </svg>
+  </div>`;
+}
+
+function hudStats(child) {
+  return `<div class="hud-stats">
+    <span class="stat coins"><i></i><b>${child.points}</b><small>coins</small></span>
+    <span class="stat cash"><i></i><b>${money(child.cashCents)}</b><small>cash</small></span>
+    <span class="stat time"><i></i><b>${child.minutes}</b><small>min</small></span>
+  </div>`;
+}
+
+function celebrate() {
+  const layer = document.createElement("div");
+  layer.className = "fx";
+  layer.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 16; i += 1) {
+    const bit = document.createElement("span");
+    bit.textContent = i % 3 === 0 ? "★" : "●";
+    bit.style.left = `${8 + Math.random() * 84}%`;
+    bit.style.animationDelay = `${Math.random() * 0.18}s`;
+    bit.style.setProperty("--dx", `${-50 + Math.random() * 100}px`);
+    layer.appendChild(bit);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 1100);
+}
+
 function shell(title, sub, body, nav) {
+  const play = PLAY_ROUTES.has(route.name);
   const signedIn = Boolean(db.session);
+  const child = play && db.session?.role === "kid" ? kid() : null;
   return `
-    <header class="top">
+    <header class="top${play ? " hud" : ""}">
       <button class="brand" data-action="home">
-        ${mark()}
+        ${child ? face(child.color) : mark()}
         <span><h1>${esc(title)}</h1><p>${esc(sub)}</p></span>
       </button>
-      ${signedIn ? `<button class="btn ghost small" data-action="sign-out">Sign out</button>` : ""}
+      ${signedIn ? `<button class="btn ghost small" data-action="sign-out">${play ? "Exit" : "Sign out"}</button>` : ""}
     </header>
-    ${nav || ""}
-    ${notice ? `<div class="banner info" style="margin-bottom:14px">${esc(notice)}</div>` : ""}
+    ${child ? hudStats(child) : ""}
+    ${play ? "" : nav || ""}
+    ${notice ? `<div class="banner info toast">${esc(notice)}</div>` : ""}
     ${body}
-    <footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`;
+    ${play ? nav || "" : ""}
+    ${play ? "" : `<footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`}`;
 }
 
 function parentNav(current) {
@@ -265,10 +334,10 @@ function parentNav(current) {
 }
 
 function kidNav(current) {
-  return `<nav class="nav">${[
-    ["today", "Today"],
-    ["kid-shop", "Shop"],
-    ["me", "Me"],
+  return `<nav class="nav play-nav">${[
+    ["today", "Quests"],
+    ["kid-shop", "Market"],
+    ["me", "Player"],
   ]
     .map(
       ([id, label]) =>
@@ -301,7 +370,7 @@ function ring(pct, color, value, label, hint) {
   return `<div class="ring-card">
     <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
       <circle cx="60" cy="60" r="${radius}" class="ring-track"></circle>
-      <circle cx="60" cy="60" r="${radius}" class="ring-value" stroke="${color}" stroke-dasharray="${turn.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>
+      <circle cx="60" cy="60" r="${radius}" class="ring-value" stroke="${color}" stroke-dasharray="${turn.toFixed(2)}" stroke-dashoffset="${turn.toFixed(2)}" data-offset="${offset.toFixed(2)}"></circle>
     </svg>
     <div class="ring-copy"><b>${value}</b><span>${label}</span><small>${esc(hint)}</small></div>
   </div>`;
@@ -324,8 +393,8 @@ function kidCharts(child) {
   const bills = Math.min(dollars, 8);
   const week = db.week.length ? db.week : [];
   const peak = Math.max(1, ...week.map((day) => Number(day.points) || 0));
-  return `<section class="card stack">
-    <h2 class="page-title">Your chart</h2>
+  return `<section class="card stack power">
+    <h2 class="page-title">Power</h2>
     <div class="rings">
       ${ring(dollarPct, "#e3a31a", child.points, "Points", dollarHint)}
       ${ring(timePct, "#3c7f92", `${child.minutes}`, "Minutes", timeHint)}
@@ -357,7 +426,16 @@ function payLabel(chore) {
 
 function render() {
   const view = views[route.name] || views.welcome;
+  const play = PLAY_ROUTES.has(route.name);
+  document.body.classList.toggle("play", play);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", play ? "#7eb8c9" : "#f3efe4");
   app.innerHTML = view();
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".ring-value").forEach((el) => {
+      if (el.dataset.offset) el.setAttribute("stroke-dashoffset", el.dataset.offset);
+    });
+  });
 }
 
 const views = {
@@ -380,10 +458,11 @@ const views = {
         </div>`;
     }
     return `
-      <header class="top"><div class="brand">${mark()}<span><h1>Our chart</h1><p>Gets the job done</p></span></div></header>
+      <header class="top hud"><div class="brand">${mark()}<span><h1>Our chart</h1><p>Gets the job done</p></span></div></header>
+      ${worldScene("sun")}
       <section class="hero">
-        <h2>Chores, rewards, and device time.</h2>
-        <p class="lede">Parents keep the accounts. Kids open the chart with a PIN.</p>
+        <h2>Ready to play?</h2>
+        <p class="lede">Parents keep the accounts. Kids pick a player and use a PIN.</p>
       </section>
       <div class="doors">
         <button class="door leaf" data-action="goto" data-to="parent-auth">
@@ -392,7 +471,7 @@ const views = {
         </button>
         <button class="door sun" data-action="kids-door">
           <span><strong>Kids</strong><span>Tap your name and enter your 4-digit PIN.</span></span>
-          <span class="btn small sun">Open</span>
+          <span class="btn small sun">Play</span>
         </button>
       </div>`;
   },
@@ -418,17 +497,19 @@ const views = {
 
   "kid-gate"() {
     const selected = route.kidId || "";
+    const picked = kidById(selected);
     return shell(
-      "Our chart",
-      "Who's here?",
+      "Players",
+      "Who's playing?",
       `<div class="stack">
+        ${selected ? "" : worldScene(picked?.color || "leaf")}
         ${
           gateKids.length
             ? `<div class="kid-grid">${gateKids
                 .map(
                   (child) => `<button class="kid-pick" data-action="pick-kid" data-id="${child.id}" aria-pressed="${selected === child.id}">
-                    <span class="swatch ${esc(child.color)}"></span>
-                    <strong style="display:block;margin-top:8px">${esc(child.name)}</strong>
+                    ${face(child.color)}
+                    <strong>${esc(child.name)}</strong>
                   </button>`
                 )
                 .join("")}</div>`
@@ -436,10 +517,10 @@ const views = {
         }
         ${
           selected
-            ? `<div class="card">
-                <h2 class="page-title" style="text-align:center">PIN for ${esc(kidById(selected)?.name || "")}</h2>
+            ? `<div class="card pin-card">
+                <h2 class="page-title">PIN for ${esc(picked?.name || "")}</h2>
                 <div class="pin-dots">${[0, 1, 2, 3].map((i) => `<i class="${(draft.pin || "").length > i ? "on" : ""}"></i>`).join("")}</div>
-                ${route.error ? `<p class="error" style="text-align:center">${esc(route.error)}</p>` : ""}
+                ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
                 <div class="pad">
                   ${["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "go"]
                     .map((key) => `<button type="button" data-action="pin" data-key="${key}">${key === "clear" ? "⌫" : key === "go" ? "Go" : key}</button>`)
@@ -693,23 +774,24 @@ const views = {
     const child = kid();
     const mine = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "approved");
     return shell(
-      `Hi, ${child.name}`,
-      db.family.name,
+      child.name,
+      "Quest board",
       `<div class="stack">
+        ${worldScene(child.color)}
         ${kidCharts(child)}
         ${grounded(child) ? `<div class="banner">Devices are grounded until ${esc(when(child.groundedUntil))}.</div>` : ""}
         <section class="card">
-          <h2 class="page-title">Today</h2>
+          <h2 class="page-title">Quests</h2>
           ${
             mine.length
               ? mine
                   .map(
-                    (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>${
+                    (chore) => `<div class="quest"><span class="quest-pay">+${Number(chore.points) || 0}</span><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>${
                       chore.status === "submitted" ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`
                     }</div>`
                   )
                   .join("")
-              : `<p class="muted">Nothing on your chart right now.</p>`
+              : `<p class="muted">No quests right now. Check back tomorrow.</p>`
           }
         </section>
       </div>`,
@@ -720,18 +802,18 @@ const views = {
   "kid-shop"() {
     const child = kid();
     return shell(
-      "Shop",
+      "Market",
       child.name,
       `<div class="stack">
-        ${balances(child)}
+        ${worldScene(child.color)}
         <section class="card stack">
-          <h2 class="page-title">Cash in</h2>
-          <p class="lede">${db.family.pointsPerDollar} points become $1.00 in your cash balance.</p>
-          <button class="btn leaf" data-action="cash-out" ${child.points >= db.family.pointsPerDollar ? "" : "disabled"}>Cash out ${db.family.pointsPerDollar} points</button>
+          <h2 class="page-title">Trade coins</h2>
+          <p class="lede">${db.family.pointsPerDollar} coins become $1.00 in your cash.</p>
+          <button class="btn leaf" data-action="cash-out" ${child.points >= db.family.pointsPerDollar ? "" : "disabled"}>Cash out ${db.family.pointsPerDollar} coins</button>
         </section>
         <section class="card stack">
-          <h2 class="page-title">Device time</h2>
-          <p class="lede">${db.family.pointsPer30} points become 30 minutes. A parent adds that time in Screen Time.</p>
+          <h2 class="page-title">Screen time</h2>
+          <p class="lede">${db.family.pointsPer30} coins become 30 minutes. A parent adds that time in Screen Time.</p>
           ${
             grounded(child)
               ? `<div class="banner">Device packs are closed while you are grounded.</div>`
@@ -739,13 +821,13 @@ const views = {
           }
         </section>
         <section class="card">
-          <h2 class="page-title">Ask for something</h2>
+          <h2 class="page-title">Treasure</h2>
           ${
             db.items.length
               ? db.items
                   .map((item) => {
                     const held = db.requests.some((req) => req.itemId === item.id && req.status === "pending");
-                    return `<div class="item"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} points</div></div>${
+                    return `<div class="item loot"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} coins</div></div>${
                       held ? `<span class="chip">Asked</span>` : `<button class="btn small" data-action="ask" data-id="${item.id}" ${child.points >= item.cost ? "" : "disabled"}>Ask</button>`
                     }</div>`;
                   })
@@ -762,13 +844,12 @@ const views = {
     const child = kid();
     return shell(
       child.name,
-      "Your account",
+      "Player card",
       `<div class="stack">
-        <section class="card who"><span class="swatch ${esc(child.color)}"></span><div><strong>${esc(child.name)}</strong><div class="tiny muted">Kid account · PIN set by a parent</div></div></section>
-        ${balances(child)}
+        ${worldScene(child.color)}
         <section class="card">
-          <h2 class="page-title">Latest</h2>
-          ${db.activity.map((row) => `<div class="item"><div>${esc(row.text)}</div></div>`).join("") || `<p class="muted">When you finish a chore, it shows up here.</p>`}
+          <h2 class="page-title">Log</h2>
+          ${db.activity.map((row) => `<div class="item"><div>${esc(row.text)}</div></div>`).join("") || `<p class="muted">When you finish a quest, it shows up here.</p>`}
         </section>
       </div>`,
       kidNav("me")
@@ -983,6 +1064,7 @@ async function submitPin() {
     draft.pin = "";
     route.error = "That PIN does not match.";
     render();
+    document.querySelector(".pin-card")?.classList.add("shake");
     return;
   }
   sessionStorage.setItem(KID_TOKEN, token);
@@ -990,6 +1072,7 @@ async function submitPin() {
   notice = "";
   route = { name: "today" };
   render();
+  celebrate();
 }
 
 async function signOut() {
