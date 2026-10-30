@@ -32,7 +32,7 @@ let busy = false;
 let libraryOpen = false;
 
 function blank() {
-  return { family: null, parents: [], kids: [], chores: [], templates: [], items: [], requests: [], activity: [], week: [], hero: null, session: null };
+  return { family: null, parents: [], kids: [], chores: [], templates: [], sections: [], items: [], requests: [], activity: [], week: [], hero: null, session: null };
 }
 
 function esc(value) {
@@ -97,6 +97,9 @@ function nice(error) {
   if (/sign in again/i.test(msg)) return "Sign in again.";
   if (/weapon locked/i.test(msg)) return "That weapon is still locked.";
   if (/pick a hero/i.test(msg)) return "Pick the adventurer or the princess.";
+  if (/section name required/i.test(msg)) return "Give the section a name.";
+  if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
+  if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
   return msg;
 }
 
@@ -162,17 +165,18 @@ async function loadParent() {
   if (!me?.households) return false;
   await rpc("ensure_today");
   const day = torontoToday();
-  const [parents, kids, chores, templates, items, requests, activity, doorPins] = await Promise.all([
+  const [parents, kids, chores, templates, sections, items, requests, activity, doorPins] = await Promise.all([
     supabase.from("parents").select("id,name,email").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
-    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id").order("created_at"),
+    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
+    supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
     supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(20),
     supabase.rpc("door_ready"),
   ]);
-  for (const result of [parents, kids, chores, templates, items, requests, activity]) {
+  for (const result of [parents, kids, chores, templates, sections, items, requests, activity]) {
     if (result.error) throw result.error;
   }
   const readyPins = new Set((doorPins.data || []).map((row) => row.parent_id));
@@ -191,7 +195,20 @@ async function loadParent() {
       cashCents: chore.cash_cents,
       special: chore.chore_day == null,
     })),
-    templates: (templates.data || []).map((row) => ({ ...row, assigneeId: row.assignee_id, active: row.active !== false })),
+    templates: (templates.data || []).map((row) => ({
+      ...row,
+      assigneeId: row.assignee_id,
+      sectionId: row.section_id || null,
+      sortOrder: Number(row.sort_order) || 0,
+      active: row.active !== false,
+    })),
+    sections: (sections.data || []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      startMinute: Number(row.start_minute) || 0,
+      endMinute: Number(row.end_minute) || 0,
+      sortOrder: Number(row.sort_order) || 0,
+    })),
     items: items.data,
     requests: requests.data.map((req) => ({ ...req, kidId: req.kid_id, itemId: req.item_id })),
     activity: activity.data.map((row) => ({ id: row.id, kidId: row.kid_id, text: row.body, at: row.created_at })),
@@ -218,11 +235,29 @@ async function loadKid() {
     },
     parents: [],
     kids: [mapKid(snap.kid)],
-    chores: snap.chores.map((chore) => ({ ...chore, kidId: snap.kid.id, cashCents: chore.cash_cents, special: Boolean(chore.special) })),
+    chores: snap.chores.map((chore) => ({
+      ...chore,
+      kidId: snap.kid.id,
+      cashCents: chore.cash_cents,
+      special: Boolean(chore.special),
+      sectionId: chore.section_id || null,
+      sectionTitle: chore.section_title || "",
+      sectionStart: chore.section_start,
+      sectionEnd: chore.section_end,
+      sortOrder: Number(chore.sort_order) || 0,
+    })),
     items: snap.items,
     requests: snap.requests.map((req) => ({ ...req, kidId: snap.kid.id, itemId: req.item_id })),
     activity: snap.activity.map((row) => ({ id: row.id, text: row.body, at: row.created_at })),
     templates: [],
+    sections: (snap.sections || []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      startMinute: Number(row.start_minute) || 0,
+      endMinute: Number(row.end_minute) || 0,
+      open: row.open !== false,
+      sortOrder: Number(row.sort_order) || 0,
+    })),
     week: snap.week || [],
     hero: await loadHeroBoard(token),
     session: { role: "kid", id: snap.kid.id },
@@ -825,6 +860,55 @@ function isSpecial(chore) {
   return chore.special === true;
 }
 
+function clockLabel(minute) {
+  const m = ((Number(minute) % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(m / 60)).padStart(2, "0");
+  const mm = String(m % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function sectionOpen(section, nowMinute = torontoMinute()) {
+  if (!section) return true;
+  const start = Number(section.startMinute);
+  const end = Number(section.endMinute);
+  if (start === end) return true;
+  if (start < end) return nowMinute >= start && nowMinute < end;
+  return nowMinute >= start || nowMinute < end;
+}
+
+function torontoMinute() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 60 + minute;
+}
+
+function sortedSections() {
+  return [...(db.sections || [])].sort((a, b) => (a.sortOrder - b.sortOrder) || a.title.localeCompare(b.title));
+}
+
+function templatesInSection(sectionId, kind = "daily") {
+  return (db.templates || [])
+    .filter((chore) => (kind === "daily" ? chore.kind !== "special" : chore.kind === kind))
+    .filter((chore) => (chore.sectionId || null) === (sectionId || null))
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.title).localeCompare(String(b.title)));
+}
+
+function specialTemplates() {
+  return (db.templates || [])
+    .filter((chore) => chore.kind === "special")
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.title).localeCompare(String(b.title)));
+}
+
+function dragHandle() {
+  return `<button type="button" class="drag-handle" draggable="true" aria-label="Drag to rearrange">⋮⋮</button>`;
+}
+
 function questBlock(list, empty) {
   if (!list.length) return `<p class="muted">${empty}</p>`;
   return list
@@ -833,6 +917,40 @@ function questBlock(list, empty) {
         chore.status === "submitted" ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`
       }</div>`
     )
+    .join("");
+}
+
+function kidDailyBoard(list) {
+  const dailies = list.filter((chore) => !isSpecial(chore));
+  if (!dailies.length) return `<section class="card"><h2 class="page-title">Daily tasks</h2><p class="muted">No daily tasks right now. They come back each day.</p></section>`;
+  const groups = new Map();
+  for (const chore of dailies) {
+    const key = chore.sectionId || "anytime";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(chore);
+  }
+  const sectionMeta = new Map((db.sections || []).map((section) => [section.id, section]));
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (a === "anytime") return -1;
+    if (b === "anytime") return 1;
+    return (sectionMeta.get(a)?.sortOrder || 0) - (sectionMeta.get(b)?.sortOrder || 0);
+  });
+  return keys
+    .map((key) => {
+      const chores = groups.get(key) || [];
+      const section = key === "anytime" ? null : sectionMeta.get(key);
+      const title = section?.title || (chores[0]?.sectionTitle) || "Anytime";
+      const window = section
+        ? `${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)}`
+        : chores[0]?.sectionStart != null
+          ? `${clockLabel(chores[0].sectionStart)}–${clockLabel(chores[0].sectionEnd)}`
+          : "All day";
+      return `<section class="card">
+        <h2 class="page-title">${esc(title)}</h2>
+        <p class="lede">${esc(window)}</p>
+        ${questBlock(chores, "Nothing in this window right now.")}
+      </section>`;
+    })
     .join("");
 }
 
@@ -1113,28 +1231,81 @@ const views = {
   },
 
   chores() {
-    const daily = db.templates.filter((chore) => chore.kind !== "special");
-    const specials = db.templates.filter((chore) => chore.kind === "special");
+    const specials = specialTemplates();
+    const sections = sortedSections();
+    const now = torontoMinute();
     const kidChoices = `<option value="">Everybody</option>${db.kids.map((child) => `<option value="${esc(child.id)}">${esc(child.name)}</option>`).join("")}`;
+    const sectionChoices = `<option value="">Anytime</option>${sections.map((section) => `<option value="${esc(section.id)}">${esc(section.title)}</option>`).join("")}`;
+    const dailyRow = (chore) => {
+      const sprite = taskSprite(chore);
+      const on = chore.active !== false;
+      return `<form class="chore daily-chore${on ? "" : " off"}" data-action="save-daily" data-drag-item="${esc(chore.id)}" draggable="false">
+        <input type="hidden" name="id" value="${chore.id}">
+        ${dragHandle()}
+        <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
+        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day · ${esc(spriteName(sprite))}${on ? "" : " · Hidden from the daily board"}</div><button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button></div>
+        <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
+        <button class="btn small leaf" type="submit">Save</button>
+        <button class="btn small ghost" type="button" data-action="remove-daily" data-id="${chore.id}">Remove</button>
+        ${monsterChoice(sprite, chore.id)}
+      </form>`;
+    };
+    const dailyGroups = [
+      { id: "", title: "Anytime", hint: "Shows all day", open: true, chores: templatesInSection(null) },
+      ...sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        hint: `${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)}${sectionOpen(section, now) ? " · Open now" : " · Closed now"}`,
+        open: sectionOpen(section, now),
+        chores: templatesInSection(section.id),
+      })),
+    ];
     return shell(
       db.family.name,
       "Tasks",
       `<div class="stack">
-        <p class="lede">Finished tasks are paid on the Approve page, after a kid taps Done.</p>
+        <p class="lede">Finished tasks are paid on the Approve page, after a kid taps Done. Drag the dots to rearrange.</p>
         ${spriteLibrary()}
+        <section class="card">
+          <h2 class="page-title">Schedule sections</h2>
+          <p class="lede">Kids only see a section during its hours (Toronto time). Submitted tasks still stay visible.</p>
+          <div class="section-list" data-drop-kind="sections">
+            ${
+              sections.length
+                ? sections
+                    .map(
+                      (section) => `<div class="schedule-row" data-drag-item="${esc(section.id)}" data-drag-kind="section">
+                        ${dragHandle()}
+                        <div><strong>${esc(section.title)}</strong><div class="tiny muted">${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)}${sectionOpen(section, now) ? " · Open now" : " · Closed now"}</div></div>
+                        <button class="btn small ghost" type="button" data-action="remove-section" data-id="${section.id}">Remove</button>
+                      </div>`
+                    )
+                    .join("")
+                : `<p class="muted">No timed sections yet. Add Morning, After school, or Bedtime below.</p>`
+            }
+          </div>
+          <form class="two" data-action="add-section" style="margin-top:12px">
+            <label>Section name<input name="title" required placeholder="Morning"></label>
+            <label>Starts<input name="start" type="time" required value="07:00"></label>
+            <label>Ends<input name="end" type="time" required value="09:00"></label>
+            <button class="btn leaf" type="submit">Add section</button>
+          </form>
+        </section>
         <section class="card">
           <h2 class="page-title">Special task board</h2>
           <p class="lede">Bonus chores, one time. Pick one kid or everybody. They stay until that kid finishes them or you remove them.</p>
-          ${
-            specials.length
-              ? specials
-                  .map((chore) => {
-                    const sprite = taskSprite(chore);
-                    return `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}</div></div><button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
-                  })
-                  .join("")
-              : `<p class="muted">No bonus tasks yet.</p>`
-          }
+          <div class="task-list" data-drop-kind="special" data-section="">
+            ${
+              specials.length
+                ? specials
+                    .map((chore) => {
+                      const sprite = taskSprite(chore);
+                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}</div></div><button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
+                    })
+                    .join("")
+                : `<p class="muted">No bonus tasks yet.</p>`
+            }
+          </div>
           <form class="two" id="add-special-form" data-action="add-special" style="margin-top:12px">
             <label>Bonus task<input name="title" required placeholder="Wash the car"></label>
             <label>Points<input name="points" type="number" min="0" value="5" required></label>
@@ -1146,29 +1317,19 @@ const views = {
         </section>
         <section class="card">
           <h2 class="page-title">Daily tasks</h2>
-          <p class="lede">Every kid can do these once a day. Turn one off to hide it from the daily board. Send once still puts it on the special board.</p>
-          ${
-            daily.length
-              ? daily
-                  .map((chore) => {
-                    const sprite = taskSprite(chore);
-                    const on = chore.active !== false;
-                    return `<form class="chore daily-chore${on ? "" : " off"}" data-action="save-daily">
-                      <input type="hidden" name="id" value="${chore.id}">
-                      <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
-                      <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day · ${esc(spriteName(sprite))}${on ? "" : " · Hidden from the daily board"}</div><button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button></div>
-                      <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
-                      <button class="btn small leaf" type="submit">Save</button>
-                      <button class="btn small ghost" type="button" data-action="remove-daily" data-id="${chore.id}">Remove</button>
-                      ${monsterChoice(sprite, chore.id)}
-                    </form>`;
-                  })
-                  .join("")
-              : `<p class="muted">No daily tasks yet.</p>`
-          }
+          <p class="lede">Every kid can do these once a day. Drop a task into a section to move it. Turn one off to hide it from the daily board.</p>
+          ${dailyGroups
+            .map(
+              (group) => `<div class="daily-section${group.open ? "" : " closed"}" data-drop-kind="daily" data-section="${esc(group.id)}">
+                <div class="daily-section-head"><strong>${esc(group.title)}</strong><span class="tiny muted">${esc(group.hint)}</span></div>
+                ${group.chores.length ? group.chores.map(dailyRow).join("") : `<p class="muted drop-empty">Drop tasks here</p>`}
+              </div>`
+            )
+            .join("")}
           <form class="two" id="add-daily-form" data-action="add-daily" style="margin-top:12px">
             <label>Task<input name="title" required placeholder="Make the bed"></label>
             <label>Points<input name="points" type="number" min="0" value="2" required></label>
+            <label>Section<select name="sectionId">${sectionChoices}</select></label>
             <input type="hidden" name="sprite" value="dust">
             ${monsterChoice("dust")}
             <button class="btn leaf" type="submit">Add daily task</button>
@@ -1330,10 +1491,7 @@ const views = {
         ${worldScene(child.color)}
         ${kidCharts(child)}
         ${grounded(child) ? `<div class="banner">Devices are grounded until ${esc(when(child.groundedUntil))}.</div>` : ""}
-        <section class="card">
-          <h2 class="page-title">Daily tasks</h2>
-          ${questBlock(mine.filter((chore) => !isSpecial(chore)), "No daily tasks right now. They come back each day.")}
-        </section>
+        ${kidDailyBoard(mine)}
         <section class="card">
           <h2 class="page-title">Special board</h2>
           ${questBlock(mine.filter((chore) => isSpecial(chore)), "No bonus tasks right now.")}
@@ -1558,6 +1716,90 @@ app.addEventListener("click", (event) => {
   if (action === "remove-item") run(() => rpc("remove_item", { p_item: btn.dataset.id }));
   if (action === "remove-daily") run(() => rpc("remove_daily_chore", { p_id: btn.dataset.id }), "Daily task removed.", "chores");
   if (action === "remove-special") run(() => rpc("remove_special_chore", { p_id: btn.dataset.id }), "Bonus task removed.", "chores");
+  if (action === "remove-section") run(() => rpc("remove_chore_section", { p_id: btn.dataset.id }), "Section removed. Those tasks moved to Anytime.", "chores");
+});
+
+let dragState = null;
+
+function listIds(container) {
+  return [...container.querySelectorAll("[data-drag-item]")].map((node) => node.dataset.dragItem).filter(Boolean);
+}
+
+async function persistDrop(container, movedId) {
+  const kind = container.dataset.dropKind;
+  if (kind === "sections") {
+    const ids = listIds(container);
+    await run(() => rpc("reorder_chore_sections", { p_ids: ids }), "Section order saved.", "chores");
+    return;
+  }
+  if (kind === "special") {
+    const ids = listIds(container);
+    if (movedId && !ids.includes(movedId)) ids.push(movedId);
+    await run(() => rpc("reorder_chore_templates", { p_ids: ids, p_section: null, p_kind: "special" }), "Order saved.", "chores");
+    return;
+  }
+  if (kind === "daily") {
+    const section = container.dataset.section || null;
+    const ids = listIds(container);
+    if (movedId && !ids.includes(movedId)) ids.push(movedId);
+    await run(
+      () => rpc("reorder_chore_templates", { p_ids: ids, p_section: section || null, p_kind: "daily" }),
+      "Order saved.",
+      "chores"
+    );
+  }
+}
+
+app.addEventListener("dragstart", (event) => {
+  const handle = event.target.closest(".drag-handle");
+  const row = handle?.closest("[data-drag-item]") || event.target.closest("[data-drag-item]");
+  if (!row || !handle) return;
+  const from = row.closest("[data-drop-kind]");
+  if (!from) return;
+  dragState = { id: row.dataset.dragItem, kind: from.dataset.dropKind, from };
+  row.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", row.dataset.dragItem);
+});
+
+app.addEventListener("dragend", () => {
+  app.querySelectorAll(".dragging, .drop-target").forEach((node) => node.classList.remove("dragging", "drop-target"));
+  dragState = null;
+});
+
+app.addEventListener("dragover", (event) => {
+  const zone = event.target.closest("[data-drop-kind]");
+  if (!zone || !dragState) return;
+  if (dragState.kind === "sections" && zone.dataset.dropKind !== "sections") return;
+  if (dragState.kind === "special" && zone.dataset.dropKind !== "special") return;
+  if (dragState.kind === "daily" && zone.dataset.dropKind !== "daily") return;
+  event.preventDefault();
+  zone.classList.add("drop-target");
+  const over = event.target.closest("[data-drag-item]");
+  const moving = app.querySelector(`[data-drag-item="${dragState.id}"]`);
+  if (!moving || over === moving) return;
+  if (over && over.parentElement === zone) {
+    const rect = over.getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    zone.insertBefore(moving, before ? over : over.nextSibling);
+  } else if (!over) {
+    zone.appendChild(moving);
+  }
+});
+
+app.addEventListener("dragleave", (event) => {
+  const zone = event.target.closest("[data-drop-kind]");
+  if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove("drop-target");
+});
+
+app.addEventListener("drop", (event) => {
+  const zone = event.target.closest("[data-drop-kind]");
+  if (!zone || !dragState) return;
+  event.preventDefault();
+  zone.classList.remove("drop-target");
+  const movedId = dragState.id;
+  dragState = null;
+  persistDrop(zone, movedId);
 });
 
 app.addEventListener("submit", (event) => {
@@ -1571,7 +1813,27 @@ app.addEventListener("submit", (event) => {
   if (action === "add-kid-submit") addKid(data);
   if (action === "save-pin") savePin(data);
   if (action === "save-parent-pin") saveParentPin(data);
-  if (action === "add-daily") run(() => rpc("add_daily_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)) }), "Added for every kid. It comes back each day.", "chores");
+  if (action === "add-section") {
+    run(
+      () => rpc("add_chore_section", { p_title: data.title, p_start: data.start, p_end: data.end }),
+      "Schedule section added.",
+      "chores"
+    );
+  }
+  if (action === "add-daily") {
+    const sectionId = data.sectionId || null;
+    run(
+      () =>
+        rpc("add_daily_chore", {
+          p_title: data.title,
+          p_points: Number(data.points) || 0,
+          p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)),
+          p_section: sectionId,
+        }),
+      "Added for every kid. It comes back each day.",
+      "chores"
+    );
+  }
   if (action === "add-special") {
     const kidId = data.kidId || null;
     const name = kidId ? db.kids.find((child) => child.id === kidId)?.name : "";

@@ -92,6 +92,27 @@ alter table public.chores add column if not exists sprite text not null default 
 alter table public.chore_templates add column if not exists sprite text not null default 'dust';
 alter table public.chore_templates add column if not exists active boolean not null default true;
 alter table public.chore_templates add column if not exists assignee_id uuid references public.kids (id) on delete cascade;
+alter table public.chore_templates add column if not exists section_id uuid;
+alter table public.chore_templates add column if not exists sort_order integer not null default 0;
+
+create table if not exists public.chore_sections (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households (id) on delete cascade,
+  title text not null,
+  start_minute integer not null check (start_minute >= 0 and start_minute < 1440),
+  end_minute integer not null check (end_minute >= 0 and end_minute < 1440),
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.chore_sections enable row level security;
+do $$ begin
+  alter table public.chore_templates
+    drop constraint if exists chore_templates_section_id_fkey;
+  alter table public.chore_templates
+    add constraint chore_templates_section_id_fkey
+    foreign key (section_id) references public.chore_sections (id) on delete set null;
+exception when others then null;
+end $$;
 alter table public.chores add column if not exists verdict text;
 alter table public.kids add column if not exists progress_reset_at timestamptz;
 alter table public.chores drop constraint if exists chores_verdict_check;
@@ -840,6 +861,32 @@ begin
 end;
 $$;
 
+create or replace function private.toronto_minute()
+returns integer
+language sql
+stable
+set search_path = ''
+as $$
+  select (
+    extract(hour from timezone('America/Toronto', now()))::integer * 60
+    + extract(minute from timezone('America/Toronto', now()))::integer
+  )
+$$;
+
+create or replace function private.section_is_open(p_start integer, p_end integer, p_now integer default null)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when p_start is null or p_end is null then true
+    when p_start = p_end then true
+    when p_start < p_end then coalesce(p_now, 0) >= p_start and coalesce(p_now, 0) < p_end
+    else coalesce(p_now, 0) >= p_start or coalesce(p_now, 0) < p_end
+  end
+$$;
+
 create or replace function private.kid_snapshot(p_token text)
 returns jsonb
 language plpgsql
@@ -852,6 +899,7 @@ declare
   hid uuid;
   result jsonb;
   today date := (now() at time zone 'America/Toronto')::date;
+  now_min integer := private.toronto_minute();
 begin
   if kid is null then
     raise exception 'sign in again';
@@ -880,11 +928,41 @@ begin
         'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
         'sprite', c.sprite,
         'verdict', c.verdict,
-        'special', (c.chore_day is null)
-      ) order by c.created_at)
+        'special', (c.chore_day is null),
+        'section_id', t.section_id,
+        'section_title', s.title,
+        'section_start', s.start_minute,
+        'section_end', s.end_minute,
+        'sort_order', coalesce(t.sort_order, 0)
+      ) order by
+        case when c.chore_day is null then 1 else 0 end,
+        coalesce(s.sort_order, -1),
+        coalesce(t.sort_order, 0),
+        c.created_at
+      )
       from public.chores c
+      left join public.chore_templates t on t.id = c.template_id
+      left join public.chore_sections s on s.id = t.section_id
       where c.kid_id = k.id and c.status <> 'approved'
         and (c.chore_day is null or c.chore_day = today)
+        and (
+          c.chore_day is null
+          or c.status = 'submitted'
+          or t.section_id is null
+          or private.section_is_open(s.start_minute, s.end_minute, now_min)
+        )
+    ), '[]'::jsonb),
+    'sections', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', s.id,
+        'title', s.title,
+        'start_minute', s.start_minute,
+        'end_minute', s.end_minute,
+        'open', private.section_is_open(s.start_minute, s.end_minute, now_min),
+        'sort_order', s.sort_order
+      ) order by s.sort_order, s.created_at)
+      from public.chore_sections s
+      where s.household_id = k.household_id
     ), '[]'::jsonb),
     'week', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -1087,7 +1165,12 @@ $$;
 drop function if exists public.add_daily_chore(text, integer);
 drop function if exists private.add_daily_chore(text, integer);
 
-create or replace function private.add_daily_chore(p_title text, p_points integer, p_sprite text default 'dust')
+drop function if exists public.add_daily_chore(text, integer, text);
+drop function if exists private.add_daily_chore(text, integer, text);
+drop function if exists public.add_daily_chore(text, integer);
+drop function if exists private.add_daily_chore(text, integer);
+
+create or replace function private.add_daily_chore(p_title text, p_points integer, p_sprite text default 'dust', p_section uuid default null)
 returns uuid
 language plpgsql
 security definer
@@ -1097,12 +1180,22 @@ declare
   hid uuid := private.require_household();
   tid uuid;
   chosen text := private.normalize_sprite(p_sprite);
+  next_ord integer;
+  section uuid := p_section;
 begin
   if nullif(btrim(p_title), '') is null then
     raise exception 'chore required';
   end if;
-  insert into public.chore_templates (household_id, title, points, sprite)
-  values (hid, btrim(p_title), greatest(coalesce(p_points, 0), 0), chosen)
+  if section is not null and not exists (
+    select 1 from public.chore_sections where id = section and household_id = hid
+  ) then
+    raise exception 'section not found';
+  end if;
+  select coalesce(max(sort_order), -1) + 1 into next_ord
+  from public.chore_templates
+  where household_id = hid and kind = 'daily' and section_id is not distinct from section;
+  insert into public.chore_templates (household_id, title, points, sprite, section_id, sort_order)
+  values (hid, btrim(p_title), greatest(coalesce(p_points, 0), 0), chosen, section, next_ord)
   returning id into tid;
   perform private.ensure_daily(hid);
   return tid;
@@ -1321,9 +1414,9 @@ create or replace function public.ensure_today()
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.ensure_today(); end $$;
 
-create or replace function public.add_daily_chore(p_title text, p_points integer, p_sprite text default 'dust')
+create or replace function public.add_daily_chore(p_title text, p_points integer, p_sprite text default 'dust', p_section uuid default null)
 returns uuid language sql security invoker set search_path = ''
-as $$ select private.add_daily_chore(p_title, p_points, p_sprite) $$;
+as $$ select private.add_daily_chore(p_title, p_points, p_sprite, p_section) $$;
 
 create or replace function public.save_daily_chore(p_id uuid, p_points integer)
 returns void language plpgsql security invoker set search_path = ''
@@ -1404,11 +1497,11 @@ begin
     'private.ensure_daily(uuid)',
     'private.ensure_today()',
     'private.normalize_sprite(text)',
-    'private.add_daily_chore(text, integer, text)',
+    'private.add_daily_chore(text, integer, text, uuid)',
     'private.save_daily_chore(uuid, integer)',
     'private.remove_daily_chore(uuid)',
     'public.ensure_today()',
-    'public.add_daily_chore(text, integer, text)',
+    'public.add_daily_chore(text, integer, text, uuid)',
     'public.save_daily_chore(uuid, integer)',
     'public.remove_daily_chore(uuid)',
     'private.add_special_chore(text, integer, text, uuid)',
@@ -1474,11 +1567,11 @@ grant execute on function public.kid_buy_time(text) to anon, authenticated;
 grant execute on function public.kid_ask(text, uuid) to anon, authenticated;
 grant execute on function private.ensure_daily(uuid) to authenticated;
 grant execute on function private.ensure_today() to authenticated;
-grant execute on function private.add_daily_chore(text, integer, text) to authenticated;
+grant execute on function private.add_daily_chore(text, integer, text, uuid) to authenticated;
 grant execute on function private.save_daily_chore(uuid, integer) to authenticated;
 grant execute on function private.remove_daily_chore(uuid) to authenticated;
 grant execute on function public.ensure_today() to authenticated;
-grant execute on function public.add_daily_chore(text, integer, text) to authenticated;
+grant execute on function public.add_daily_chore(text, integer, text, uuid) to authenticated;
 grant execute on function public.save_daily_chore(uuid, integer) to authenticated;
 grant execute on function public.remove_daily_chore(uuid) to authenticated;
 grant execute on function private.add_special_chore(text, integer, text, uuid) to authenticated;
@@ -2177,4 +2270,197 @@ grant execute on function public.undo_approval(uuid) to authenticated;
 grant execute on function public.reset_kid_progress(uuid) to authenticated;
 grant execute on function public.kid_ack_verdict(text, uuid) to anon, authenticated;
 
+notify pgrst, 'reload schema';
+
+create or replace function private.toronto_minute()
+returns integer
+language sql
+stable
+set search_path = ''
+as $$
+  select (
+    extract(hour from timezone('America/Toronto', now()))::integer * 60
+    + extract(minute from timezone('America/Toronto', now()))::integer
+  )
+$$;
+
+create or replace function private.section_is_open(p_start integer, p_end integer, p_now integer default null)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when p_start is null or p_end is null then true
+    when p_start = p_end then true
+    when p_start < p_end then coalesce(p_now, 0) >= p_start and coalesce(p_now, 0) < p_end
+    else coalesce(p_now, 0) >= p_start or coalesce(p_now, 0) < p_end
+  end
+$$;
+
+create or replace function private.parse_clock(p_clock text)
+returns integer
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  raw text := coalesce(nullif(btrim(p_clock), ''), '00:00');
+  hh integer;
+  mm integer;
+begin
+  if raw !~ '^[0-2]?[0-9]:[0-5][0-9]$' then
+    raise exception 'use a time like 07:30';
+  end if;
+  hh := split_part(raw, ':', 1)::integer;
+  mm := split_part(raw, ':', 2)::integer;
+  if hh < 0 or hh > 23 or mm < 0 or mm > 59 then
+    raise exception 'use a time like 07:30';
+  end if;
+  return hh * 60 + mm;
+end;
+$$;
+
+create or replace function private.add_chore_section(p_title text, p_start text, p_end text)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  title text := btrim(p_title);
+  sid uuid;
+  next_ord integer;
+begin
+  if title is null or title = '' then
+    raise exception 'section name required';
+  end if;
+  select coalesce(max(sort_order), -1) + 1 into next_ord
+  from public.chore_sections where household_id = hid;
+  insert into public.chore_sections (household_id, title, start_minute, end_minute, sort_order)
+  values (hid, title, private.parse_clock(p_start), private.parse_clock(p_end), next_ord)
+  returning id into sid;
+  return sid;
+end;
+$$;
+
+create or replace function private.remove_chore_section(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  update public.chore_templates
+  set section_id = null
+  where section_id = p_id and household_id = hid;
+  delete from public.chore_sections
+  where id = p_id and household_id = hid;
+  if not found then
+    raise exception 'section not found';
+  end if;
+end;
+$$;
+
+create or replace function private.reorder_chore_sections(p_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  if p_ids is null then
+    return;
+  end if;
+  update public.chore_sections s
+  set sort_order = ranked.n::integer - 1
+  from unnest(p_ids) with ordinality as ranked(id, n)
+  where s.id = ranked.id and s.household_id = hid;
+end;
+$$;
+
+create or replace function private.reorder_chore_templates(p_ids uuid[], p_section uuid default null, p_kind text default 'daily')
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  kind text := coalesce(nullif(p_kind, ''), 'daily');
+  section uuid := p_section;
+begin
+  if kind not in ('daily', 'special') then
+    raise exception 'bad kind';
+  end if;
+  if kind = 'special' then
+    section := null;
+  elsif section is not null and not exists (
+    select 1 from public.chore_sections where id = section and household_id = hid
+  ) then
+    raise exception 'section not found';
+  end if;
+  if p_ids is null then
+    return;
+  end if;
+  if exists (
+    select 1
+    from unnest(p_ids) as x(id)
+    where not exists (
+      select 1 from public.chore_templates t
+      where t.id = x.id and t.household_id = hid and t.kind = kind
+    )
+  ) then
+    raise exception 'chore not found';
+  end if;
+  update public.chore_templates t
+  set section_id = case when kind = 'daily' then section else t.section_id end,
+      sort_order = ranked.n::integer - 1
+  from unnest(p_ids) with ordinality as ranked(id, n)
+  where t.id = ranked.id and t.household_id = hid and t.kind = kind;
+end;
+$$;
+
+create or replace function public.add_chore_section(p_title text, p_start text, p_end text)
+returns uuid language sql security invoker set search_path = ''
+as $$ select private.add_chore_section(p_title, p_start, p_end) $$;
+
+create or replace function public.remove_chore_section(p_id uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.remove_chore_section(p_id); end $$;
+
+create or replace function public.reorder_chore_sections(p_ids uuid[])
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.reorder_chore_sections(p_ids); end $$;
+
+create or replace function public.reorder_chore_templates(p_ids uuid[], p_section uuid default null, p_kind text default 'daily')
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.reorder_chore_templates(p_ids, p_section, p_kind); end $$;
+
+revoke all on function private.add_chore_section(text, text, text) from public, anon, authenticated;
+revoke all on function private.remove_chore_section(uuid) from public, anon, authenticated;
+revoke all on function private.reorder_chore_sections(uuid[]) from public, anon, authenticated;
+revoke all on function private.reorder_chore_templates(uuid[], uuid, text) from public, anon, authenticated;
+revoke all on function private.add_daily_chore(text, integer, text, uuid) from public, anon, authenticated;
+revoke all on function public.add_chore_section(text, text, text) from public, anon, authenticated;
+revoke all on function public.remove_chore_section(uuid) from public, anon, authenticated;
+revoke all on function public.reorder_chore_sections(uuid[]) from public, anon, authenticated;
+revoke all on function public.reorder_chore_templates(uuid[], uuid, text) from public, anon, authenticated;
+revoke all on function public.add_daily_chore(text, integer, text, uuid) from public, anon, authenticated;
+
+grant execute on function private.add_chore_section(text, text, text) to authenticated;
+grant execute on function private.remove_chore_section(uuid) to authenticated;
+grant execute on function private.reorder_chore_sections(uuid[]) to authenticated;
+grant execute on function private.reorder_chore_templates(uuid[], uuid, text) to authenticated;
+grant execute on function private.add_daily_chore(text, integer, text, uuid) to authenticated;
+grant execute on function public.add_chore_section(text, text, text) to authenticated;
+grant execute on function public.remove_chore_section(uuid) to authenticated;
+grant execute on function public.reorder_chore_sections(uuid[]) to authenticated;
+grant execute on function public.reorder_chore_templates(uuid[], uuid, text) to authenticated;
+grant execute on function public.add_daily_chore(text, integer, text, uuid) to authenticated;
 notify pgrst, 'reload schema';

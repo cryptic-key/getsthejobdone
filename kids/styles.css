@@ -817,6 +817,47 @@ details.library .lede { margin-top: 8px; }
 .switch[aria-pressed="true"] i { transform: translateX(20px); }
 .daily-chore .chore-copy { flex: 1; min-width: 140px; }
 .daily-chore .monster-choice { flex-basis: 100%; }
+.drag-handle {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 900;
+  letter-spacing: -2px;
+  cursor: grab;
+  padding: 4px 6px;
+  line-height: 1;
+  align-self: center;
+}
+.drag-handle:active { cursor: grabbing; }
+.chore.dragging,
+.schedule-row.dragging { opacity: 0.55; }
+.drop-target { outline: 3px dashed var(--sun); outline-offset: 4px; border-radius: 16px; }
+.schedule-row,
+.chore[data-drag-item] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.schedule-row { padding: 10px 0; border-top: 2px solid var(--line); }
+.schedule-row:first-child { border-top: none; }
+.daily-section {
+  margin-top: 14px;
+  padding: 12px;
+  border: 2px solid var(--line);
+  border-radius: 18px;
+  background: #fffdf8;
+  min-height: 64px;
+}
+.daily-section.closed { background: #f7f3ea; }
+.daily-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.drop-empty { margin: 0; padding: 12px 0; }
 .daily-chore .chore-copy .btn { margin-top: 6px; }
 .chore.off .chore-copy strong,
 .chore.off .chore-copy .tiny { opacity: 0.45; }
