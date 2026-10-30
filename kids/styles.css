@@ -650,7 +650,7 @@ body.play .kid-pick {
 }
 body.play .kid-pick .face { width: 72px; height: 72px; animation: bob 2s ease-in-out infinite; }
 body.play .kid-pick .hero-icon {
-  width: 72px;
+  width: 96px;
   height: auto;
   image-rendering: pixelated;
   animation: bob 2s ease-in-out infinite;
@@ -658,6 +658,17 @@ body.play .kid-pick .hero-icon {
 body.play .kid-pick:nth-child(2) .face { animation-delay: .2s; }
 body.play .kid-pick:nth-child(3) .face { animation-delay: .4s; }
 body.play .kid-pick[aria-pressed="true"] { background: var(--sun-soft); transform: translateY(2px); box-shadow: 0 3px 0 rgba(36, 49, 44, 0.16); }
+
+.pin-dialog {
+  width: min(420px, calc(100vw - 28px));
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+.pin-dialog::backdrop { background: rgba(36, 49, 44, 0.45); }
+.pin-dialog .pin-card,
+.pin-dialog form { margin: 0; }
+.pin-dialog .btn { margin-top: 12px; }
 
 body.play .pin-card { text-align: center; }
 body.play .pin-dots i.on { background: var(--sun); border-color: var(--ink); box-shadow: 0 0 0 4px #fff3c4; }

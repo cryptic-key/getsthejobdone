@@ -154,6 +154,92 @@ function heroFor(color) {
   if (!heroCache.has(key)) heroCache.set(key, buildHero(key));
   return heroCache.get(key);
 }
+const knightLook = {
+  h: 16,
+  hand: 10,
+  ...buildHero("#3fa34d"),
+};
+const prinPal = { K, C: "#f4c542", c: "#e04a4a", A: "#a0562a", a: "#6e3418", S: "#f4c89c", s: "#d39a6c", E: K, P: "#ff9cb4", D: "#ff8ac6", d: "#d65a9e", W: "#ffffff" };
+const prinTop = [
+  ".....C.C.C....",
+  "....KCCcCCK...",
+  "...KAAAAAAAK..",
+  "..KAAAAAAAAAK.",
+  "..KAASSSSSSK..",
+  "..KAASSESSESK.",
+  "..KAASPSSSPK..",
+  "..KAAKSSSSK...",
+  "..KAKDDWWDDK..",
+  ".KSKDDDDDDKSK.",
+  ".KSKDDWWDDKSK.",
+  "..KKDDDDDDKK..",
+  "..KDDdDDdDDK..",
+];
+const kingPal = { K, C: "#f4c542", c: "#e04a4a", A: "#8a5a2a", S: "#f4c89c", s: "#d39a6c", E: K, G: "#dcdce6", R: "#c0392b", Y: "#f4c542", W: "#ffffff", B: "#5a3418" };
+const kingTop = [
+  "...C.C.C.C....",
+  "...KCCCCCCK...",
+  "...KCcCcCCK...",
+  "...KCCCCCCK...",
+  "..KAAAAAAAAK..",
+  "..KASSSSSSAK..",
+  "..KSSSESSESK..",
+  "..KSSSSSSSsK..",
+  "..KGGSSSSGGK..",
+  "..KGGGGGGGGK..",
+  "...KGGGGGGK...",
+  "..KRRKGGKRRK..",
+  ".KRRRRKKRRRRK.",
+  ".KSKRRYRRRKSK.",
+  ".KSKRRRRRRKSK.",
+  "..KKWRRRRWKK..",
+  "..KWRRRRRRWK..",
+  ".KWRRRRRRRRWK.",
+];
+const queenPal = { K, C: "#f4c542", c: "#7fe0ff", A: "#3a2418", S: "#f4c89c", E: K, R: "#d64545", Y: "#f4c542", P: "#7a3fb0", p: "#552a80" };
+const queenTop = [
+  "....C.C.C.....",
+  "...KCcCcCK....",
+  "...KCCCCCK....",
+  "...KCcCcCK....",
+  "..KAAAAAAAAK..",
+  "..KAASSSSSSK..",
+  "..KAASSESSESK.",
+  "..KAASSSSRSK..",
+  ".KAAAKSSSSK...",
+  ".KAAAKKSSKK...",
+  ".KAAKPPYPPPK..",
+  ".KAAKPPPPPPK..",
+  "..KKPPPPPPKK..",
+  ".KSKPPYPPPKSK.",
+  ".KSKPPPPPPKSK.",
+  "..KKPPPPPPKK..",
+  "..KPPpPPpPPK..",
+];
+const HERO_LOOKS = {
+  knight: knightLook,
+  princess: {
+    h: 16,
+    hand: 10,
+    a: sprite([...prinTop, ".KDDdDDdDDdDK.", ".KDdDDdDDdDDK.", "KWWWWWWWWWWWWK"], prinPal),
+    b: sprite([...prinTop, "..KDdDDdDDdDK.", ".KDDdDDdDDdDDK", "KWWWWWWWWWWWWK"], prinPal),
+  },
+  king: {
+    h: 20,
+    hand: 13,
+    a: sprite([...kingTop, ".KWKWKWKWKWWK.", "..KBBK..KBBK.."], kingPal),
+    b: sprite([...kingTop, ".KWWKWKWKWKWK.", "...KBBKKBBK..."], kingPal),
+  },
+  queen: {
+    h: 20,
+    hand: 13,
+    a: sprite([...queenTop, ".KPPpPPpPPpPK.", ".KPpPPpPPpPPK.", "KYYYYYYYYYYYYK"], queenPal),
+    b: sprite([...queenTop, "..KPpPPpPPpPK.", ".KPPpPPpPPpPPK", "KYYYYYYYYYYYYK"], queenPal),
+  },
+};
+function heroLook(key) {
+  return HERO_LOOKS[key] || HERO_LOOKS.knight;
+}
 
 const dustPal = { K, g: "#b4b4c4", D: "#6e6e82", W: "#ffffff", E: K, P: "#e88aa6" };
 const dustTop = [
@@ -1233,6 +1319,27 @@ export function drawHeroIcon(target, color) {
   g.drawImage(src, 0, 0, target.width, target.height);
 }
 
+export function paintHeroBadge(target, heroKey, weapon) {
+  const look = heroLook(heroKey);
+  const src = look.a;
+  const padTop = 18;
+  const padRight = 26;
+  target.width = src.width + padRight;
+  target.height = src.height + padTop;
+  const g = target.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, target.width, target.height);
+  g.drawImage(src, 0, padTop);
+  const image = weapon?.image;
+  if (!image) return;
+  const q = -55 * (Math.PI / 180);
+  g.save();
+  g.translate(11, padTop + look.hand);
+  g.rotate(q);
+  g.drawImage(image, -(weapon.grip?.[0] || 0), -(weapon.grip?.[1] || 0));
+  g.restore();
+}
+
 const POSE = { walk: -55, idle: -55, windup: -160, swing: 35, block: -78, victory: -95 };
 const [mc, mg] = canvas(56, 56);
 
@@ -1260,7 +1367,7 @@ let full = "";
 let shown = 0;
 let lastFrame = 0;
 let loopOn = false;
-const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null };
+const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null, hero: "" };
 let parade = [];
 let paradeOn = false;
 
@@ -1585,7 +1692,8 @@ export function setStageScene(next) {
   stageElement();
   if (Array.isArray(next.parade)) {
     scene.gear = null;
-    const key = next.parade.map((kid) => `${kid.id}:${kid.color}`).sort().join("|");
+    scene.hero = "";
+    const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.weaponKey || "broom"}`).sort().join("|");
     if (paradeOn && scene.paradeKey === key) return;
     scene.paradeKey = key;
     scene.waiting = [];
@@ -1593,16 +1701,22 @@ export function setStageScene(next) {
     scene.onDone = null;
     lastLead = null;
     lastFront = null;
-    parade = next.parade.map((kid) => ({
-      id: kid.id,
-      name: kid.name,
-      x: 8,
-      tx: 8,
-      pose: "walk",
-      ang: POSE.walk,
-      angT: POSE.walk,
-      sprites: heroFor(kid.color),
-    }));
+    parade = next.parade.map((kid) => {
+      const look = heroLook(kid.hero);
+      return {
+        id: kid.id,
+        name: kid.name,
+        x: 8,
+        tx: 8,
+        pose: "walk",
+        ang: POSE.walk,
+        angT: POSE.walk,
+        sprites: look,
+        h: look.h,
+        hand: look.hand,
+        weapon: kid.weapon || null,
+      };
+    });
     paradeOn = parade.length > 0;
     runToken += 1;
     projectiles.length = 0;
@@ -1623,6 +1737,7 @@ export function setStageScene(next) {
     projectiles.length = 0;
   }
   scene.gear = next.gear || null;
+  scene.hero = next.hero || "";
   const color = next.color || "#3fa34d";
   const waiting = next.waiting || [];
   const plays = next.plays || [];
@@ -1946,36 +2061,40 @@ function draw() {
     parade.slice().sort((a, b) => a.x - b.x).forEach((walker) => {
       const fr = walking && walker.pose === "walk" && ((time * 8 + walker.x) | 0) % 2;
       const x = Math.round(walker.x);
-      const y = Math.round(G - 15) - (fr ? 1 : 0);
+      const y = Math.round(G - ((walker.h || 16) - 1)) - (fr ? 1 : 0);
       rect(ctx, x + 3, G, 8, 1, "#3e8c2c");
       ctx.drawImage(fr ? walker.sprites.b : walker.sprites.a, x, y);
-      drawBroom(x + 11, y + 10, walker.ang);
+      if (walker.weapon?.image) drawGearWeapon(walker.weapon, x + 11, y + (walker.hand ?? 10), walker.ang);
+      else drawBroom(x + 11, y + (walker.hand ?? 10), walker.ang);
     });
   }
+  const look = scene.hero ? heroLook(scene.hero) : null;
   const x = Math.round(heroX());
   const walking = scroll > 2 && hero.pose === "walk";
   const fr = walking && ((time * 8) | 0) % 2;
-  const y = Math.round(heroY()) - (fr ? 1 : 0);
+  const stand = look?.h || 16;
+  const hand = look?.hand ?? 10;
+  const y = Math.round(G - (stand - 1) + hero.jy) - (fr ? 1 : 0);
   if (!(paradeOn && parade.length)) {
   rect(ctx, x + 3, G, 8, 1, "#3e8c2c");
   if (hero.smear > 0 && !scene.gear?.weapon) {
     for (let a = -160; a <= 35; a += 7) {
       const r = a * (Math.PI / 180);
-      px(ctx, x + 11 + Math.cos(r) * 14, y + 10 + Math.sin(r) * 14, "#fffbe0");
-      px(ctx, x + 11 + Math.cos(r) * 13, y + 10 + Math.sin(r) * 13, "#fff3b0");
+      px(ctx, x + 11 + Math.cos(r) * 14, y + hand + Math.sin(r) * 14, "#fffbe0");
+      px(ctx, x + 11 + Math.cos(r) * 13, y + hand + Math.sin(r) * 13, "#fff3b0");
     }
   }
-  const sprites = scene.gear?.frames?.a ? scene.gear.frames : heroSprites;
+  const sprites = look || (scene.gear?.frames?.a ? scene.gear.frames : heroSprites);
   if (hero.down) {
     ctx.save();
-    ctx.translate(x + 8, y + 15);
+    ctx.translate(x + 8, y + stand);
     ctx.rotate(-Math.PI / 2);
-    ctx.drawImage(sprites.a, -8, -15);
+    ctx.drawImage(sprites.a, -8, -stand);
     ctx.restore();
   } else {
     ctx.drawImage(fr ? sprites.b : sprites.a, x, y);
-    if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + 10, hero.ang);
-    else drawBroom(x + 11, y + 10, hero.ang);
+    if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + hand, hero.ang);
+    else drawBroom(x + 11, y + hand, hero.ang);
   }
   if (hero.alert > 0) {
     rect(ctx, x + 4, y - 11, 7, 9, K);

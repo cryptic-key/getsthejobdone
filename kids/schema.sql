@@ -1503,20 +1503,25 @@ revoke all on table private.parent_pins, private.parent_pin_guard from public, a
 alter table private.parent_pins enable row level security;
 alter table private.parent_pin_guard enable row level security;
 
+drop function if exists public.list_players();
+drop function if exists private.list_players();
+
 create or replace function private.list_players()
-returns table (id uuid, name text, color text, kind text, has_pin boolean)
+returns table (id uuid, name text, color text, kind text, has_pin boolean, hero text, weapon text)
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select q.id, q.name, q.color, q.kind, q.has_pin
+  select q.id, q.name, q.color, q.kind, q.has_pin, q.hero, q.weapon
   from (
-    select k.id, k.name, k.color, 'kid'::text as kind, true as has_pin, k.created_at, 0 as grp
+    select k.id, k.name, k.color, 'kid'::text as kind, true as has_pin, k.hero, k.weapon, k.created_at, 0 as grp
     from public.kids k
     union all
     select p.id, p.name, 'teal'::text, 'parent'::text,
       exists (select 1 from private.parent_pins pins where pins.parent_id = p.id),
+      null::text,
+      'broom'::text,
       p.created_at, 1
     from public.parents p
   ) q
@@ -1617,7 +1622,7 @@ end;
 $$;
 
 create or replace function public.list_players()
-returns table (id uuid, name text, color text, kind text, has_pin boolean)
+returns table (id uuid, name text, color text, kind text, has_pin boolean, hero text, weapon text)
 language sql security invoker set search_path = ''
 as $$ select * from private.list_players() $$;
 

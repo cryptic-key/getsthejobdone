@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, guessSprite, normalizeSprite, paintSpriteIcons, setStageScene, stageElement } from "./battle.js";
+import { SPRITES, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js";
 import { mergeBattleLine, splitBattleLine } from "./battle-line.js";
 import { createChoreQuest } from "./chore-quest.js";
 
@@ -267,6 +267,30 @@ function face(color) {
   return `<svg class="face" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="34" r="26" fill="${fill}"/><circle cx="22" cy="30" r="4" fill="#fff"/><circle cx="42" cy="30" r="4" fill="#fff"/><circle cx="23" cy="31" r="2" fill="#24312c"/><circle cx="43" cy="31" r="2" fill="#24312c"/><path d="M22 42 Q32 50 42 42" fill="none" stroke="#24312c" stroke-width="3" stroke-linecap="round"/></svg>`;
 }
 
+function parentHero(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (key === "alex") return "king";
+  if (key === "jackie") return "queen";
+  return "knight";
+}
+
+function kidHero(hero) {
+  return hero === "princess" ? "princess" : "knight";
+}
+
+function doorPeople() {
+  return [
+    ...gateKids.map((child) => ({ id: child.id, name: child.name, color: child.color, kind: "kid", hasPin: true, hero: kidHero(child.hero), weapon: child.weapon || "broom" })),
+    ...gateParents.map((person) => ({ id: person.id, name: person.name, color: person.color || "teal", kind: "parent", hasPin: person.hasPin, hero: parentHero(person.name), weapon: "broom" })),
+  ];
+}
+
+function heldWeapon(key) {
+  const quest = questCatalog();
+  const chosen = quest.weapons[key] ? key : "broom";
+  return { key: chosen, ...quest.weaponSprite(chosen) };
+}
+
 function pinPad(title) {
   return `<div class="card pin-card">
     <h2 class="page-title">${title}</h2>
@@ -277,18 +301,20 @@ function pinPad(title) {
         .map((key) => `<button type="button" data-action="pin" data-key="${key}">${key === "clear" ? "⌫" : key === "go" ? "Go" : key}</button>`)
         .join("")}
     </div>
+    <button class="btn ghost wide" type="button" data-action="close-pin">Back</button>
   </div>`;
 }
 
+function pinDialog(inner) {
+  return `<dialog class="pin-dialog">${inner}</dialog>`;
+}
+
 function roster() {
-  const people = [
-    ...gateKids.map((child) => ({ id: child.id, name: child.name, color: child.color, kind: "kid", hasPin: true })),
-    ...gateParents.map((person) => ({ id: person.id, name: person.name, color: person.color || "teal", kind: "parent", hasPin: person.hasPin })),
-  ];
+  const people = doorPeople();
   const selected = people.find((person) => person.id === route.playerId);
   const pad = !selected
     ? ""
-    : selected.kind === "parent" && !selected.hasPin
+    : pinDialog(selected.kind === "parent" && !selected.hasPin
       ? `<form class="card stack" data-action="parent-auth-submit">
           <h2 class="page-title">${esc(selected.name)}</h2>
           <p class="lede">This parent does not have a door PIN yet. Sign in once, then set one on the Family page.</p>
@@ -296,13 +322,14 @@ function roster() {
           <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
           ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
           <button class="btn leaf" type="submit">Sign in</button>
+          <button class="btn ghost wide" type="button" data-action="close-pin">Back</button>
         </form>`
-      : pinPad(`PIN for ${esc(selected.name)}`);
+      : pinPad(`PIN for ${esc(selected.name)}`));
   return `<div class="stack">
     <div class="roster">${people
       .map(
         (person) => `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
-          <canvas class="hero-icon" data-hero="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}" width="14" height="17" aria-hidden="true"></canvas>
+          <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" width="40" height="34" aria-hidden="true"></canvas>
           <strong>${esc(person.name)}</strong>
           ${person.kind === "parent" ? `<span class="role">Parent</span>` : ""}
         </button>`
@@ -399,18 +426,22 @@ function paintStage() {
   if (!host || host.hidden) return;
   if (!db.session && route.name === "welcome") {
     setStageScene({
-      parade: gateKids.map((child) => ({
-        id: child.id,
-        name: child.name,
-        color: COLOR_HEX[child.color] || COLOR_HEX.leaf,
+      parade: doorPeople().map((person) => ({
+        id: person.id,
+        name: person.name,
+        hero: person.hero,
+        weaponKey: person.weapon,
+        weapon: heldWeapon(person.weapon),
       })),
     });
     return;
   }
   const name = host.dataset.color || "leaf";
   const playing = new Set(playChores.map((chore) => chore.id));
+  const heroKey = db.session?.role === "kid" ? kidHero(db.hero?.hero) : "";
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
+    hero: heroKey,
     waiting: battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
     plays: playChores.map(actor),
     onDone: onFightDone,
@@ -814,7 +845,11 @@ function assigneeName(chore) {
   return kidById(id)?.name || "One kid";
 }
 
+let pinHold = false;
+
 function render() {
+  pinHold = true;
+  app.querySelector("dialog.pin-dialog[open]")?.close();
   const view = views[route.name] || views.welcome;
   const play = PLAY_ROUTES.has(route.name);
   document.body.classList.toggle("play", play);
@@ -833,6 +868,10 @@ function render() {
   }
   paintSpriteIcons(app);
   paintQuestArt(app);
+  app.querySelectorAll("canvas[data-look]").forEach((icon) => paintHeroBadge(icon, icon.dataset.look, heldWeapon(icon.dataset.weapon)));
+  pinHold = false;
+  const pin = app.querySelector("dialog.pin-dialog");
+  if (pin) pin.showModal();
   requestAnimationFrame(() => {
     document.querySelectorAll(".ring-value").forEach((el) => {
       if (el.dataset.offset) el.setAttribute("stroke-dashoffset", el.dataset.offset);
@@ -907,16 +946,7 @@ const views = {
         }
         ${
           selected
-            ? `<div class="card pin-card">
-                <h2 class="page-title">PIN for ${esc(picked?.name || "")}</h2>
-                <div class="pin-dots">${[0, 1, 2, 3].map((i) => `<i class="${(draft.pin || "").length > i ? "on" : ""}"></i>`).join("")}</div>
-                ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
-                <div class="pad">
-                  ${["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "go"]
-                    .map((key) => `<button type="button" data-action="pin" data-key="${key}">${key === "clear" ? "⌫" : key === "go" ? "Go" : key}</button>`)
-                    .join("")}
-                </div>
-              </div>`
+            ? pinDialog(pinPad(`PIN for ${esc(picked?.name || "")}`))
             : ""
         }
         <button class="btn ghost" data-action="goto" data-to="welcome">Back</button>
@@ -1371,6 +1401,14 @@ app.addEventListener("input", (event) => {
   if (button) paintSpriteIcons(button);
 });
 
+app.addEventListener("close", (event) => {
+  if (pinHold || !event.target.matches?.("dialog.pin-dialog")) return;
+  if (!route.playerId && !route.kidId) return;
+  route = { name: route.name === "kid-gate" ? "kid-gate" : "welcome", error: "" };
+  draft = {};
+  render();
+});
+
 app.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-action]");
   if (!btn || btn.tagName === "FORM") return;
@@ -1383,6 +1421,11 @@ app.addEventListener("click", (event) => {
     route = { name: "welcome", playerId: btn.dataset.id, playerKind: btn.dataset.kind, error: "" };
     draft = {};
     notice = "";
+    render();
+  }
+  if (action === "close-pin") {
+    route = { name: route.name === "kid-gate" ? "kid-gate" : "welcome", error: "" };
+    draft = {};
     render();
   }
   if (action === "edit-parent-pin") go("edit-parent-pin", { id: btn.dataset.id });
