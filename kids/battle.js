@@ -1120,6 +1120,17 @@ export function drawMonsterIcon(target, type) {
   def.draw(g, 0, 2, { open: 0, t: 0, idle: false });
 }
 
+export function drawHeroIcon(target, color) {
+  const src = heroFor(color).a;
+  const scale = 4;
+  target.width = src.width * scale;
+  target.height = src.height * scale;
+  const g = target.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, target.width, target.height);
+  g.drawImage(src, 0, 0, target.width, target.height);
+}
+
 const POSE = { walk: -55, idle: -55, windup: -160, swing: 35, block: -78, victory: -95 };
 const [mc, mg] = canvas(56, 56);
 
@@ -1508,6 +1519,7 @@ export function setStageScene(next) {
 
 export function paintSpriteIcons(root) {
   root.querySelectorAll("canvas[data-sprite]").forEach((icon) => drawMonsterIcon(icon, icon.dataset.sprite));
+  root.querySelectorAll("canvas[data-hero]").forEach((icon) => drawHeroIcon(icon, icon.dataset.hero));
 }
 
 function drawLayer(c, off, y = 0) {

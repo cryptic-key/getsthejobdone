@@ -290,7 +290,7 @@ function roster() {
     <div class="roster">${people
       .map(
         (person) => `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
-          ${face(person.color)}
+          <canvas class="hero-icon" data-hero="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}" width="14" height="17" aria-hidden="true"></canvas>
           <strong>${esc(person.name)}</strong>
           ${person.kind === "parent" ? `<span class="role">Parent</span>` : ""}
         </button>`

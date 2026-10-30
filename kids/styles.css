@@ -649,6 +649,12 @@ body.play .kid-pick {
   min-height: 132px;
 }
 body.play .kid-pick .face { width: 72px; height: 72px; animation: bob 2s ease-in-out infinite; }
+body.play .kid-pick .hero-icon {
+  width: 72px;
+  height: auto;
+  image-rendering: pixelated;
+  animation: bob 2s ease-in-out infinite;
+}
 body.play .kid-pick:nth-child(2) .face { animation-delay: .2s; }
 body.play .kid-pick:nth-child(3) .face { animation-delay: .4s; }
 body.play .kid-pick[aria-pressed="true"] { background: var(--sun-soft); transform: translateY(2px); box-shadow: 0 3px 0 rgba(36, 49, 44, 0.16); }
