@@ -10,6 +10,20 @@ export const SPRITES = [
   { id: "laundry", name: "Laundry Lump" },
   { id: "toys", name: "Block Golem" },
   { id: "reading", name: "Page Flapper" },
+  { id: "pet", name: "Kibble Gremlin" },
+  { id: "plants", name: "Wilty Weed" },
+  { id: "table", name: "Fork Knight" },
+  { id: "trash", name: "Garbage Goblin" },
+  { id: "counters", name: "Crumb Crab" },
+  { id: "towels", name: "Towel Mummy" },
+  { id: "bookshelf", name: "Book Stack" },
+  { id: "lunch", name: "Lunchbox Mimic" },
+  { id: "coats", name: "Coat Rack Scarecrow" },
+  { id: "groceries", name: "Grocery Bag Blob" },
+  { id: "homework", name: "Pencil Imp" },
+  { id: "dressed", name: "Pajama Phantom" },
+  { id: "petbrush", name: "Fur Tumbleweed" },
+  { id: "leaves", name: "Leaf Pile Lurker" },
 ];
 
 const SPRITE_IDS = new Set(SPRITES.map((sprite) => sprite.id));
@@ -22,11 +36,25 @@ export function guessSprite(title) {
   const text = String(title || "").toLowerCase();
   if (/bed|sheet|pillow|blanket/.test(text)) return "bed";
   if (/shoe|boot/.test(text)) return "shoes";
+  if (/bookshelf|book shelf|\bshelf\b/.test(text)) return "bookshelf";
+  if (/pet brush|brush(?:ed|ing)?(?: the)? pet/.test(text)) return "petbrush";
+  if (/towel/.test(text)) return "towels";
+  if (/dress|pajama|pyjama/.test(text)) return "dressed";
+  if (/homework/.test(text)) return "homework";
+  if (/lunch/.test(text)) return "lunch";
+  if (/coat|jacket/.test(text)) return "coats";
+  if (/grocer/.test(text)) return "groceries";
+  if (/trash|garbage|rubbish/.test(text)) return "trash";
+  if (/counter/.test(text)) return "counters";
+  if (/\bleaf|rake/.test(text)) return "leaves";
+  if (/plant|flower/.test(text)) return "plants";
+  if (/kibble|pet food|\bpet\b/.test(text)) return "pet";
+  if (/\btable\b/.test(text)) return "table";
   if (/teeth|tooth|brush|paste/.test(text)) return "teeth";
   if (/laundry|sock|clothes|fold/.test(text)) return "laundry";
   if (/toy|lego|blocks?/.test(text)) return "toys";
   if (/read|book|page|story/.test(text)) return "reading";
-  if (/pack|bag|homework|school/.test(text)) return "pack";
+  if (/pack|bag|school/.test(text)) return "pack";
   if (/dish|sink|plate|cup|kitchen/.test(text)) return "dishes";
   return "dust";
 }
@@ -309,6 +337,286 @@ const bookDown = sprite([
   "KKKK..........KKKK",
 ], bookPal);
 
+const gremPal = { K, P: "#8e5bd0", p: "#5e3a96", W: "#ffffff", E: K, T: "#ffffff" };
+const gremTop = ["K............K", "KPK........KPK", "KPPK.KKKK.KPPK", ".KPPKPPPPKPPK.", "..KPPPPPPPPK..", "..KPWWPPWWPK..", "..KPEWPPEWPK..", "..KPPPPPPPPK.."];
+const gremBot = [".KpPPPPPPPPpK.", ".KpKPPKKPPKpK.", "..KK.KK.KK.KK."];
+const gremA = sprite([...gremTop, "..KPKTKTKTPK..", "..KPPKKKKPPK..", ...gremBot], gremPal);
+const gremB = sprite([...gremTop, "..KPKKKKKKPK..", "..KPKTKTKKPK..", ...gremBot], gremPal);
+const kibbleS = sprite(["KKK", "KBK", "KKK"], { K, B: "#a0622a" });
+const weedS = sprite([
+  "......KKKKK.....",
+  ".....KYYYYYK....",
+  "....KYYOOOYYK...",
+  "....KYOEOEOYK...",
+  "....KYYOOOYYK...",
+  ".....KYKYKYK....",
+  ".......KGK......",
+  ".KKK...KGK...KKK",
+  "KLLLK..KGK..KLLK",
+  ".KLLLKKKGKKKLLK.",
+  "..KKK..KGK..KK..",
+  "...KKKKKKKKKK...",
+  "...KTTTTTTTTK...",
+  "....KTTTTTTK....",
+  "....KTtTTtTK....",
+  "....KTTTTTTK....",
+  ".....KKKKKK.....",
+], { K, Y: "#f4d742", O: "#e88a2e", E: K, G: "#3a9d4a", L: "#5cc96a", T: "#c8693a", t: "#8e4524" });
+const forkS = sprite([
+  ".K.K.K.K.",
+  "KSKSKSKSK",
+  "KSKSKSKSK",
+  "KSKSKSKSK",
+  "KSSSSSSSK",
+  "KSSSSSSSK",
+  "KSESSESSK",
+  "KSSKKKSSK",
+  ".KSSSSSK.",
+  "..KSSSK..",
+  "...KSK...",
+  "...KSK...",
+  "...KSK...",
+  "...KsK...",
+  "...KSK...",
+  "...KsK...",
+  "...KSK...",
+  "...KSK...",
+  "..KSSSK..",
+  "..KKKKK..",
+], { K, S: "#c8d0e0", s: "#8890a8", E: K });
+const canPal = { K, L: "#9aa6b4", G: "#7f8c9a", g: "#55606e" };
+const canLid = sprite(["......KK......", "...KKKKKKKK...", ".KKLLLLLLLLKK.", "KLLLLLLLLLLLLK", "KKKKKKKKKKKKKK"], canPal);
+const canBody = sprite([
+  ".KGgGGgGGgGGK.",
+  ".KGgGGgGGgGGK.",
+  ".KGgGGgGGgGGK.",
+  ".KGgGGgGGgGGK.",
+  ".KGgGGgGGgGGK.",
+  ".KGgGGgGGgGGK.",
+  "..KgGGgGGgGK..",
+  "..KgGGgGGgGK..",
+  "..KKKKKKKKKK..",
+], canPal);
+const peelS = sprite(["..KK..", ".KYK.K", "KYYKYK", "KYYYYK", ".KKKK."], { K, Y: "#f4d742" });
+const crabA = sprite([
+  "KKK..........KKK",
+  "KCK..K....K..KCK",
+  "KCCK.E....E.KCCK",
+  ".KCK.K....K.KCK.",
+  "..KKKKKKKKKKKK..",
+  ".KCCCCCCCCCCCCK.",
+  "KCCCCCKKCCCCCCCK",
+  "KCCCCCCCCCCCCCCK",
+  ".KKcKKcKKcKKcKK.",
+  "K..K..K..K..K..K",
+], { K, C: "#e8603c", c: "#a8402a", E: K });
+const crumbS = sprite(["tt", "tT"], { t: "#e0b56a", T: "#a8763a" });
+const mummyS = sprite([
+  "...KKKKKK...",
+  "..KBBBBBBK..",
+  ".KBWWWWWWBK.",
+  ".KBKYKKYKBK.",
+  ".KBWWWWWWBK.",
+  ".KBBBBBBBBK.",
+  "KBBWWWWWWBBK",
+  "KBBBBBBBBBBK",
+  "KBWWWWWWWWBK",
+  ".KBBBBBBBBK.",
+  ".KBWWWWWWBK.",
+  ".KBBBBBBBBK.",
+  ".KBWWWWWWBK.",
+  ".KBBBBBBBBK.",
+  ".KBBK..KBBK.",
+  ".KKK....KKK.",
+], { K, B: "#5aa9e6", W: "#f4f6fb", Y: "#ffe066" });
+const stackS = sprite([
+  "..KKKKKKKKK...",
+  "..KRRRRRRRWK..",
+  "..KKKKKKKKKK..",
+  ".KKKKKKKKKKK..",
+  ".KBBBBBBBBWK..",
+  ".KKKKKKKKKKK..",
+  "..KKKKKKKKKKK.",
+  "..KGEWGGEWGWK.",
+  "..KGGGGGGGGWK.",
+  "..KGGKKKKGGWK.",
+  "..KKKKKKKKKKK.",
+  "KKKKKKKKKKKK..",
+  "KYYYYYYYYYWK..",
+  "KKKKKKKKKKKK..",
+  ".KKKKKKKKKKKK.",
+  ".KPPPPPPPPPWK.",
+  ".KKKKKKKKKKKK.",
+], { K, R: "#d64545", B: "#3b74d9", G: "#5cc96a", Y: "#f4c542", P: "#9b6ad6", W: "#fff8e6", E: K });
+const bookS = sprite(["KKKKKK", "KRRRWK", "KRRRWK", "KKKKKK"], { K, R: "#3b74d9", W: "#fff8e6" });
+const lunchPal = { K, R: "#d6453c", r: "#9a2e28", W: "#ffffff", E: K, Y: "#f4c542" };
+const lunchLid = sprite([".....KKKKKK.....", ".....K....K.....", "..KKKKKKKKKKKK..", ".KRREWRRRREWRRK.", ".KrrrrrrrrrrrrK."], lunchPal);
+const lunchBody = sprite([".KRRRRRRRRRRRRK.", ".KRRRKYYKRRRRRK.", ".KRRRRRRRRRRRRK.", ".KrrrrrrrrrrrrK.", "..KKKKKKKKKKKK.."], lunchPal);
+const grapeS = sprite([".KK.", "KPpK", "KPPK", ".KK."], { K, P: "#8e44ad", p: "#c39bd3" });
+const rackS = sprite([
+  "....KKKKK.....",
+  "....KHHHK.....",
+  "..KKKKKKKKK...",
+  "....KSSSK.....",
+  "....KESEK.....",
+  "....KSSSK.....",
+  "KK...KBK...KK.",
+  ".KKKKCBCKKKK..",
+  "...KCCBCCK....",
+  "..KCCcBcCCK...",
+  "..KCCcBcCCK...",
+  "..KCYcBcYCK...",
+  "..KCCcBcCCK...",
+  "..KCCcBcCCK...",
+  "..KKKKBKKKK...",
+  "......KBK.....",
+  "......KBK.....",
+  "......KBK.....",
+  "....KKKBKKK...",
+  "...KBBBBBBBK..",
+  "...KKKKKKKKK..",
+], { K, H: "#3d3a5c", S: "#c99a5b", E: K, B: "#7a4a26", C: "#2f6f8f", c: "#1f4f6a", Y: "#f4c542" });
+const hangerS = sprite(["...H...", "..H.H..", ".H...H.", "HHHHHHH"], { H: "#c8d0e0" });
+const bagS = sprite([
+  "...G.G..KK....",
+  "..GGKGG.KYK...",
+  "...GKG..KYK...",
+  "..KKKKKKKKKKK.",
+  "..KBBBBBBBBBK.",
+  ".KBBBBBBBBBBBK",
+  ".KBBEWBBBEWBBK",
+  ".KBBBBBBBBBBBK",
+  ".KBBBKKKKBBBBK",
+  ".KBBBBBBBBBBBK",
+  ".KbBBBBBBBBBbK",
+  ".KBBBBBBBBBBBK",
+  ".KbbbbbbbbbbbK",
+  "..KKKKKKKKKKK.",
+], { K, G: "#5cc96a", Y: "#e8c070", B: "#c99a5b", b: "#a07a40", E: K, W: "#ffffff" });
+const canS = sprite(["KKKKK", "KRRRK", "KWWWK", "KRRRK", "KKKKK"], { K, R: "#d64545", W: "#f4f6fb" });
+const pencilS = sprite([
+  ".KKKKKK.",
+  ".KPPPPK.",
+  ".KPPPPK.",
+  ".KSSSSK.",
+  ".KYYYYK.",
+  "KYYYYYYK",
+  "KEWYEWYK",
+  "KYYYYYYK",
+  "KYKKKYYK",
+  "KYYYYYYK",
+  ".KYYYYK.",
+  ".KYYYYK.",
+  ".KYyYYK.",
+  ".KYyYYK.",
+  ".KWWWWK.",
+  "..KWWK..",
+  "..KWWK..",
+  "...GK...",
+], { K, P: "#f08aa0", S: "#c8d0e0", Y: "#f4c542", y: "#c99a1e", E: K, W: "#e8c890", G: "#3a3a48" });
+const eraserS = sprite(["PP", "Pp"], { P: "#f08aa0", p: "#c06070" });
+const pjS = sprite([
+  "...........WW...",
+  "..........KWWK..",
+  "........KKRK....",
+  "......KKRRRK....",
+  "....KKRRRRRK....",
+  "...KRRRRRRRK....",
+  "..KWWWWWWWWWK...",
+  "..KSSSSSSSSSK...",
+  "..KSKKSSSKKSK...",
+  "..KSSSSSSSSSK...",
+  ".KKBBBKKKBBBKK..",
+  "KBBDBBBBBDBBBBK.",
+  "KBBBBBDBBBBBDBK.",
+  ".KBDBBBBDBBBBK..",
+  ".KBBBBBBBBBDBK..",
+  ".KBBBDBBBBBBBK..",
+  "..KKBKKBKKBKK...",
+], { K, W: "#ffffff", R: "#d64545", S: "#e8ecff", B: "#6c8cff", D: "#ffffff" });
+const furS = sprite([
+  "....K.K.K.....",
+  "..K.KFKFK.K...",
+  ".KFKFFFFFKFK..",
+  "KFFFFFFFFFFFK.",
+  ".KFWWFFFWWFFK.",
+  "KFFEWFFFEWFFFK",
+  ".KFFFFFFFFFFK.",
+  "KFFFFFKKFFFFFK",
+  ".KFfFFFFFFfFK.",
+  "KFFFFfFFfFFFFK",
+  ".KFKFFKFFKFK..",
+  "..K.KK.KK.K...",
+], { K, F: "#c98a4a", f: "#a06a30", W: "#ffffff", E: K });
+const fluffS = sprite(["..FF.", ".FFFF", "FFFFF", ".FF.."], { F: "#e8c08a" });
+const leafPal = { K, O: "#e8862e", R: "#c8402a", Y: "#f4c542", W: "#ffffff", E: K };
+const leafPileS = sprite([
+  ".......KK...........",
+  ".....KKOOKK..KK.....",
+  "...KKOORRRKKYYKK....",
+  "..KOOOOOROOOYYYYK...",
+  ".KRRRKWWOOOWWKYYYK..",
+  ".KRRRKEWOOOEWKYYYYK.",
+  "KRRRRROOOOOOOOYYYYYK",
+  "KOOOYYYOOOKKOORRRRYK",
+  "KOOOYYYYOOOOORRRRRRK",
+  "KYYYRRRROOOOYYYOOORK",
+  "KYYRRRRROOOOYYYOOOOK",
+  ".KKKKKKKKKKKKKKKKKK.",
+], leafPal);
+const leafS = [leafPal.O, leafPal.R, leafPal.Y].map((color) => sprite(["..K..", ".KOK.", "KOOOK", ".KOK.", "..K.."], { K, O: color }));
+
+function jaw(g, x, y, m, top, bottom, split, c0, cw, inside, teeth) {
+  const o = Math.round(m.open * 4);
+  g.drawImage(top, x, y - o);
+  if (o > 0) {
+    rect(g, x + c0 - 1, y + split - o, cw + 2, o, K);
+    rect(g, x + c0, y + split - o, cw, o, inside);
+    if (teeth && o >= 2) {
+      for (let c = c0 + 1; c < c0 + cw; c += 2) {
+        px(g, x + c, y + split - o, teeth);
+        px(g, x + c, y + split - 1, teeth);
+      }
+    }
+  }
+  g.drawImage(bottom, x, y + split);
+}
+async function toss(m, api, list, { open = true, lift = true } = {}) {
+  if (open) m.openT = 1;
+  if (lift) m.lift = 1;
+  if (!(await api.wait(0.25))) return;
+  for (const shot of list) {
+    api.projectiles.push({ k: "spr", x: m.x + 2, y: G - 12, vx: -70, vy: -50, g: 150, spin: true, ...shot });
+    if (!(await api.wait(shot.gap ?? 0.15))) return;
+  }
+  m.openT = 0;
+  m.lift = 0;
+}
+async function lash(m, api, def) {
+  m.openT = 1;
+  if (!(await api.wait(0.2))) return;
+  const reach = m.x + (def.lashX ?? 10) - (api.heroX() + 17);
+  m.tongueT = reach;
+  if (!(await api.until(() => m.tongue >= reach - 1.5))) return;
+  api.block(api.heroX() + 17, G - (def.lashY ?? 4), def.hit);
+  m.tongueT = 0;
+  if (!(await api.until(() => m.tongue < 0.6))) return;
+  m.tongue = 0;
+  m.openT = 0;
+}
+async function charge(m, api) {
+  m.lift = 1;
+  if (!(await api.wait(0.25))) return;
+  m.lift = 0;
+  const reach = -(m.x - (api.heroX() + 18));
+  m.lungeT = reach;
+  if (!(await api.until(() => m.lunge <= reach + 1.5))) return;
+  api.block(api.heroX() + 17, G - 10, m.def.hit);
+  m.lungeT = 0;
+  if (!(await api.until(() => Math.abs(m.lunge) < 0.6))) return;
+  m.lunge = 0;
+}
+
 const MON = {
   dust: {
     name: "Dust Bunny",
@@ -498,6 +806,175 @@ const MON = {
       m.openT = 0;
     },
   },
+  pet: {
+    name: "Kibble Gremlin",
+    w: 14,
+    h: 13,
+    hit: ["#8e5bd0", "#a0622a", "#ffffff"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 8)) * 2) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 ? gremB : gremA, x, y); },
+    attack(m, api) {
+      return toss(m, api, [0, 1, 2, 3].map(() => ({ s: kibbleS, vx: -rnd(65, 85), vy: -rnd(30, 70), gap: 0.08 })), { lift: false });
+    },
+  },
+  plants: {
+    name: "Wilty Weed",
+    w: 16,
+    h: 17,
+    hit: ["#5cc96a", "#f4d742", "#c8693a"],
+    lashX: 2,
+    lashY: 8,
+    lashCol: ["#5cc96a", "#2e7d36"],
+    yoff: () => 0,
+    draw(g, x, y) { g.drawImage(weedS, x, y); },
+    attack(m, api) { return lash(m, api, this); },
+  },
+  table: {
+    name: "Fork Knight",
+    w: 9,
+    h: 20,
+    hit: ["#c8d0e0", "#ffffff", "#8890a8"],
+    yoff: (m) => (m.idle ? -(((m.t * 3) | 0) % 2) : 0),
+    draw(g, x, y) { g.drawImage(forkS, x, y); },
+    attack(m, api) { return charge(m, api); },
+  },
+  trash: {
+    name: "Garbage Goblin",
+    w: 14,
+    h: 14,
+    hit: ["#7f8c9a", "#f4d742", "#5cc96a"],
+    chomp: true,
+    yoff: () => 0,
+    draw(g, x, y, m) {
+      jaw(g, x, y, m, canLid, canBody, 5, 2, 10, "#1c1433", null);
+      const o = Math.round(m.open * 4);
+      if (o >= 2) {
+        px(g, x + 4, y + 5 - o + 1, "#ffe066");
+        px(g, x + 8, y + 5 - o + 1, "#ffe066");
+      }
+    },
+    attack(m, api) {
+      return toss(m, api, [{ s: peelS, vx: -75, vy: -60 }, { s: peelS, vx: -82, vy: -45 }], { lift: false });
+    },
+  },
+  counters: {
+    name: "Crumb Crab",
+    w: 16,
+    h: 10,
+    hit: ["#e8603c", "#e0b56a", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 6) | 0) % 2) : 0),
+    draw(g, x, y) { g.drawImage(crabA, x, y); },
+    attack(m, api) {
+      return toss(m, api, [0, 1, 2, 3, 4].map(() => ({ s: crumbS, spin: false, y: G - 6, vx: -rnd(70, 90), vy: -rnd(20, 60), gap: 0.06 })));
+    },
+  },
+  towels: {
+    name: "Towel Mummy",
+    w: 12,
+    h: 16,
+    hit: ["#5aa9e6", "#f4f6fb"],
+    lashX: 1,
+    lashY: 9,
+    lashCol: ["#5aa9e6", "#f4f6fb"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y) { g.drawImage(mummyS, x, y); },
+    attack(m, api) { return lash(m, api, this); },
+  },
+  bookshelf: {
+    name: "Book Stack",
+    w: 14,
+    h: 17,
+    hit: ["#d64545", "#3b74d9", "#f4c542", "#fff8e6"],
+    yoff: () => 0,
+    draw(g, x, y, m) { g.drawImage(stackS, x + (m.idle && ((m.t * 2) | 0) % 2 ? 1 : 0), y); },
+    attack(m, api) {
+      return toss(m, api, [{ s: bookS, y: G - 17, vx: -70, vy: -40, gap: 0.25 }, { s: bookS, y: G - 17, vx: -80, vy: -55 }]);
+    },
+  },
+  lunch: {
+    name: "Lunchbox Mimic",
+    w: 16,
+    h: 10,
+    hit: ["#d6453c", "#8e44ad", "#ffffff"],
+    chomp: true,
+    yoff: () => 0,
+    draw(g, x, y, m) { jaw(g, x, y, m, lunchLid, lunchBody, 5, 2, 12, "#3a0c14", "#ffffff"); },
+    attack(m, api) {
+      return toss(m, api, [0, 1, 2].map(() => ({ s: grapeS, spin: false, y: G - 7, vx: -rnd(70, 80), vy: -rnd(25, 40), gap: 0.12 })), { lift: false });
+    },
+  },
+  coats: {
+    name: "Coat Rack Scarecrow",
+    w: 14,
+    h: 21,
+    hit: ["#2f6f8f", "#c8d0e0", "#7a4a26"],
+    yoff: () => 0,
+    draw(g, x, y, m) { g.drawImage(rackS, x + (m.idle && ((m.t * 1.5) | 0) % 2 ? 1 : 0), y); },
+    attack(m, api) {
+      return toss(m, api, [{ s: hangerS, y: G - 15, vx: -72, vy: -35, gap: 0.25 }, { s: hangerS, y: G - 15, vx: -80, vy: -50 }]);
+    },
+  },
+  groceries: {
+    name: "Grocery Bag Blob",
+    w: 14,
+    h: 14,
+    hit: ["#c99a5b", "#5cc96a", "#d64545"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 5)) * 2) : 0),
+    draw(g, x, y) { g.drawImage(bagS, x, y); },
+    attack(m, api) {
+      return toss(m, api, [{ s: canS, y: G - 2, vy: 0, g: 0, vx: -70, gap: 0.35 }, { s: canS, y: G - 2, vy: 0, g: 0, vx: -80 }], { lift: false });
+    },
+  },
+  homework: {
+    name: "Pencil Imp",
+    w: 8,
+    h: 18,
+    hit: ["#f4c542", "#f08aa0", "#3a3a48"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 7)) * 3) : 0),
+    draw(g, x, y) { g.drawImage(pencilS, x, y); },
+    attack(m, api) {
+      return toss(m, api, [0, 1, 2, 3].map(() => ({ s: eraserS, spin: false, y: G - 16, vx: -rnd(75, 90), vy: -rnd(5, 25), g: 60, gap: 0.1 })));
+    },
+  },
+  dressed: {
+    name: "Pajama Phantom",
+    w: 16,
+    h: 17,
+    hit: ["#6c8cff", "#ffffff", "#d64545"],
+    yoff: (m) => -8 + Math.round(Math.sin(m.t * 2.5) * 2),
+    draw(g, x, y) { g.drawImage(pjS, x, y); },
+    async attack(m, api) {
+      m.lift = 1;
+      if (!(await api.wait(0.25))) return;
+      for (let i = 0; i < 3; i += 1) {
+        api.projectiles.push({ k: "letter", L: "Z", x: m.x + 2, y: G - 20 + i * 3, vx: -50, vy: 0, g: 0, ph: i * 2, base: G - 20 + i * 3 });
+        if (!(await api.wait(0.2))) return;
+      }
+      m.lift = 0;
+    },
+  },
+  petbrush: {
+    name: "Fur Tumbleweed",
+    w: 14,
+    h: 12,
+    hit: ["#c98a4a", "#e8c08a"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 5)) * 3) : 0),
+    draw(g, x, y) { g.drawImage(furS, x, y); },
+    attack(m, api) {
+      return toss(m, api, [0, 1, 2, 3].map((i) => ({ s: fluffS, y: G - 8 - i * 2, vx: -rnd(55, 70), vy: -rnd(10, 30), g: 30, gap: 0.1 })));
+    },
+  },
+  leaves: {
+    name: "Leaf Pile Lurker",
+    w: 20,
+    h: 12,
+    hit: ["#e8862e", "#c8402a", "#f4c542"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y) { g.drawImage(leafPileS, x, y); },
+    attack(m, api) {
+      return toss(m, api, [0, 1, 2].map((i) => ({ s: leafS[i], y: G - 10, vx: -rnd(60, 75), vy: -rnd(30, 50), g: 60, gap: 0.15 })));
+    },
+  },
 };
 for (const def of Object.values(MON)) def.tx = Math.round(94 - def.w / 2);
 
@@ -624,6 +1101,7 @@ const FONT = {
   A: "010101111101101",
   B: "110101110101110",
   C: "011100100100011",
+  Z: "111001010100111",
 };
 
 export function drawMonsterIcon(target, type) {
@@ -689,7 +1167,7 @@ function block(x, y, cols) {
 function makeMon(def, item) {
   return {
     def, choreId: item.id, title: item.title, points: Number(item.points) || 0,
-    x: W + 6, hp: 3, open: 0, openT: 0, tongue: 0, tongueT: 0, flash: 0, shake: 0,
+    x: W + 6, hp: 3, open: 0, openT: 0, tongue: 0, tongueT: 0, lunge: 0, lungeT: 0, flash: 0, shake: 0,
     t: 0, idle: true, approach: true, alive: true, showHp: false, lift: 0,
   };
 }
@@ -966,22 +1444,23 @@ function drawMonster(m) {
     mg.fillRect(0, 0, 56, 56);
     mg.globalCompositeOperation = "source-over";
   }
-  const sx = m.shake > 0 ? Math.round(Math.sin(m.shake * 80) * 2) : 0;
+  const sx = (m.shake > 0 ? Math.round(Math.sin(m.shake * 80) * 2) : 0) + Math.round(m.lunge || 0);
   const sw = Math.round(d.w * 0.7);
   rect(ctx, m.x + (d.w - sw) / 2 + sx, G, sw, 1, "#3e8c2c");
   ctx.drawImage(mc, Math.round(m.x - 16 + sx), G + 1 - 52);
   if (m.tongue > 0) {
-    const bx = m.x + 10;
-    const by = G - 4;
+    const tone = m.def.lashCol || ["#ff79a8", "#c8406e"];
+    const bx = m.x + (m.def.lashX ?? 10);
+    const by = G - (m.def.lashY ?? 4);
     const L = Math.round(m.tongue);
     for (let i = 0; i < L; i += 1) {
       const y = by + Math.round(Math.sin(i * 0.35 - m.t * 14) * Math.min(3, i * 0.15));
-      px(ctx, bx - i, y, "#ff79a8");
-      px(ctx, bx - i, y + 1, "#c8406e");
+      px(ctx, bx - i, y, tone[0]);
+      px(ctx, bx - i, y + 1, tone[1]);
     }
     const ty = by + Math.round(Math.sin(L * 0.35 - m.t * 14) * Math.min(3, L * 0.15));
-    disc(ctx, bx - L, ty, 1, "#ff79a8");
-    px(ctx, bx - L - 1, ty + 1, "#c8406e");
+    disc(ctx, bx - L, ty, 1, tone[0]);
+    px(ctx, bx - L - 1, ty + 1, tone[1]);
   }
   if (m.showHp) {
     const bx = Math.round(m.x + d.w / 2 - 7);
@@ -1046,6 +1525,12 @@ function drawProj(p) {
     rect(ctx, x - 2, y - 2, 5, 5, K);
     rect(ctx, x - 1, y - 1, 3, 3, p.c);
     px(ctx, ((time * 12) | 0) % 2 ? x - 1 : x + 1, y - 1, "#ffffff");
+  } else if (p.k === "spr" && p.s) {
+    ctx.save();
+    ctx.translate(Math.round(p.x), Math.round(p.y));
+    if (p.spin) ctx.rotate((((time * 12) | 0) % 4) * Math.PI / 2);
+    ctx.drawImage(p.s, -(p.s.width >> 1), -(p.s.height >> 1));
+    ctx.restore();
   } else if (p.k === "letter") {
     const x = Math.round(p.x);
     const y = Math.round(p.y);
@@ -1100,6 +1585,7 @@ function update(dt) {
     if (mon.def.chomp && mon.idle && !mon.approach && mon.alive) openTarget = Math.max(openTarget, Math.sin(mon.t * 5) > 0.55 ? 0.6 : 0);
     mon.open += (openTarget - mon.open) * Math.min(1, dt * 18);
     mon.tongue += (mon.tongueT - mon.tongue) * Math.min(1, dt * 13);
+    mon.lunge += (mon.lungeT - mon.lunge) * Math.min(1, dt * 12);
     mon.flash = Math.max(0, mon.flash - dt);
     mon.shake = Math.max(0, mon.shake - dt);
   }

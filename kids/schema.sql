@@ -70,7 +70,7 @@ create table if not exists public.chores (
   template_id uuid,
   chore_day date,
   approved_at timestamptz,
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves')),
   created_at timestamptz not null default now()
 );
 
@@ -80,7 +80,7 @@ create table if not exists public.chore_templates (
   title text not null,
   points integer not null default 1 check (points >= 0),
   kind text not null default 'daily' check (kind in ('daily', 'special')),
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves')),
   created_at timestamptz not null default now()
 );
 
@@ -122,11 +122,11 @@ begin
   alter table public.chores drop constraint if exists chores_sprite_check;
   alter table public.chores
     add constraint chores_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading'));
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves'));
   alter table public.chore_templates drop constraint if exists chore_templates_sprite_check;
   alter table public.chore_templates
     add constraint chore_templates_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading'));
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves'));
 end $$;
 
 create or replace function private.normalize_sprite(p_sprite text)
@@ -136,7 +136,7 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading') then p_sprite
+    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves') then p_sprite
     else 'dust'
   end
 $$;
@@ -497,11 +497,25 @@ begin
     private.normalize_sprite(case
       when btrim(p_title) ~* 'bed|sheet|pillow|blanket' then 'bed'
       when btrim(p_title) ~* 'shoe|boot' then 'shoes'
+      when btrim(p_title) ~* 'bookshelf|book shelf|shelf' then 'bookshelf'
+      when btrim(p_title) ~* 'pet brush|brush(ed|ing)?( the)? pet' then 'petbrush'
+      when btrim(p_title) ~* 'towel' then 'towels'
+      when btrim(p_title) ~* 'dress|pajama|pyjama' then 'dressed'
+      when btrim(p_title) ~* 'homework' then 'homework'
+      when btrim(p_title) ~* 'lunch' then 'lunch'
+      when btrim(p_title) ~* 'coat|jacket' then 'coats'
+      when btrim(p_title) ~* 'grocer' then 'groceries'
+      when btrim(p_title) ~* 'trash|garbage|rubbish' then 'trash'
+      when btrim(p_title) ~* 'counter' then 'counters'
+      when btrim(p_title) ~* 'leaf|rake' then 'leaves'
+      when btrim(p_title) ~* 'plant|flower' then 'plants'
+      when btrim(p_title) ~* 'kibble|pet food|(^|[^[:alpha:]])pet([^[:alpha:]]|$)' then 'pet'
+      when btrim(p_title) ~* '(^|[^[:alpha:]])table([^[:alpha:]]|$)' then 'table'
       when btrim(p_title) ~* 'teeth|tooth|brush|paste' then 'teeth'
       when btrim(p_title) ~* 'laundry|sock|clothes|fold' then 'laundry'
       when btrim(p_title) ~* 'toy|lego|blocks?' then 'toys'
       when btrim(p_title) ~* 'read|book|page|story' then 'reading'
-      when btrim(p_title) ~* 'pack|bag|homework|school' then 'pack'
+      when btrim(p_title) ~* 'pack|bag|school' then 'pack'
       when btrim(p_title) ~* 'dish|sink|plate|cup|kitchen' then 'dishes'
       else 'dust'
     end)
