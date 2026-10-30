@@ -1205,98 +1205,234 @@ function pine(g, x, base, h, col) {
   }
   g.fillRect(x, base, 1, 3);
 }
-const sky = layer(W, H, (g) => {
-  const colors = ["#4f9fe0", "#6db3ea", "#8fcaf0", "#b5def5"];
-  for (let y = 0; y < H; y += 1) {
-    const band = Math.min(3, Math.floor(y / 10));
-    g.fillStyle = colors[band];
-    g.fillRect(0, y, W, 1);
-    if (y % 10 === 9 && band < 3) {
-      g.fillStyle = colors[band + 1];
-      for (let x = y % 2; x < W; x += 2) g.fillRect(x, y, 1, 1);
+
+const SEASON_LOOK = {
+  spring: {
+    sky: ["#6eb4e8", "#8fcaf0", "#c5e6fa", "#eaf6fc"],
+    cloud: ["#ffffff", "#e4f4ff"],
+    hill: "#9ec4b0",
+    far: "#6eaa86",
+    mid: "#458a60",
+    leaf: ["#3f9a4a", "#5cbc66", "#7ed67a"],
+    bloom: ["#ff9ac8", "#ffe3f0", "#fff8a8"],
+    dirt: "#9a6432",
+    grass: ["#6ed24a", "#9aee6a", "#4a9a2e"],
+    bits: ["#ff8ac6", "#fff3a8", "#9ad8ff"],
+    fore: "#3a8a48",
+    tip: "#6cc04a",
+    shadow: "#4a9a3c",
+  },
+  summer: {
+    sky: ["#4f9fe0", "#6db3ea", "#8fcaf0", "#b5def5"],
+    cloud: ["#ffffff", "#d6eefa"],
+    hill: "#8fb9c9",
+    far: "#5d9886",
+    mid: "#356f57",
+    leaf: ["#2e7d36", "#3d9a45", "#2e7d36"],
+    bloom: ["#6cc04a", "#8ee05a"],
+    dirt: "#9a6432",
+    grass: ["#5cc23c", "#8ee05a", "#4a9a2e"],
+    bits: ["#ff6b6b", "#ffe066"],
+    fore: "#2a6e2e",
+    tip: "#4fa04a",
+    shadow: "#3e8c2c",
+  },
+  fall: {
+    sky: ["#5f8fbe", "#7ea4c8", "#c9a878", "#e8c89a"],
+    cloud: ["#fff4e4", "#e8d2b0"],
+    hill: "#b89a78",
+    far: "#8a7a4e",
+    mid: "#6a5230",
+    leaf: ["#d45a28", "#e8a030", "#c43c1a", "#8a5020"],
+    bloom: ["#f0b040", "#e07030"],
+    dirt: "#7a4a28",
+    grass: ["#c48a38", "#e0b050", "#8a6028"],
+    bits: ["#e07030", "#f0b040", "#c43c1a"],
+    fore: "#8a5020",
+    tip: "#e8a030",
+    shadow: "#8a6028",
+  },
+  winter: {
+    sky: ["#7a96aa", "#9bb0c0", "#c4d2dc", "#e6eef4"],
+    cloud: ["#f7fbfe", "#d7e4ee"],
+    hill: "#d5e2ea",
+    far: "#9aafbc",
+    mid: "#7e93a0",
+    leaf: ["#eef5f8", "#d7e4ee", "#ffffff"],
+    bloom: ["#ffffff", "#e8f2f8"],
+    dirt: "#cfdbe4",
+    grass: ["#f4f9fc", "#ffffff", "#b7c8d4"],
+    bits: ["#ffffff", "#dce8f0"],
+    fore: "#9eb2be",
+    tip: "#ffffff",
+    shadow: "#9eb0bc",
+    snow: true,
+  },
+};
+
+export function currentSeason(at = new Date()) {
+  const month = Number(
+    new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", month: "numeric" }).format(at)
+  );
+  if (month >= 3 && month <= 5) return "spring";
+  if (month >= 6 && month <= 8) return "summer";
+  if (month >= 9 && month <= 11) return "fall";
+  return "winter";
+}
+
+function buildScenery(season) {
+  const pal = SEASON_LOOK[season] || SEASON_LOOK.summer;
+  const rand = mulberry({ spring: 21, summer: 11, fall: 33, winter: 47 }[season] || 11);
+  const roll = (a, b) => a + rand() * (b - a);
+  const pick = (list) => list[(rand() * list.length) | 0];
+
+  const sky = layer(W, H, (g) => {
+    for (let y = 0; y < H; y += 1) {
+      const band = Math.min(3, Math.floor(y / 10));
+      g.fillStyle = pal.sky[band];
+      g.fillRect(0, y, W, 1);
+      if (y % 10 === 9 && band < 3) {
+        g.fillStyle = pal.sky[band + 1];
+        for (let x = y % 2; x < W; x += 2) g.fillRect(x, y, 1, 1);
+      }
     }
+  });
+  const clouds = layer(256, 30, (g, w, h, wrap) => {
+    [[20, 8], [90, 14], [150, 6], [210, 12]].forEach(([x, y]) => wrap((o) => {
+      disc(g, x + o, y, 4, pal.cloud[0]);
+      disc(g, x + o + 5, y - 2, 5, pal.cloud[0]);
+      disc(g, x + o + 11, y, 4, pal.cloud[0]);
+      rect(g, x + o - 3, y + 3, 18, 2, pal.cloud[1]);
+    }));
+  });
+  const hills = layer(256, H, (g) => {
+    g.fillStyle = pal.hill;
+    for (let x = 0; x < 256; x += 1) {
+      const y = Math.round(30 + 6 * Math.sin((x * Math.PI * 2) / 128) + 4 * Math.sin((x * Math.PI * 2) / 64 + 1));
+      g.fillRect(x, y, 1, H - y);
+    }
+  });
+  const farPines = layer(256, H, (g, w, h, wrap) => {
+    for (let x = 2; x < 256; x += (roll(6, 10) | 0)) {
+      const hh = roll(9, 17) | 0;
+      const xx = x | 0;
+      wrap((o) => {
+        pine(g, xx + o, 51, hh, pal.far);
+        if (pal.snow) {
+          px(g, xx + o, 51 - hh + 1, "#ffffff");
+          px(g, xx + o - 1, 51 - hh + 3, "#ffffff");
+          px(g, xx + o + 1, 51 - hh + 4, "#eef5f8");
+        }
+      });
+    }
+    rect(g, 0, 51, 256, H, pal.far);
+  });
+  const midPines = layer(256, H, (g, w, h, wrap) => {
+    for (let x = 4; x < 256; x += (roll(10, 15) | 0)) {
+      const hh = roll(15, 25) | 0;
+      const xx = x | 0;
+      wrap((o) => {
+        pine(g, xx + o, 55, hh, pal.mid);
+        if (pal.snow) {
+          px(g, xx + o, 55 - hh + 2, "#ffffff");
+          px(g, xx + o - 1, 55 - hh + 5, "#ffffff");
+          px(g, xx + o + 1, 55 - hh + 6, "#eef5f8");
+        }
+      });
+    }
+    rect(g, 0, 55, 256, H, pal.mid);
+  });
+  const trees = layer(256, H, (g, w, h, wrap) => {
+    [18, 84, 150, 206].forEach((x, i) => wrap((o) => {
+      const X = x + o;
+      rect(g, X - 2, 10, 6, G - 10, "#6b4426");
+      rect(g, X + 2, 10, 2, G - 10, "#4a2e18");
+      rect(g, X - 4, G - 2, 10, 2, "#4a2e18");
+      if (pal.snow) {
+        disc(g, X - 4, 8 + (i % 2) * 2, 4, pal.leaf[0]);
+        disc(g, X + 5, 6, 4, pal.leaf[1]);
+        disc(g, X, 2, 5, pal.leaf[2] || pal.leaf[0]);
+        px(g, X - 1, 10, "#6b4426");
+        px(g, X + 2, 14, "#6b4426");
+        px(g, X - 3, 18, "#4a2e18");
+      } else {
+        disc(g, X - 7, 8 + (i % 2) * 3, 9, pal.leaf[0]);
+        disc(g, X + 8, 6, 10, pal.leaf[0]);
+        disc(g, X, -2, 11, pal.leaf[0]);
+        disc(g, X - 8, 6 + (i % 2) * 3, 6, pal.leaf[1]);
+        disc(g, X + 7, 3, 7, pal.leaf[1]);
+        disc(g, X - 1, -4, 7, pal.leaf[1]);
+        const accents = season === "fall" ? pal.leaf : pal.bloom;
+        for (let n = 0; n < (season === "spring" ? 10 : 5); n += 1) {
+          px(g, X + (roll(-9, 8) | 0), (roll(-6, 8) | 0), pick(accents));
+        }
+      }
+    }));
+  });
+  const ground = layer(256, H, (g) => {
+    rect(g, 0, G, 256, H - G, pal.dirt);
+    rect(g, 0, G, 256, 3, pal.grass[0]);
+    rect(g, 0, G, 256, 1, pal.grass[1]);
+    for (let x = 0; x < 256; x += 1) {
+      if (rand() < 0.35) px(g, x, G - 1, pal.grass[0]);
+      if (rand() < 0.12) px(g, x, G + 3, pal.grass[2]);
+    }
+    for (let i = 0; i < 70; i += 1) {
+      px(g, roll(0, 256), roll(G + 4, H), pal.snow ? "#b7c8d4" : "#7a4a22");
+    }
+    for (let i = 0; i < 12; i += 1) {
+      const x = roll(0, 250) | 0;
+      const y = roll(G + 5, H - 3) | 0;
+      if (pal.snow) {
+        rect(g, x, y, 3, 2, "#ffffff");
+        px(g, x, y + 1, "#d7e4ee");
+      } else {
+        rect(g, x, y, 3, 2, "#b08a5a");
+        px(g, x, y + 1, "#8a6a40");
+      }
+    }
+    for (let i = 0; i < 10; i += 1) {
+      const x = roll(0, 256) | 0;
+      px(g, x, G - 2, pick(pal.bits));
+      px(g, x, G - 1, pal.snow ? "#d7e4ee" : pal.grass[2]);
+    }
+  });
+  const fore = layer(256, 12, (g, w, h, wrap) => {
+    [30, 120, 200].forEach((x) => wrap((o) => {
+      if (pal.snow) {
+        disc(g, x + o, 14, 5, "#ffffff");
+        disc(g, x + o + 6, 15, 4, "#eef5f8");
+        px(g, x + o + 2, 10, "#ffffff");
+      } else {
+        disc(g, x + o, 13, 6, pal.fore);
+        disc(g, x + o + 7, 14, 5, pal.fore);
+        px(g, x + o - 2, 8, pal.tip);
+        px(g, x + o + 6, 10, pal.tip);
+        if (season === "fall" || season === "spring") {
+          px(g, x + o + 1, 9, pick(pal.bits));
+          px(g, x + o + 8, 11, pick(pal.bits));
+        }
+      }
+    }));
+  });
+  return { season, sky, clouds, hills, farPines, midPines, trees, ground, fore, shadow: pal.shadow };
+}
+
+let scenery = buildScenery(currentSeason());
+let seasonDay = "";
+
+export function applySeasonTheme(at = new Date()) {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(at);
+  if (day === seasonDay && scenery.season) {
+    if (typeof document !== "undefined") document.body.dataset.season = scenery.season;
+    return scenery.season;
   }
-});
-const clouds = layer(256, 30, (g, w, h, wrap) => {
-  [[20, 8], [90, 14], [150, 6], [210, 12]].forEach(([x, y]) => wrap((o) => {
-    disc(g, x + o, y, 4, "#ffffff");
-    disc(g, x + o + 5, y - 2, 5, "#ffffff");
-    disc(g, x + o + 11, y, 4, "#ffffff");
-    rect(g, x + o - 3, y + 3, 18, 2, "#d6eefa");
-  }));
-});
-const hills = layer(256, H, (g) => {
-  g.fillStyle = "#8fb9c9";
-  for (let x = 0; x < 256; x += 1) {
-    const y = Math.round(30 + 6 * Math.sin((x * Math.PI * 2) / 128) + 4 * Math.sin((x * Math.PI * 2) / 64 + 1));
-    g.fillRect(x, y, 1, H - y);
-  }
-});
-const farPines = layer(256, H, (g, w, h, wrap) => {
-  for (let x = 2; x < 256; x += (rnd(6, 10) | 0)) {
-    const hh = rnd(9, 17) | 0;
-    const xx = x | 0;
-    wrap((o) => pine(g, xx + o, 51, hh, "#5d9886"));
-  }
-  rect(g, 0, 51, 256, H, "#5d9886");
-});
-const midPines = layer(256, H, (g, w, h, wrap) => {
-  for (let x = 4; x < 256; x += (rnd(10, 15) | 0)) {
-    const hh = rnd(15, 25) | 0;
-    const xx = x | 0;
-    wrap((o) => pine(g, xx + o, 55, hh, "#356f57"));
-  }
-  rect(g, 0, 55, 256, H, "#356f57");
-});
-const trees = layer(256, H, (g, w, h, wrap) => {
-  [18, 84, 150, 206].forEach((x, i) => wrap((o) => {
-    const X = x + o;
-    rect(g, X - 2, 10, 6, G - 10, "#6b4426");
-    rect(g, X + 2, 10, 2, G - 10, "#4a2e18");
-    rect(g, X - 4, G - 2, 10, 2, "#4a2e18");
-    disc(g, X - 7, 8 + (i % 2) * 3, 9, "#2e7d36");
-    disc(g, X + 8, 6, 10, "#2e7d36");
-    disc(g, X, -2, 11, "#2e7d36");
-    disc(g, X - 8, 6 + (i % 2) * 3, 6, "#3d9a45");
-    disc(g, X + 7, 3, 7, "#3d9a45");
-    disc(g, X - 1, -4, 7, "#3d9a45");
-    px(g, X - 9, 3, "#6cc04a");
-    px(g, X - 8, 2, "#6cc04a");
-    px(g, X + 5, 0, "#6cc04a");
-    px(g, X + 6, -1, "#6cc04a");
-    px(g, X - 3, -6, "#6cc04a");
-  }));
-});
-const ground = layer(256, H, (g) => {
-  rect(g, 0, G, 256, H - G, "#9a6432");
-  rect(g, 0, G, 256, 3, "#5cc23c");
-  rect(g, 0, G, 256, 1, "#8ee05a");
-  for (let x = 0; x < 256; x += 1) {
-    if (R() < 0.35) px(g, x, G - 1, "#5cc23c");
-    if (R() < 0.12) px(g, x, G + 3, "#4a9a2e");
-  }
-  for (let i = 0; i < 70; i += 1) px(g, rnd(0, 256), rnd(G + 4, H), "#7a4a22");
-  for (let i = 0; i < 12; i += 1) {
-    const x = rnd(0, 250) | 0;
-    const y = rnd(G + 5, H - 3) | 0;
-    rect(g, x, y, 3, 2, "#b08a5a");
-    px(g, x, y + 1, "#8a6a40");
-  }
-  for (let i = 0; i < 10; i += 1) {
-    const x = rnd(0, 256) | 0;
-    const c = i % 2 ? "#ff6b6b" : "#ffe066";
-    px(g, x, G - 2, c);
-    px(g, x, G - 1, "#2f7a2f");
-  }
-});
-const fore = layer(256, 12, (g, w, h, wrap) => {
-  [30, 120, 200].forEach((x) => wrap((o) => {
-    disc(g, x + o, 13, 6, "#2a6e2e");
-    disc(g, x + o + 7, 14, 5, "#2a6e2e");
-    px(g, x + o - 2, 8, "#4fa04a");
-    px(g, x + o + 6, 10, "#4fa04a");
-  }));
-});
+  seasonDay = day;
+  const season = currentSeason(at);
+  if (typeof document !== "undefined") document.body.dataset.season = season;
+  if (scenery.season !== season) scenery = buildScenery(season);
+  return season;
+}
 
 const FONT = {
   0: "111101101101111",
@@ -1854,7 +1990,7 @@ function drawCops() {
     const fr = moving && (time * 8 | 0) % 2 ? copB : copA;
     const x = Math.round(c.x);
     const y = G - 15;
-    rect(ctx, x + 2, G, 8, 1, "#3e8c2c");
+    rect(ctx, x + 2, G, 8, 1, scenery.shadow);
     if (c.flip) {
       ctx.save();
       ctx.translate(x + 12, y);
@@ -1934,6 +2070,7 @@ export function stageElement() {
 
 export function setStageScene(next) {
   stageElement();
+  applySeasonTheme();
   if (Object.prototype.hasOwnProperty.call(next, "hearts")) paintHearts(next.hearts);
   if (Array.isArray(next.parade)) {
     scene.gear = null;
@@ -2124,7 +2261,7 @@ function drawMonster(m) {
   }
   const sx = (m.shake > 0 ? Math.round(Math.sin(m.shake * 80) * 2) : 0) + Math.round(m.lunge || 0);
   const sw = Math.round(d.w * 0.7);
-  rect(ctx, m.x + (d.w - sw) / 2 + sx, G, sw, 1, "#3e8c2c");
+  rect(ctx, m.x + (d.w - sw) / 2 + sx, G, sw, 1, scenery.shadow);
   const dx = Math.round(m.x - 16 + sx);
   const dy = G + 1 - 52;
   if (m.flee) {
@@ -2356,20 +2493,20 @@ function draw() {
   if (!ctx) return;
   ctx.save();
   if (shake > 0) ctx.translate(Math.round(rnd(-1.5, 1.5)), Math.round(rnd(-1, 1)));
-  ctx.drawImage(sky, 0, 0);
-  drawLayer(clouds, worldX * 0.08 + time * 2, 2);
-  drawLayer(hills, worldX * 0.15);
-  drawLayer(farPines, worldX * 0.3);
-  drawLayer(midPines, worldX * 0.5);
-  drawLayer(trees, worldX * 0.7);
-  drawLayer(ground, worldX);
+  ctx.drawImage(scenery.sky, 0, 0);
+  drawLayer(scenery.clouds, worldX * 0.08 + time * 2, 2);
+  drawLayer(scenery.hills, worldX * 0.15);
+  drawLayer(scenery.farPines, worldX * 0.3);
+  drawLayer(scenery.midPines, worldX * 0.5);
+  drawLayer(scenery.trees, worldX * 0.7);
+  drawLayer(scenery.ground, worldX);
   if (paradeOn && parade.length) {
     const walking = scroll > 2;
     parade.slice().sort((a, b) => a.x - b.x).forEach((walker) => {
       const fr = walking && walker.pose === "walk" && ((time * 8 + walker.x) | 0) % 2;
       const x = Math.round(walker.x);
       const y = Math.round(G - ((walker.h || 16) - 1)) - (fr ? 1 : 0);
-      rect(ctx, x + 3, G, 8, 1, "#3e8c2c");
+      rect(ctx, x + 3, G, 8, 1, scenery.shadow);
       ctx.drawImage(fr ? walker.sprites.b : walker.sprites.a, x, y);
       if (walker.weapon?.image) drawGearWeapon(walker.weapon, x + 11, y + (walker.hand ?? 10), walker.ang);
       else drawBroom(x + 11, y + (walker.hand ?? 10), walker.ang);
@@ -2383,7 +2520,7 @@ function draw() {
   const hand = look?.hand ?? 10;
   const y = Math.round(G - (stand - 1) + hero.jy) - (fr ? 1 : 0);
   if (!(paradeOn && parade.length)) {
-  rect(ctx, x + 3, G, 8, 1, "#3e8c2c");
+  rect(ctx, x + 3, G, 8, 1, scenery.shadow);
   if (hero.smear > 0 && !scene.gear?.weapon) {
     for (let a = -160; a <= 35; a += 7) {
       const r = a * (Math.PI / 180);
@@ -2419,7 +2556,7 @@ function draw() {
   particles.forEach((p) => rect(ctx, p.x, p.y, p.s || 1, p.s || 1, p.c));
   coins.forEach((c) => { if (c.t >= 0) drawCoin(c.x, c.y, time + c.x * 0.05); });
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
-  drawLayer(fore, worldX * 1.3, H - 12);
+  drawLayer(scenery.fore, worldX * 1.3, H - 12);
   if (siren) {
     const on = (time * 6 | 0) % 2;
     rect(ctx, 0, 0, W, 1, on ? "#ff4a4a" : "#4a7aff");

@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js";
 import { mergeBattleLine, splitBattleLine } from "./battle-line.js";
 import { createChoreQuest } from "./chore-quest.js";
 
@@ -1082,14 +1082,22 @@ function assigneeName(chore) {
 
 let pinHold = false;
 
+const SEASON_THEME = {
+  spring: "#8fcaf0",
+  summer: "#7eb8c9",
+  fall: "#c9a878",
+  winter: "#9bb0c0",
+};
+
 function render() {
   pinHold = true;
   app.querySelector("dialog.pin-dialog[open]")?.close();
   const view = views[route.name] || views.welcome;
   const play = PLAY_ROUTES.has(route.name);
   document.body.classList.toggle("play", play);
+  const season = applySeasonTheme();
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", play ? "#7eb8c9" : "#f3efe4");
+  if (meta) meta.setAttribute("content", play ? SEASON_THEME[season] || SEASON_THEME.summer : "#f3efe4");
   const host = document.querySelector(".stage");
   if (host) document.body.appendChild(host);
   app.innerHTML = view();
@@ -2226,6 +2234,11 @@ async function signOut() {
 
 blockPinchZoom();
 installPullToRefresh();
+setInterval(() => {
+  const before = document.body.dataset.season || "";
+  const next = applySeasonTheme();
+  if (before && before !== next) render();
+}, 60_000);
 boot();
 
 function blockPinchZoom() {
