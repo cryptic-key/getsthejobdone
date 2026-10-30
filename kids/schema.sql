@@ -105,6 +105,12 @@ create table if not exists public.chore_sections (
   created_at timestamptz not null default now()
 );
 alter table public.chore_sections enable row level security;
+drop policy if exists sections_select on public.chore_sections;
+create policy sections_select on public.chore_sections
+  for select to authenticated
+  using (household_id = private.household_id());
+grant select on public.chore_sections to authenticated;
+revoke all on public.chore_sections from public, anon;
 do $$ begin
   alter table public.chore_templates
     drop constraint if exists chore_templates_section_id_fkey;
