@@ -815,8 +815,16 @@ details.library .lede { margin-top: 8px; }
 }
 .switch[aria-pressed="true"] { background: var(--leaf); }
 .switch[aria-pressed="true"] i { transform: translateX(20px); }
-.daily-chore .chore-copy { flex: 1; min-width: 140px; }
-.daily-chore .monster-choice { flex-basis: 100%; }
+.daily-tools {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  align-content: start;
+  flex: none;
+}
+.daily-tools .btn { padding: 6px 8px; font-size: 0.82rem; white-space: nowrap; }
+.daily-chore .chore-copy { flex: 1 1 120px; min-width: 120px; }
+.daily-chore .monster-choice { flex: none; }
 .drag-handle {
   border: none;
   background: transparent;
@@ -858,9 +866,9 @@ details.library .lede { margin-top: 8px; }
   margin-bottom: 8px;
 }
 .drop-empty { margin: 0; padding: 12px 0; }
-.daily-chore .chore-copy .btn { margin-top: 6px; }
 .chore.off .chore-copy strong,
 .chore.off .chore-copy .tiny { opacity: 0.45; }
+.chore.off .monster-choice { opacity: 0.55; }
 .monster-choice {
   display: inline-flex;
   align-items: center;

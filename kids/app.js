@@ -1242,12 +1242,15 @@ const views = {
       return `<form class="chore daily-chore${on ? "" : " off"}" data-action="save-daily" data-drag-item="${esc(chore.id)}" draggable="false">
         <input type="hidden" name="id" value="${chore.id}">
         ${dragHandle()}
-        <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
-        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day · ${esc(spriteName(sprite))}${on ? "" : " · Hidden from the daily board"}</div><button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button></div>
+        <div class="daily-tools">
+          <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
+          <button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button>
+        </div>
+        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${on ? "" : " · Hidden from the daily board"}</div></div>
+        ${monsterChoice(sprite, chore.id)}
         <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
         <button class="btn small leaf" type="submit">Save</button>
         <button class="btn small ghost" type="button" data-action="remove-daily" data-id="${chore.id}">Remove</button>
-        ${monsterChoice(sprite, chore.id)}
       </form>`;
     };
     const dailyGroups = [
