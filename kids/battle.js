@@ -1341,22 +1341,67 @@ export function drawHeroIcon(target, color) {
 export function paintHeroBadge(target, heroKey, weapon, color) {
   const look = heroLook(heroKey, color);
   const src = look.a;
-  const padTop = 18;
-  const padRight = 26;
-  target.width = src.width + padRight;
-  target.height = src.height + padTop;
+  const padTop = 20;
+  const padSide = 28;
+  const padBottom = 4;
+  const draft = document.createElement("canvas");
+  draft.width = src.width + padSide * 2;
+  draft.height = src.height + padTop + padBottom;
+  const dg = draft.getContext("2d");
+  dg.imageSmoothingEnabled = false;
+  const ox = padSide;
+  dg.drawImage(src, ox, padTop);
+  const image = weapon?.image;
+  if (image) {
+    const q = -55 * (Math.PI / 180);
+    dg.save();
+    dg.translate(ox + 11, padTop + look.hand);
+    dg.rotate(q);
+    dg.drawImage(image, -(weapon.grip?.[0] || 0), -(weapon.grip?.[1] || 0));
+    dg.restore();
+  }
+
+  const pixels = dg.getImageData(0, 0, draft.width, draft.height).data;
+  let left = draft.width;
+  let top = draft.height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < draft.height; y += 1) {
+    for (let x = 0; x < draft.width; x += 1) {
+      if (pixels[(y * draft.width + x) * 4 + 3] < 8) continue;
+      if (x < left) left = x;
+      if (y < top) top = y;
+      if (x > right) right = x;
+      if (y > bottom) bottom = y;
+    }
+  }
+  if (right < left || bottom < top) {
+    left = ox;
+    top = padTop;
+    right = ox + src.width - 1;
+    bottom = padTop + src.height - 1;
+  }
+
+  const scale = 4;
+  const margin = 2 * scale;
+  const bodyW = right - left + 1;
+  const bodyH = bottom - top + 1;
+  target.width = bodyW * scale + margin * 2;
+  target.height = bodyH * scale + margin * 2;
   const g = target.getContext("2d");
   g.imageSmoothingEnabled = false;
   g.clearRect(0, 0, target.width, target.height);
-  g.drawImage(src, 0, padTop);
-  const image = weapon?.image;
-  if (!image) return;
-  const q = -55 * (Math.PI / 180);
-  g.save();
-  g.translate(11, padTop + look.hand);
-  g.rotate(q);
-  g.drawImage(image, -(weapon.grip?.[0] || 0), -(weapon.grip?.[1] || 0));
-  g.restore();
+  g.drawImage(
+    draft,
+    left,
+    top,
+    bodyW,
+    bodyH,
+    margin,
+    margin,
+    bodyW * scale,
+    bodyH * scale
+  );
 }
 
 const POSE = { walk: -55, idle: -55, windup: -160, swing: 35, block: -78, victory: -95 };

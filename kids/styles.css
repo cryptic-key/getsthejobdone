@@ -650,16 +650,22 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
 body.play .kid-pick {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  align-content: center;
+  gap: 10px;
   text-align: center;
   background: #fffdf8;
-  min-height: 132px;
+  min-height: 168px;
+  padding: 16px 12px 14px;
 }
 body.play .kid-pick .face { width: 72px; height: 72px; animation: bob 2s ease-in-out infinite; }
 body.play .kid-pick .hero-icon {
-  width: 96px;
+  width: 128px;
+  max-width: 100%;
   height: auto;
+  display: block;
+  margin-inline: auto;
   image-rendering: pixelated;
+  image-rendering: crisp-edges;
   animation: bob 2s ease-in-out infinite;
 }
 body.play .kid-pick:nth-child(2) .face { animation-delay: .2s; }
