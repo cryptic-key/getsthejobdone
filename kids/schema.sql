@@ -1666,6 +1666,16 @@ alter table private.parent_pin_guard enable row level security;
 drop function if exists public.list_players();
 drop function if exists private.list_players();
 
+alter table public.parents add column if not exists color text not null default 'teal';
+alter table public.parents drop constraint if exists parents_color_check;
+alter table public.parents add constraint parents_color_check
+  check (color in ('leaf', 'sun', 'sky', 'clay', 'plum', 'teal', 'rose', 'cobalt', 'coral', 'indigo', 'mustard', 'mint'));
+alter table public.parents add column if not exists hero text not null default 'knight';
+alter table public.parents drop constraint if exists parents_hero_check;
+alter table public.parents add constraint parents_hero_check
+  check (hero in ('knight', 'princess', 'king', 'queen'));
+alter table public.parents add column if not exists weapon text not null default 'broom';
+
 create or replace function private.list_players()
 returns table (id uuid, name text, color text, kind text, has_pin boolean, hero text, weapon text)
 language sql
@@ -1678,10 +1688,10 @@ as $$
     select k.id, k.name, k.color, 'kid'::text as kind, true as has_pin, k.hero, k.weapon, k.created_at, 0 as grp
     from public.kids k
     union all
-    select p.id, p.name, 'teal'::text, 'parent'::text,
+    select p.id, p.name, p.color, 'parent'::text,
       exists (select 1 from private.parent_pins pins where pins.parent_id = p.id),
-      null::text,
-      'broom'::text,
+      p.hero,
+      p.weapon,
       p.created_at, 1
     from public.parents p
   ) q
@@ -2683,5 +2693,95 @@ grant execute on function private.save_cage_goal(integer) to authenticated;
 grant execute on function public.warn_kid(uuid, text) to authenticated;
 grant execute on function public.kid_ack_warn(text, bigint) to anon, authenticated;
 grant execute on function public.save_cage_goal(integer) to authenticated;
+
+create or replace function private.parent_set_hero(p_hero text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  pid uuid;
+begin
+  if p_hero not in ('knight', 'princess', 'king', 'queen') then
+    raise exception 'pick a hero';
+  end if;
+  select id into pid from public.parents where user_id = auth.uid() and household_id = hid;
+  if pid is null then
+    raise exception 'not a parent';
+  end if;
+  update public.parents set hero = p_hero where id = pid;
+end;
+$$;
+
+create or replace function private.parent_set_color(p_color text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  pid uuid;
+  chosen text := coalesce(p_color, 'teal');
+begin
+  if chosen not in ('leaf', 'sun', 'sky', 'clay', 'plum', 'teal', 'rose', 'cobalt', 'coral', 'indigo', 'mustard', 'mint') then
+    raise exception 'pick a color';
+  end if;
+  select id into pid from public.parents where user_id = auth.uid() and household_id = hid;
+  if pid is null then
+    raise exception 'not a parent';
+  end if;
+  update public.parents set color = chosen where id = pid;
+end;
+$$;
+
+create or replace function private.parent_set_weapon(p_weapon text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  pid uuid;
+begin
+  if not exists (select 1 from private.weapon_rules() where key = p_weapon) then
+    raise exception 'unknown weapon';
+  end if;
+  select id into pid from public.parents where user_id = auth.uid() and household_id = hid;
+  if pid is null then
+    raise exception 'not a parent';
+  end if;
+  update public.parents set weapon = p_weapon where id = pid;
+end;
+$$;
+
+create or replace function public.parent_set_hero(p_hero text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.parent_set_hero(p_hero); end $$;
+
+create or replace function public.parent_set_color(p_color text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.parent_set_color(p_color); end $$;
+
+create or replace function public.parent_set_weapon(p_weapon text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.parent_set_weapon(p_weapon); end $$;
+
+revoke all on function private.parent_set_hero(text) from public, anon, authenticated;
+revoke all on function private.parent_set_color(text) from public, anon, authenticated;
+revoke all on function private.parent_set_weapon(text) from public, anon, authenticated;
+revoke all on function public.parent_set_hero(text) from public, anon, authenticated;
+revoke all on function public.parent_set_color(text) from public, anon, authenticated;
+revoke all on function public.parent_set_weapon(text) from public, anon, authenticated;
+
+grant execute on function private.parent_set_hero(text) to authenticated;
+grant execute on function private.parent_set_color(text) to authenticated;
+grant execute on function private.parent_set_weapon(text) to authenticated;
+grant execute on function public.parent_set_hero(text) to authenticated;
+grant execute on function public.parent_set_color(text) to authenticated;
+grant execute on function public.parent_set_weapon(text) to authenticated;
 
 notify pgrst, 'reload schema';

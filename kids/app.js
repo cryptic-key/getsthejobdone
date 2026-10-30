@@ -109,8 +109,9 @@ function nice(error) {
   if (/already asked/i.test(msg)) return "You already asked for that.";
   if (/sign in again/i.test(msg)) return "Sign in again.";
   if (/weapon locked/i.test(msg)) return "That weapon is still locked.";
-  if (/pick a hero/i.test(msg)) return "Pick the adventurer or the princess.";
+  if (/pick a hero/i.test(msg)) return "Pick a hero from the choices.";
   if (/pick a color/i.test(msg)) return "Pick one of the colors under your hero.";
+  if (/unknown weapon/i.test(msg)) return "That weapon is not in the armory.";
   if (/section name required/i.test(msg)) return "Give the section a name.";
   if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
   if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
@@ -190,7 +191,7 @@ async function loadParent() {
   if (!user) return false;
   const { data: me, error } = await supabase
     .from("parents")
-    .select("id,name,email,household_id,households(name,code,points_per_dollar,points_per_30,unground_points)")
+    .select("id,name,email,color,hero,weapon,household_id,households(name,code,points_per_dollar,points_per_30,unground_points)")
     .eq("user_id", user.id)
     .maybeSingle();
   if (error) throw error;
@@ -198,7 +199,7 @@ async function loadParent() {
   await rpc("ensure_today");
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins] = await Promise.all([
-    supabase.from("parents").select("id,name,email").order("created_at"),
+    supabase.from("parents").select("id,name,email,color,hero,weapon").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
@@ -220,7 +221,13 @@ async function loadParent() {
       pointsPer30: me.households.points_per_30,
       ungroundPoints: Number(me.households.unground_points) || 0,
     },
-    parents: parents.data.map((person) => ({ ...person, hasPin: readyPins.has(person.id) })),
+    parents: parents.data.map((person) => ({
+      ...person,
+      color: COLORS.includes(person.color) ? person.color : "teal",
+      hero: parentLook(person.hero, person.name),
+      weapon: person.weapon || "broom",
+      hasPin: readyPins.has(person.id),
+    })),
     kids: kids.data.map(mapKid),
     chores: chores.data.map((chore) => ({
       ...chore,
@@ -339,11 +346,22 @@ function face(color) {
   return `<svg class="face" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="34" r="26" fill="${fill}"/><circle cx="22" cy="30" r="4" fill="#fff"/><circle cx="42" cy="30" r="4" fill="#fff"/><circle cx="23" cy="31" r="2" fill="#24312c"/><circle cx="43" cy="31" r="2" fill="#24312c"/><path d="M22 42 Q32 50 42 42" fill="none" stroke="#24312c" stroke-width="3" stroke-linecap="round"/></svg>`;
 }
 
-function parentHero(name) {
+const PARENT_HEROES = {
+  knight: { name: "Adventurer" },
+  princess: { name: "Princess" },
+  king: { name: "King" },
+  queen: { name: "Queen" },
+};
+
+function parentHeroFallback(name) {
   const key = String(name || "").trim().toLowerCase();
   if (key === "alex") return "king";
   if (key === "jackie") return "queen";
   return "knight";
+}
+
+function parentLook(hero, name) {
+  return PARENT_HEROES[hero] ? hero : parentHeroFallback(name);
 }
 
 function kidHero(hero) {
@@ -353,7 +371,15 @@ function kidHero(hero) {
 function doorPeople() {
   return [
     ...gateKids.map((child) => ({ id: child.id, name: child.name, color: child.color, kind: "kid", hasPin: true, hero: kidHero(child.hero), weapon: child.weapon || "broom" })),
-    ...gateParents.map((person) => ({ id: person.id, name: person.name, color: person.color || "teal", kind: "parent", hasPin: person.hasPin, hero: parentHero(person.name), weapon: "broom" })),
+    ...gateParents.map((person) => ({
+      id: person.id,
+      name: person.name,
+      color: person.color || "teal",
+      kind: "parent",
+      hasPin: person.hasPin,
+      hero: parentLook(person.hero, person.name),
+      weapon: person.weapon || "broom",
+    })),
   ];
 }
 
@@ -420,7 +446,9 @@ async function loadPlayers() {
     gateParents = data.filter((row) => row.kind === "parent").map((row) => ({
       id: row.id,
       name: row.name,
-      color: row.color || "teal",
+      color: COLORS.includes(row.color) ? row.color : "teal",
+      hero: parentLook(row.hero, row.name),
+      weapon: row.weapon || "broom",
       hasPin: Boolean(row.has_pin),
     }));
     return;
@@ -612,6 +640,10 @@ function heroGear() {
 }
 
 function heroColorName() {
+  if (db.session?.role === "parent") {
+    const me = parent();
+    return COLORS.includes(me?.color) ? me.color : "teal";
+  }
   const child = kid();
   return COLORS.includes(child?.color) ? child.color : "leaf";
 }
@@ -633,6 +665,13 @@ function meter(value, goal) {
   const safeValue = Math.max(0, Math.min(safeGoal, Number(value) || 0));
   const pct = Math.round((safeValue / safeGoal) * 100);
   return `<div class="meter" role="progressbar" aria-valuenow="${safeValue}" aria-valuemin="0" aria-valuemax="${safeGoal}" aria-valuetext="${safeValue} of ${safeGoal}"><span style="width:${pct}%"></span></div><small class="meter-count">${safeValue} / ${safeGoal}</small>`;
+}
+
+function colorSwatches(selected) {
+  return COLORS.map(
+    (name) =>
+      `<button type="button" class="swatch ${esc(name)}" data-action="set-color" data-color="${esc(name)}" aria-pressed="${selected === name ? "true" : "false"}" aria-label="${esc(name)}"></button>`
+  ).join("");
 }
 
 function heroBoard() {
@@ -679,16 +718,12 @@ function heroBoard() {
     </figure>`;
   }).join("");
   const color = heroColorName();
-  const swatches = COLORS.map(
-    (name) =>
-      `<button type="button" class="swatch ${esc(name)}" data-action="set-color" data-color="${esc(name)}" aria-pressed="${color === name ? "true" : "false"}" aria-label="${esc(name)}"></button>`
-  ).join("");
   return `<section class="card stack">
       <h2 class="page-title">Choose your hero</h2>
       <div class="hero-picks">${heroes}</div>
       <div>
         <div class="field-label">Color</div>
-        <div class="swatches hero-swatches">${swatches}</div>
+        <div class="swatches hero-swatches">${colorSwatches(color)}</div>
       </div>
       <p class="hint">${stats.battles} quests finished · ${stats.streak}-day streak</p>
     </section>
@@ -704,6 +739,50 @@ function heroBoard() {
     <section class="card stack">
       <h2 class="page-title">Monsters defeated</h2>
       <div class="monster-log">${monsters}</div>
+    </section>
+    ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}`;
+}
+
+function parentHeroBoard() {
+  const quest = questCatalog();
+  const me = parent();
+  const heroKey = parentLook(me?.hero, me?.name);
+  const weaponKey = quest.weapons[me?.weapon] ? me.weapon : "broom";
+  const color = heroColorName();
+  const heroes = Object.entries(PARENT_HEROES)
+    .map(
+      ([key, hero]) => `<button type="button" class="hero-pick" data-action="set-hero" data-hero="${esc(key)}" aria-pressed="${key === heroKey ? "true" : "false"}">
+      <canvas data-quest-hero="${esc(key)}" width="14" height="16" aria-hidden="true"></canvas>
+      <span>${esc(hero.name)}</span>
+    </button>`
+    )
+    .join("");
+  const weapons = Object.entries(quest.weapons)
+    .map(([key, weapon]) => {
+      const equipped = key === weaponKey;
+      return `<article class="armory-card open${equipped ? " equipped" : ""}">
+      <canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas>
+      <div>
+        <strong>${esc(weapon.name)}</strong>
+        <p class="tiny muted">${esc(weapon.perk || "Ready for the door parade.")}</p>
+        ${equipped ? `<span class="chip">Equipped</span>` : `<button class="btn small leaf" type="button" data-action="set-weapon" data-weapon="${esc(key)}">Equip</button>`}
+      </div>
+    </article>`;
+    })
+    .join("");
+  return `<section class="card stack">
+      <h2 class="page-title">Choose your hero</h2>
+      <p class="lede">This look shows on the front door and the trail parade.</p>
+      <div class="hero-picks parent-hero-picks">${heroes}</div>
+      <div>
+        <div class="field-label">Color</div>
+        <div class="swatches hero-swatches">${colorSwatches(color)}</div>
+      </div>
+    </section>
+    <section class="card stack">
+      <h2 class="page-title">Weapons</h2>
+      <p class="lede">Parents keep the whole armory unlocked.</p>
+      <div class="armory">${weapons}</div>
     </section>
     ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}`;
 }
@@ -859,6 +938,7 @@ function parentNav(current) {
   const waiting = (db.chores || []).filter((chore) => chore.status === "submitted").length;
   return `<nav class="nav">${[
     ["family", "Family"],
+    ["parent-hero", "My Hero"],
     ["chores", "Tasks"],
     ["chart", waiting ? `Approve (${waiting})` : "Approve"],
     ["shop", "Shop"],
@@ -1695,6 +1775,19 @@ const views = {
     );
   },
 
+  "parent-hero"() {
+    const me = parent();
+    if (!me) return views.family();
+    return shell(
+      me.name,
+      "My Hero",
+      `<div class="stack">
+        ${parentHeroBoard()}
+      </div>`,
+      parentNav("parent-hero")
+    );
+  },
+
   me() {
     const child = kid();
     return shell(
@@ -1787,9 +1880,18 @@ app.addEventListener("click", (event) => {
       "chart"
     );
   }
-  if (action === "set-hero") run(() => rpc("kid_set_hero", { p_token: sessionStorage.getItem(KID_TOKEN), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
-  if (action === "set-color") run(() => rpc("kid_set_color", { p_token: sessionStorage.getItem(KID_TOKEN), p_color: btn.dataset.color }), "Color saved.", "hero");
-  if (action === "set-weapon") run(() => rpc("kid_set_weapon", { p_token: sessionStorage.getItem(KID_TOKEN), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
+  if (action === "set-hero") {
+    if (db.session?.role === "parent") run(() => rpc("parent_set_hero", { p_hero: btn.dataset.hero }), "Hero saved.", "parent-hero");
+    else run(() => rpc("kid_set_hero", { p_token: sessionStorage.getItem(KID_TOKEN), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
+  }
+  if (action === "set-color") {
+    if (db.session?.role === "parent") run(() => rpc("parent_set_color", { p_color: btn.dataset.color }), "Color saved.", "parent-hero");
+    else run(() => rpc("kid_set_color", { p_token: sessionStorage.getItem(KID_TOKEN), p_color: btn.dataset.color }), "Color saved.", "hero");
+  }
+  if (action === "set-weapon") {
+    if (db.session?.role === "parent") run(() => rpc("parent_set_weapon", { p_weapon: btn.dataset.weapon }), "Weapon equipped.", "parent-hero");
+    else run(() => rpc("kid_set_weapon", { p_token: sessionStorage.getItem(KID_TOKEN), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
+  }
   if (action === "pick-sprite") {
     const form = btn.closest("form");
     const input = form?.querySelector('input[name="sprite"]');
