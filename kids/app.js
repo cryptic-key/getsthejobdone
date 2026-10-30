@@ -1,47 +1,31 @@
-const STORAGE_KEY = "gtjd-our-chart-v1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
+
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal"];
+const CODE_KEY = "chart-family-code";
+const KID_TOKEN = "chart-kid-token";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const sideAuth = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    storageKey: "chart-side-auth",
+  },
+});
 
 const app = document.querySelector("#app");
-let db = load();
-let route = startRoute();
+let schemaReady = false;
+let db = blank();
+let gateKids = [];
+let route = { name: "loading" };
 let draft = {};
 let notice = "";
-
-function load() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (saved && saved.family) return saved;
-  } catch (_) {}
-  return blank();
-}
+let busy = false;
 
 function blank() {
-  return {
-    family: null,
-    parents: [],
-    kids: [],
-    chores: [],
-    items: [],
-    requests: [],
-    activity: [],
-    session: null,
-  };
-}
-
-function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-}
-
-function startRoute() {
-  if (!db.session) return { name: "welcome" };
-  if (db.session.role === "parent" && parent()) return { name: "family" };
-  if (db.session.role === "kid" && kid()) return { name: "today" };
-  db.session = null;
-  return { name: "welcome" };
-}
-
-function uid() {
-  return crypto.randomUUID();
+  return { family: null, parents: [], kids: [], chores: [], items: [], requests: [], activity: [], session: null };
 }
 
 function esc(value) {
@@ -52,36 +36,25 @@ function esc(value) {
     .replace(/"/g, "&quot;");
 }
 
-async function hashSecret(secret, salt) {
-  const data = new TextEncoder().encode(`${salt}:${secret}`);
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function needsFirstParent() {
-  return !db.family || db.parents.length === 0;
-}
-
 function parent() {
   return db.parents.find((p) => p.id === db.session?.id) || null;
 }
 
 function kid() {
-  return db.kids.find((k) => k.id === db.session?.id) || null;
+  return db.kids.find((k) => k.id === db.session?.id) || db.kids[0] || null;
 }
 
 function kidById(id) {
-  return db.kids.find((k) => k.id === id) || null;
+  return db.kids.find((k) => k.id === id) || gateKids.find((k) => k.id === id) || null;
 }
 
 function money(cents) {
-  return `$${(cents / 100).toFixed(2)}`;
+  return `$${(Number(cents) / 100).toFixed(2)}`;
 }
 
 function when(iso) {
   if (!iso) return "";
-  const date = new Date(iso);
-  return date.toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -91,54 +64,194 @@ function when(iso) {
 }
 
 function grounded(child) {
-  return child.groundedUntil && new Date(child.groundedUntil).getTime() > Date.now();
+  return child?.groundedUntil && new Date(child.groundedUntil).getTime() > Date.now();
 }
 
-function log(text) {
-  db.activity.unshift({ id: uid(), text, at: new Date().toISOString() });
-  db.activity = db.activity.slice(0, 40);
+async function rpc(name, args) {
+  const { data, error } = await supabase.rpc(name, args);
+  if (error) throw error;
+  return data;
+}
+
+function nice(error) {
+  const msg = error?.message || "Something went wrong";
+  if (/wrong pin/i.test(msg)) return "That PIN does not match.";
+  if (/email not confirmed/i.test(msg)) return "Confirm that email first, then sign in.";
+  if (/not a parent/i.test(msg)) return "This login is not on a family yet.";
+  if (/already has an account/i.test(msg)) return "That email already has an account. They can sign in.";
+  if (/^grounded$/i.test(msg)) return "Device time is locked while you are grounded.";
+  if (/not enough points/i.test(msg)) return "Not enough points for that.";
+  if (/already asked/i.test(msg)) return "You already asked for that.";
+  if (/sign in again/i.test(msg)) return "Sign in again.";
+  return msg;
 }
 
 function go(name, extra) {
   route = { name, ...(extra || {}) };
   draft = {};
-  notice = "";
+  notice = extra?.notice || "";
   render();
 }
 
-function mark(svg) {
-  return `<span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24">${svg}</svg></span>`;
+async function boot() {
+  try {
+  const { error } = await supabase.from("households").select("id").limit(1);
+  schemaReady = !error;
+  if (!schemaReady) {
+    route = { name: "welcome" };
+    render();
+    return;
+  }
+  const { data } = await supabase.auth.getSession();
+  if (data.session) {
+    const ok = await loadParent();
+    route = { name: ok ? "family" : "parent-auth", mode: "signin" };
+    if (!ok) notice = "Sign in with a parent account on this family.";
+  } else if (sessionStorage.getItem(KID_TOKEN)) {
+    const ok = await loadKid();
+    route = { name: ok ? "today" : "welcome" };
+  } else {
+    route = { name: "welcome" };
+  }
+  render();
+  } catch (error) {
+    schemaReady = false;
+    notice = nice(error);
+    route = { name: "welcome" };
+    render();
+  }
 }
 
-const check = `<path d="M5 12.5 9.2 17 19 7"/>`;
+function mapKid(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    points: row.points,
+    cashCents: row.cash_cents,
+    minutes: row.minutes,
+    groundedUntil: row.grounded_until,
+  };
+}
+
+async function loadParent() {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return false;
+  const { data: me, error } = await supabase
+    .from("parents")
+    .select("id,name,email,household_id,households(name,code,points_per_dollar,points_per_30)")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!me?.households) return false;
+  localStorage.setItem(CODE_KEY, me.households.code);
+  const [parents, kids, chores, items, requests, activity] = await Promise.all([
+    supabase.from("parents").select("id,name,email").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until").order("created_at"),
+    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status").neq("status", "approved").order("created_at"),
+    supabase.from("shop_items").select("id,name,cost").order("created_at"),
+    supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
+    supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(20),
+  ]);
+  for (const result of [parents, kids, chores, items, requests, activity]) {
+    if (result.error) throw result.error;
+  }
+  db = {
+    family: {
+      name: me.households.name,
+      code: me.households.code,
+      pointsPerDollar: me.households.points_per_dollar,
+      pointsPer30: me.households.points_per_30,
+    },
+    parents: parents.data,
+    kids: kids.data.map(mapKid),
+    chores: chores.data.map((chore) => ({
+      ...chore,
+      kidId: chore.kid_id,
+      cashCents: chore.cash_cents,
+    })),
+    items: items.data,
+    requests: requests.data.map((req) => ({ ...req, kidId: req.kid_id, itemId: req.item_id })),
+    activity: activity.data.map((row) => ({ id: row.id, kidId: row.kid_id, text: row.body, at: row.created_at })),
+    session: { role: "parent", id: me.id },
+  };
+  return true;
+}
+
+async function loadKid() {
+  const token = sessionStorage.getItem(KID_TOKEN);
+  if (!token) return false;
+  const { data, error } = await supabase.rpc("kid_snapshot", { p_token: token });
+  if (error) {
+    sessionStorage.removeItem(KID_TOKEN);
+    return false;
+  }
+  const snap = data;
+  db = {
+    family: {
+      name: snap.family.name,
+      code: snap.family.code,
+      pointsPerDollar: snap.family.points_per_dollar,
+      pointsPer30: snap.family.points_per_30,
+    },
+    parents: [],
+    kids: [mapKid(snap.kid)],
+    chores: snap.chores.map((chore) => ({ ...chore, kidId: snap.kid.id, cashCents: chore.cash_cents })),
+    items: snap.items,
+    requests: snap.requests.map((req) => ({ ...req, kidId: snap.kid.id, itemId: req.item_id })),
+    activity: snap.activity.map((row) => ({ id: row.id, text: row.body, at: row.created_at })),
+    session: { role: "kid", id: snap.kid.id },
+  };
+  return true;
+}
+
+async function run(work, message, next) {
+  if (busy) return;
+  busy = true;
+  try {
+    await work();
+    if (db.session?.role === "kid") await loadKid();
+    else if (db.session?.role === "parent") await loadParent();
+    notice = message || "";
+    if (next) route = { name: next };
+    else route = { ...route, error: "" };
+    draft = {};
+    render();
+  } catch (error) {
+    route = { ...route, error: nice(error) };
+    render();
+  } finally {
+    busy = false;
+  }
+}
+
+function mark() {
+  return `<span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5 9.2 17 19 7"/></svg></span>`;
+}
 
 function shell(title, sub, body, nav) {
-  const me = db.session?.role === "parent" ? parent() : kid();
+  const signedIn = Boolean(db.session);
   return `
     <header class="top">
       <button class="brand" data-action="home">
-        ${mark(check)}
-        <span>
-          <h1>${esc(title)}</h1>
-          <p>${esc(sub)}</p>
-        </span>
+        ${mark()}
+        <span><h1>${esc(title)}</h1><p>${esc(sub)}</p></span>
       </button>
-      ${me ? `<button class="btn ghost small" data-action="sign-out">Sign out</button>` : ""}
+      ${signedIn ? `<button class="btn ghost small" data-action="sign-out">Sign out</button>` : ""}
     </header>
     ${nav || ""}
     ${notice ? `<div class="banner info" style="margin-bottom:14px">${esc(notice)}</div>` : ""}
     ${body}
-    <footer class="note">Saved in this browser for now. Screen Time still gets set by a parent in Settings.</footer>
-  `;
+    <footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`;
 }
 
 function parentNav(current) {
-  const tabs = [
+  return `<nav class="nav">${[
     ["family", "Family"],
     ["chart", "Chart"],
     ["shop", "Shop"],
-  ];
-  return `<nav class="nav">${tabs
+  ]
     .map(
       ([id, label]) =>
         `<button data-action="goto" data-to="${id}" ${current === id ? 'aria-current="page"' : ""}>${label}</button>`
@@ -147,12 +260,11 @@ function parentNav(current) {
 }
 
 function kidNav(current) {
-  const tabs = [
+  return `<nav class="nav">${[
     ["today", "Today"],
     ["kid-shop", "Shop"],
     ["me", "Me"],
-  ];
-  return `<nav class="nav">${tabs
+  ]
     .map(
       ([id, label]) =>
         `<button data-action="goto" data-to="${id}" ${current === id ? 'aria-current="page"' : ""}>${label}</button>`
@@ -168,96 +280,111 @@ function balances(child) {
   </div>`;
 }
 
+function payLabel(chore) {
+  const parts = [];
+  if (chore.points) parts.push(`${chore.points} pts`);
+  if (chore.cashCents) parts.push(money(chore.cashCents));
+  if (chore.minutes) parts.push(`${chore.minutes} min`);
+  return parts.join(" · ") || "No pay set";
+}
+
 function render() {
   const view = views[route.name] || views.welcome;
   app.innerHTML = view();
 }
 
 const views = {
+  loading() {
+    return `<div class="card"><h1>Our chart</h1><p class="lede">Loading…</p></div>`;
+  },
+
   welcome() {
-    const hasFamily = Boolean(db.family);
+    if (!schemaReady) {
+      return `
+        <header class="top"><div class="brand">${mark()}<span><h1>Our chart</h1><p>Gets the job done</p></span></div></header>
+        <section class="hero">
+          <h2>Chores, rewards, and device time.</h2>
+          <p class="lede">Parents keep the accounts. Kids open the chart with a PIN.</p>
+        </section>
+        <div class="card stack">
+          <h2 class="page-title">Supabase is connected</h2>
+          <p>The family tables are not in the project yet, so accounts cannot be saved. Open the SQL editor for this project and run <strong>kids/schema.sql</strong>, then reload this page.</p>
+          ${notice ? `<p class="error">${esc(notice)}</p>` : ""}
+        </div>`;
+    }
     return `
-      <header class="top">
-        <div class="brand">${mark(check)}<span><h1>Our chart</h1><p>Gets the job done</p></span></div>
-      </header>
+      <header class="top"><div class="brand">${mark()}<span><h1>Our chart</h1><p>Gets the job done</p></span></div></header>
       <section class="hero">
         <h2>Chores, rewards, and device time.</h2>
         <p class="lede">Parents keep the accounts. Kids open the chart with a PIN.</p>
       </section>
       <div class="doors">
         <button class="door leaf" data-action="goto" data-to="parent-auth">
-          <span><strong>Parents</strong><span>${needsFirstParent() ? "Create the first parent account." : "Sign in to add people, chores, and rewards."}</span></span>
+          <span><strong>Parents</strong><span>Create an account or sign in.</span></span>
           <span class="btn small leaf">Open</span>
         </button>
-        <button class="door sun" data-action="goto" data-to="kid-gate">
-          <span><strong>Kids</strong><span>${db.kids.length ? "Tap your name and enter your PIN." : "A parent adds you first."}</span></span>
+        <button class="door sun" data-action="kids-door">
+          <span><strong>Kids</strong><span>Tap your name and enter your PIN.</span></span>
           <span class="btn small sun">Open</span>
         </button>
       </div>`;
   },
 
   "parent-auth"() {
-    const creating = needsFirstParent();
-    const title = creating ? "Create a parent account" : "Parent sign in";
+    const creating = route.mode !== "signin";
     return shell(
       "Our chart",
-      db.family ? db.family.name : "New family",
+      creating ? "New parent" : "Parent sign in",
       `<form class="card stack" data-action="parent-auth-submit">
-        <div class="section-title"><h2>${title}</h2></div>
+        <div class="section-title"><h2>${creating ? "Create a parent account" : "Parent sign in"}</h2></div>
         ${creating ? `<label>Your name<input name="name" autocomplete="name" required value="${esc(draft.name || "")}"></label>` : ""}
-        ${creating && !db.family ? `<label>Family name<input name="family" required value="${esc(draft.family || "Our family")}"></label>` : ""}
-        <label>Email<input name="email" type="email" autocomplete="username" required value="${esc(draft.email || "")}"></label>
+        ${creating ? `<label>Family name<input name="family" required value="${esc(draft.family || "Our family")}"></label>` : ""}
+        <label>Email<input name="email" type="email" autocomplete="username" required value="${esc(draft.email || route.email || "")}"></label>
         <label>Password<input name="password" type="password" autocomplete="${creating ? "new-password" : "current-password"}" required minlength="8"></label>
         ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
         <button class="btn leaf wide" type="submit">${creating ? "Create account" : "Sign in"}</button>
+        <button class="btn ghost wide" type="button" data-action="auth-mode" data-mode="${creating ? "signin" : "create"}">${creating ? "I already have an account" : "Create a parent account"}</button>
         <button class="btn ghost wide" type="button" data-action="goto" data-to="welcome">Back</button>
       </form>`
     );
   },
 
   "kid-gate"() {
-    if (!db.kids.length) {
-      return shell(
-        "Our chart",
-        "Kids",
-        `<div class="card stack">
-          <h2 class="page-title">No kid accounts yet</h2>
-          <p class="lede">A parent adds each kid from the Family page. Then that kid picks their name here.</p>
-          <button class="btn ghost" data-action="goto" data-to="welcome">Back</button>
-        </div>`
-      );
-    }
     const selected = route.kidId || "";
+    const code = draft.code ?? localStorage.getItem(CODE_KEY) ?? "";
     return shell(
       "Our chart",
       "Who's here?",
       `<div class="stack">
-        <div class="kid-grid">
-          ${db.kids
-            .map(
-              (child) => `<button class="kid-pick" data-action="pick-kid" data-id="${child.id}" aria-pressed="${selected === child.id}">
-                <span class="swatch ${esc(child.color)}"></span>
-                <strong style="display:block;margin-top:8px">${esc(child.name)}</strong>
-              </button>`
-            )
-            .join("")}
-        </div>
+        <form class="card stack" data-action="save-code">
+          <label>Family code<input name="code" value="${esc(code)}" autocomplete="off" required></label>
+          <button class="btn ghost" type="submit">Show kids</button>
+        </form>
+        ${
+          gateKids.length
+            ? `<div class="kid-grid">${gateKids
+                .map(
+                  (child) => `<button class="kid-pick" data-action="pick-kid" data-id="${child.id}" aria-pressed="${selected === child.id}">
+                    <span class="swatch ${esc(child.color)}"></span>
+                    <strong style="display:block;margin-top:8px">${esc(child.name)}</strong>
+                  </button>`
+                )
+                .join("")}</div>`
+            : `<p class="hint">Enter the family code from a parent. It is on the Family page.</p>`
+        }
         ${
           selected
             ? `<div class="card">
-                <h2 class="page-title" style="text-align:center">PIN for ${esc(kidById(selected).name)}</h2>
+                <h2 class="page-title" style="text-align:center">PIN for ${esc(kidById(selected)?.name || "")}</h2>
                 <div class="pin-dots">${[0, 1, 2, 3].map((i) => `<i class="${(draft.pin || "").length > i ? "on" : ""}"></i>`).join("")}</div>
                 ${route.error ? `<p class="error" style="text-align:center">${esc(route.error)}</p>` : ""}
                 <div class="pad">
                   ${["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "go"]
-                    .map((key) => {
-                      const label = key === "clear" ? "⌫" : key === "go" ? "Go" : key;
-                      return `<button type="button" data-action="pin" data-key="${key}">${label}</button>`;
-                    })
+                    .map((key) => `<button type="button" data-action="pin" data-key="${key}">${key === "clear" ? "⌫" : key === "go" ? "Go" : key}</button>`)
                     .join("")}
                 </div>
               </div>`
-            : `<p class="hint">Pick a name, then enter the 4-digit PIN a parent set.</p>`
+            : ""
         }
         <button class="btn ghost" data-action="goto" data-to="welcome">Back</button>
       </div>`
@@ -268,43 +395,37 @@ const views = {
     const me = parent();
     return shell(
       db.family.name,
-      me.name,
-      `<div class="split">
-        <section class="card">
-          <div class="section-title"><h2>Parents</h2><button class="btn small leaf" data-action="goto" data-to="add-parent">Add</button></div>
-          ${db.parents
-            .map(
-              (p) => `<div class="person">
-                <div>
-                  <strong>${esc(p.name)}</strong>
-                  <div class="tiny muted">${esc(p.email)}${p.id === me.id ? " · You" : ""}</div>
-                </div>
-                ${p.id === me.id ? "" : `<button class="btn ghost small" data-action="remove-parent" data-id="${p.id}">Remove</button>`}
-              </div>`
-            )
-            .join("")}
-        </section>
-        <section class="card">
-          <div class="section-title"><h2>Kids</h2><button class="btn small sun" data-action="goto" data-to="add-kid">Add</button></div>
-          ${
-            db.kids.length
-              ? db.kids
-                  .map(
-                    (child) => `<div class="person">
-                      <div class="who">
-                        <span class="swatch ${esc(child.color)}"></span>
-                        <div>
-                          <strong>${esc(child.name)}</strong>
-                          <div class="tiny muted">${child.points} pts · ${money(child.cashCents)} · ${child.minutes} min${grounded(child) ? " · grounded" : ""}</div>
-                        </div>
-                      </div>
-                      <button class="btn ghost small" data-action="edit-pin" data-id="${child.id}">PIN</button>
-                    </div>`
-                  )
-                  .join("")
-              : `<p class="muted">No kids yet. Add the first one.</p>`
-          }
-        </section>
+      me?.name || "",
+      `<div class="stack">
+        <div class="banner info">Kids door code <strong>${esc(db.family.code)}</strong>. This browser remembers it.</div>
+        <div class="split">
+          <section class="card">
+            <div class="section-title"><h2>Parents</h2><button class="btn small leaf" data-action="goto" data-to="add-parent">Add</button></div>
+            ${db.parents
+              .map(
+                (person) => `<div class="person">
+                  <div><strong>${esc(person.name)}</strong><div class="tiny muted">${esc(person.email)}${person.id === me?.id ? " · You" : ""}</div></div>
+                  ${person.id === me?.id ? "" : `<button class="btn ghost small" data-action="remove-parent" data-id="${person.id}">Remove</button>`}
+                </div>`
+              )
+              .join("")}
+          </section>
+          <section class="card">
+            <div class="section-title"><h2>Kids</h2><button class="btn small sun" data-action="goto" data-to="add-kid">Add</button></div>
+            ${
+              db.kids.length
+                ? db.kids
+                    .map(
+                      (child) => `<div class="person">
+                        <div class="who"><span class="swatch ${esc(child.color)}"></span><div><strong>${esc(child.name)}</strong><div class="tiny muted">${child.points} pts · ${money(child.cashCents)} · ${child.minutes} min${grounded(child) ? " · grounded" : ""}</div></div></div>
+                        <button class="btn ghost small" data-action="edit-pin" data-id="${child.id}">PIN</button>
+                      </div>`
+                    )
+                    .join("")
+                : `<p class="muted">No kids yet. Add the first one.</p>`
+            }
+          </section>
+        </div>
       </div>`,
       parentNav("family")
     );
@@ -315,7 +436,7 @@ const views = {
       db.family.name,
       "Add a parent",
       `<form class="card stack" data-action="add-parent-submit">
-        <p class="lede">They sign in on the Parents door with this email and password.</p>
+        <p class="lede">They sign in on the Parents door with this email and password. Supabase will email them a confirmation first.</p>
         <label>Name<input name="name" required value="${esc(draft.name || "")}"></label>
         <label>Email<input name="email" type="email" required value="${esc(draft.email || "")}"></label>
         <label>Password<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
@@ -340,7 +461,8 @@ const views = {
           <div class="field-label">Color</div>
           <div class="swatches">
             ${COLORS.map(
-              (c) => `<button type="button" class="swatch ${c}" data-action="color" data-color="${c}" aria-pressed="${color === c}" aria-label="${c}"></button>`
+              (colorName) =>
+                `<button type="button" class="swatch ${colorName}" data-action="color" data-color="${colorName}" aria-pressed="${color === colorName}" aria-label="${colorName}"></button>`
             ).join("")}
           </div>
         </div>
@@ -373,13 +495,22 @@ const views = {
   },
 
   chart() {
-    const pending = db.chores.filter((c) => c.status === "submitted");
-    const open = db.chores.filter((c) => c.status === "open" || c.status === "submitted");
+    const pending = db.chores.filter((chore) => chore.status === "submitted");
     return shell(
       db.family.name,
       "Chart",
       `<div class="stack">
-        ${db.kids.map((child) => `<section class="card stack"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong></div>${balances(child)}${grounded(child) ? `<div class="banner">Grounded until ${esc(when(child.groundedUntil))}. Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>` : ""}</section>`).join("") || `<div class="card">Add a kid before you build the chart.</div>`}
+        ${
+          db.kids
+            .map(
+              (child) => `<section class="card stack"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong></div>${balances(child)}${
+                grounded(child)
+                  ? `<div class="banner">Grounded until ${esc(when(child.groundedUntil))}. Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
+                  : ""
+              }</section>`
+            )
+            .join("") || `<div class="card">Add a kid before you build the chart.</div>`
+        }
         <section class="card">
           <div class="section-title"><h2>Waiting on you</h2></div>
           ${
@@ -396,8 +527,8 @@ const views = {
         <section class="card">
           <div class="section-title"><h2>On the chart</h2></div>
           ${
-            open.length
-              ? open
+            db.chores.length
+              ? db.chores
                   .map((chore) => {
                     const child = kidById(chore.kidId);
                     return `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${chore.status === "submitted" ? "Marked done" : "Open"}</div></div></div>`;
@@ -408,7 +539,7 @@ const views = {
           <form class="stack" data-action="add-chore" style="margin-top:12px">
             <div class="two">
               <label>Chore<input name="title" required placeholder="Make the bed"></label>
-              <label>Kid<select name="kidId" required>${db.kids.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></label>
+              <label>Kid<select name="kidId" required>${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
               <label>Points<input name="points" type="number" min="0" value="2"></label>
               <button class="btn leaf" type="submit" ${db.kids.length ? "" : "disabled"}>Add</button>
             </div>
@@ -418,7 +549,7 @@ const views = {
           <h2 class="page-title">Grant or ground</h2>
           <form class="stack" data-action="grant">
             <div class="two">
-              <label>Kid<select name="kidId">${db.kids.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></label>
+              <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
               <label>Points<input name="points" type="number" min="0" value="0"></label>
               <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
               <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
@@ -427,7 +558,7 @@ const views = {
             <button class="btn sun" ${db.kids.length ? "" : "disabled"}>Grant reward</button>
           </form>
           <form class="stack" data-action="ground">
-            <label>Kid<select name="kidId">${db.kids.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></label>
+            <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
             <label>Until<input name="until" type="datetime-local" required></label>
             <label>Reason<input name="reason" required placeholder="What happened"></label>
             <label class="row" style="font-weight:700"><input type="checkbox" name="clearMinutes" style="width:auto"> Clear device minutes</label>
@@ -437,7 +568,7 @@ const views = {
         </section>
         <section class="card">
           <h2 class="page-title">Latest</h2>
-          ${db.activity.slice(0, 8).map((a) => `<div class="item"><div>${esc(a.text)}</div><div class="tiny muted">${esc(when(a.at))}</div></div>`).join("") || `<p class="muted">Nothing yet.</p>`}
+          ${db.activity.slice(0, 8).map((row) => `<div class="item"><div>${esc(row.text)}</div><div class="tiny muted">${esc(when(row.at))}</div></div>`).join("") || `<p class="muted">Nothing yet.</p>`}
         </section>
       </div>`,
       parentNav("chart")
@@ -445,7 +576,7 @@ const views = {
   },
 
   shop() {
-    const pending = db.requests.filter((r) => r.status === "pending");
+    const pending = db.requests.filter((req) => req.status === "pending");
     return shell(
       db.family.name,
       "Shop",
@@ -466,7 +597,7 @@ const views = {
               ? pending
                   .map((req) => {
                     const child = kidById(req.kidId);
-                    const item = db.items.find((i) => i.id === req.itemId);
+                    const item = db.items.find((entry) => entry.id === req.itemId);
                     return `<div class="item"><div><strong>${esc(item?.name || "Item")}</strong><div class="tiny muted">${esc(child?.name || "")} · ${req.cost} pts on hold</div></div><span class="row"><button class="btn small leaf" data-action="fulfill" data-id="${req.id}">Got it</button><button class="btn small ghost" data-action="deny" data-id="${req.id}">Return points</button></span></div>`;
                   })
                   .join("")
@@ -489,7 +620,7 @@ const views = {
 
   today() {
     const child = kid();
-    const mine = db.chores.filter((c) => c.kidId === child.id && c.status !== "approved");
+    const mine = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "approved");
     return shell(
       `Hi, ${child.name}`,
       db.family.name,
@@ -502,10 +633,9 @@ const views = {
             mine.length
               ? mine
                   .map(
-                    (chore) => `<div class="chore">
-                      <div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>
-                      ${chore.status === "submitted" ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`}
-                    </div>`
+                    (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>${
+                      chore.status === "submitted" ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`
+                    }</div>`
                   )
                   .join("")
               : `<p class="muted">Nothing on your chart right now.</p>`
@@ -518,8 +648,6 @@ const views = {
 
   "kid-shop"() {
     const child = kid();
-    const dollarBlocks = Math.floor(child.points / db.family.pointsPerDollar);
-    const timeBlocks = Math.floor(child.points / db.family.pointsPer30);
     return shell(
       "Shop",
       child.name,
@@ -528,12 +656,16 @@ const views = {
         <section class="card stack">
           <h2 class="page-title">Cash in</h2>
           <p class="lede">${db.family.pointsPerDollar} points become $1.00 in your cash balance.</p>
-          <button class="btn leaf" data-action="cash-out" ${dollarBlocks ? "" : "disabled"}>Cash out ${db.family.pointsPerDollar} points</button>
+          <button class="btn leaf" data-action="cash-out" ${child.points >= db.family.pointsPerDollar ? "" : "disabled"}>Cash out ${db.family.pointsPerDollar} points</button>
         </section>
         <section class="card stack">
           <h2 class="page-title">Device time</h2>
           <p class="lede">${db.family.pointsPer30} points become 30 minutes. A parent adds that time in Screen Time.</p>
-          ${grounded(child) ? `<div class="banner">Device packs are closed while you are grounded.</div>` : `<button class="btn sun" data-action="buy-time" ${timeBlocks ? "" : "disabled"}>Buy 30 minutes</button>`}
+          ${
+            grounded(child)
+              ? `<div class="banner">Device packs are closed while you are grounded.</div>`
+              : `<button class="btn sun" data-action="buy-time" ${child.points >= db.family.pointsPer30 ? "" : "disabled"}>Buy 30 minutes</button>`
+          }
         </section>
         <section class="card">
           <h2 class="page-title">Ask for something</h2>
@@ -541,8 +673,10 @@ const views = {
             db.items.length
               ? db.items
                   .map((item) => {
-                    const held = db.requests.some((r) => r.kidId === child.id && r.itemId === item.id && r.status === "pending");
-                    return `<div class="item"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} points</div></div>${held ? `<span class="chip">Asked</span>` : `<button class="btn small" data-action="ask" data-id="${item.id}" ${child.points >= item.cost ? "" : "disabled"}>Ask</button>`}</div>`;
+                    const held = db.requests.some((req) => req.itemId === item.id && req.status === "pending");
+                    return `<div class="item"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} points</div></div>${
+                      held ? `<span class="chip">Asked</span>` : `<button class="btn small" data-action="ask" data-id="${item.id}" ${child.points >= item.cost ? "" : "disabled"}>Ask</button>`
+                    }</div>`;
                   })
                   .join("")
               : `<p class="muted">No extra items yet.</p>`
@@ -555,19 +689,15 @@ const views = {
 
   me() {
     const child = kid();
-    const mine = db.activity.filter((a) => a.text.includes(child.name)).slice(0, 8);
     return shell(
       child.name,
       "Your account",
       `<div class="stack">
-        <section class="card who">
-          <span class="swatch ${esc(child.color)}"></span>
-          <div><strong>${esc(child.name)}</strong><div class="tiny muted">Kid account · PIN set by a parent</div></div>
-        </section>
+        <section class="card who"><span class="swatch ${esc(child.color)}"></span><div><strong>${esc(child.name)}</strong><div class="tiny muted">Kid account · PIN set by a parent</div></div></section>
         ${balances(child)}
         <section class="card">
           <h2 class="page-title">Latest</h2>
-          ${mine.map((a) => `<div class="item"><div>${esc(a.text)}</div></div>`).join("") || `<p class="muted">When you finish a chore, it shows up here.</p>`}
+          ${db.activity.map((row) => `<div class="item"><div>${esc(row.text)}</div></div>`).join("") || `<p class="muted">When you finish a chore, it shows up here.</p>`}
         </section>
       </div>`,
       kidNav("me")
@@ -575,17 +705,8 @@ const views = {
   },
 };
 
-function payLabel(chore) {
-  const parts = [];
-  if (chore.points) parts.push(`${chore.points} pts`);
-  if (chore.cashCents) parts.push(money(chore.cashCents));
-  if (chore.minutes) parts.push(`${chore.minutes} min`);
-  return parts.join(" · ") || "No pay set";
-}
-
 app.addEventListener("input", (event) => {
-  const el = event.target;
-  if (el.name) draft[el.name] = el.value;
+  if (event.target.name) draft[event.target.name] = event.target.value;
 });
 
 app.addEventListener("click", (event) => {
@@ -594,13 +715,11 @@ app.addEventListener("click", (event) => {
   const action = btn.dataset.action;
   if (action === "goto") go(btn.dataset.to);
   if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "family" : "welcome");
-  if (action === "sign-out") {
-    db.session = null;
-    save();
-    go("welcome");
-  }
+  if (action === "auth-mode") go("parent-auth", { mode: btn.dataset.mode, email: draft.email || "" });
+  if (action === "kids-door") openKidGate();
+  if (action === "sign-out") signOut();
   if (action === "pick-kid") {
-    route = { name: "kid-gate", kidId: btn.dataset.id };
+    route = { ...route, kidId: btn.dataset.id, error: "" };
     draft.pin = "";
     render();
   }
@@ -609,22 +728,18 @@ app.addEventListener("click", (event) => {
     draft.color = btn.dataset.color;
     render();
   }
-  if (action === "remove-parent") removeParent(btn.dataset.id);
+  if (action === "remove-parent") run(() => rpc("remove_parent", { p_parent: btn.dataset.id }), "Parent removed.", "family");
   if (action === "edit-pin") go("edit-pin", { id: btn.dataset.id });
-  if (action === "remove-kid") removeKid(btn.dataset.id);
-  if (action === "approve-chore") approveChore(btn.dataset.id);
-  if (action === "done") markDone(btn.dataset.id);
-  if (action === "cash-out") cashOut();
-  if (action === "buy-time") buyTime();
-  if (action === "ask") askItem(btn.dataset.id);
-  if (action === "fulfill") fulfill(btn.dataset.id);
-  if (action === "deny") deny(btn.dataset.id);
-  if (action === "remove-item") {
-    db.items = db.items.filter((item) => item.id !== btn.dataset.id);
-    save();
-    render();
-  }
-  if (action === "lift-one") liftOne(btn.dataset.id);
+  if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
+  if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
+  if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Grounding lifted here. Turn it off in Screen Time too.");
+  if (action === "done") run(() => rpc("kid_mark_done", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: btn.dataset.id }), "Marked done. A parent still has to approve it.");
+  if (action === "cash-out") run(() => rpc("kid_cash_out", { p_token: sessionStorage.getItem(KID_TOKEN) }), "$1.00 added to your cash balance.");
+  if (action === "buy-time") run(() => rpc("kid_buy_time", { p_token: sessionStorage.getItem(KID_TOKEN) }), "30 minutes added. A parent still turns that on in Screen Time.");
+  if (action === "ask") run(() => rpc("kid_ask", { p_token: sessionStorage.getItem(KID_TOKEN), p_item: btn.dataset.id }), "Asked. A parent has the points until they say yes or hand them back.");
+  if (action === "fulfill") run(() => rpc("fulfill_request", { p_request: btn.dataset.id }));
+  if (action === "deny") run(() => rpc("deny_request", { p_request: btn.dataset.id }), "Points returned.");
+  if (action === "remove-item") run(() => rpc("remove_item", { p_item: btn.dataset.id }));
 });
 
 app.addEventListener("submit", (event) => {
@@ -637,95 +752,147 @@ app.addEventListener("submit", (event) => {
   if (action === "add-parent-submit") addParent(data);
   if (action === "add-kid-submit") addKid(data);
   if (action === "save-pin") savePin(data);
-  if (action === "add-chore") addChore(data);
-  if (action === "grant") grant(data);
-  if (action === "ground") ground(data);
-  if (action === "save-rates") saveRates(data);
-  if (action === "add-item") addItem(data);
+  if (action === "save-code") saveCode(data);
+  if (action === "add-chore") run(() => rpc("add_chore", { p_kid: data.kidId, p_title: data.title, p_points: Number(data.points) || 0 }), "Chore added.");
+  if (action === "grant") {
+    run(
+      () =>
+        rpc("grant_reward", {
+          p_kid: data.kidId,
+          p_points: Number(data.points) || 0,
+          p_cash_cents: Math.round((Number(data.dollars) || 0) * 100),
+          p_minutes: Number(data.minutes) || 0,
+          p_note: data.note || "",
+        }),
+      "Reward saved. Match any new device minutes in Screen Time.",
+      "chart"
+    );
+  }
+  if (action === "ground") {
+    run(
+      () =>
+        rpc("ground_kid", {
+          p_kid: data.kidId,
+          p_until: new Date(data.until).toISOString(),
+          p_reason: data.reason,
+          p_clear: Boolean(data.clearMinutes),
+        }),
+      "Grounding saved. Set the same end time in Screen Time.",
+      "chart"
+    );
+  }
+  if (action === "save-rates") run(() => rpc("save_rates", { p_per_dollar: Number(data.pointsPerDollar), p_per_30: Number(data.pointsPer30) }), "Rates saved.");
+  if (action === "add-item") run(() => rpc("add_item", { p_name: data.name, p_cost: Number(data.cost) }), "Item added.");
 });
 
 async function parentAuth(data) {
   const email = data.email.trim().toLowerCase();
-  if (needsFirstParent()) {
-    if (!data.name.trim() || data.password.length < 8) return fail("Use a name and a password of at least 8 characters.");
-    const salt = uid();
-    if (!db.family) {
-      db.family = {
-        name: (data.family || "Our family").trim() || "Our family",
-        pointsPerDollar: 10,
-        pointsPer30: 4,
-      };
+  const creating = route.mode !== "signin";
+  if (busy) return;
+  busy = true;
+  try {
+    if (creating) {
+      const { data: created, error } = await supabase.auth.signUp({
+        email,
+        password: data.password,
+        options: { data: { name: data.name.trim(), family_name: (data.family || "Our family").trim() } },
+      });
+      if (error) throw error;
+      if (!created.user || created.user.identities?.length === 0) {
+        throw new Error("That email already has an account. Sign in instead.");
+      }
+      if (!created.session) {
+        notice = "Check that email and confirm it, then sign in. Use the password you just chose.";
+        route = { name: "parent-auth", mode: "signin", email, error: "" };
+        draft = { email };
+        render();
+        return;
+      }
+      await loadParent();
+      notice = "Parent account ready. Add kids and other parents next.";
+      route = { name: "family" };
+      render();
+      return;
     }
-    const id = uid();
-    db.parents.push({ id, name: data.name.trim(), email, salt, passHash: await hashSecret(data.password, salt) });
-    db.session = { role: "parent", id };
-    log(`${data.name.trim()} created the parent account.`);
-    save();
-    notice = "Parent account ready. Add kids and other parents next.";
+    const { error } = await supabase.auth.signInWithPassword({ email, password: data.password });
+    if (error) throw error;
+    const ok = await loadParent();
+    if (!ok) throw new Error("This login is not on a family yet.");
     route = { name: "family" };
-    draft = {};
+    notice = "";
     render();
-    return;
+  } catch (error) {
+    route = { ...route, error: nice(error) };
+    render();
+  } finally {
+    busy = false;
   }
-  const found = db.parents.find((p) => p.email === email);
-  if (!found || (await hashSecret(data.password, found.salt)) !== found.passHash) {
-    return fail("That email and password do not match a parent account.");
-  }
-  db.session = { role: "parent", id: found.id };
-  save();
-  go("family");
 }
 
 async function addParent(data) {
   const email = data.email.trim().toLowerCase();
-  if (!data.name.trim()) return fail("Add a name.");
-  if (data.password.length < 8) return fail("Use a password of at least 8 characters.");
-  if (db.parents.some((p) => p.email === email)) return fail("A parent already uses that email.");
-  const salt = uid();
-  const id = uid();
-  db.parents.push({ id, name: data.name.trim(), email, salt, passHash: await hashSecret(data.password, salt) });
-  log(`${parent().name} added parent ${data.name.trim()}.`);
-  save();
-  notice = `${data.name.trim()} can sign in on the Parents door.`;
-  route = { name: "family" };
-  draft = {};
-  render();
+  const person = data.name.trim();
+  if (busy) return;
+  busy = true;
+  try {
+    await rpc("invite_parent", { p_email: email });
+    const { data: created, error } = await sideAuth.auth.signUp({
+      email,
+      password: data.password,
+      options: { data: { name: person } },
+    });
+    if (error) throw error;
+    if (!created.user || created.user.identities?.length === 0) {
+      throw new Error("That email already has an account.");
+    }
+    await loadParent();
+    notice = `${person} can sign in on the Parents door after they confirm the email. The password is the one you set.`;
+    route = { name: "family" };
+    draft = {};
+    render();
+  } catch (error) {
+    route = { ...route, error: nice(error) };
+    render();
+  } finally {
+    busy = false;
+  }
 }
 
 async function addKid(data) {
-  const name = data.name.trim();
-  if (!name) return fail("Add a name.");
-  if (!/^\d{4}$/.test(data.pin)) return fail("The PIN needs 4 digits.");
-  const salt = uid();
-  db.kids.push({
-    id: uid(),
-    name,
-    color: draft.color || "leaf",
-    salt,
-    pinHash: await hashSecret(data.pin, salt),
-    points: 0,
-    cashCents: 0,
-    minutes: 0,
-    groundedUntil: null,
-  });
-  log(`${parent().name} added ${name}.`);
-  save();
-  notice = `${name} can sign in on the Kids door with that PIN.`;
-  route = { name: "family" };
-  draft = {};
-  render();
+  await run(
+    () => rpc("add_kid", { p_name: data.name.trim(), p_color: draft.color || "leaf", p_pin: data.pin }),
+    `${data.name.trim()} can sign in on the Kids door with that PIN.`,
+    "family"
+  );
 }
 
 async function savePin(data) {
-  const child = kidById(route.id);
-  if (!child) return go("family");
-  if (!/^\d{4}$/.test(data.pin)) return fail("The PIN needs 4 digits.");
-  child.salt = uid();
-  child.pinHash = await hashSecret(data.pin, child.salt);
-  log(`${parent().name} changed ${child.name}'s PIN.`);
-  save();
-  notice = `PIN updated for ${child.name}.`;
-  route = { name: "family" };
+  await run(() => rpc("set_kid_pin", { p_kid: route.id, p_pin: data.pin }), "PIN updated.", "family");
+}
+
+async function saveCode(data) {
+  const code = data.code.trim();
+  localStorage.setItem(CODE_KEY, code);
+  draft.code = code;
+  const { data: rows, error } = await supabase.rpc("list_kids", { p_code: code });
+  if (error) {
+    route.error = nice(error);
+  } else {
+    gateKids = rows || [];
+    route.error = gateKids.length ? "" : "No kids for that code yet.";
+  }
+  render();
+}
+
+async function openKidGate() {
+  const code = localStorage.getItem(CODE_KEY) || "";
+  draft = { code };
+  gateKids = [];
+  if (schemaReady && code) {
+    const { data: rows } = await supabase.rpc("list_kids", { p_code: code });
+    gateKids = rows || [];
+  }
+  route = { name: "kid-gate" };
   render();
 }
 
@@ -733,202 +900,29 @@ async function onPin(key) {
   draft.pin = draft.pin || "";
   if (key === "clear") draft.pin = draft.pin.slice(0, -1);
   else if (key === "go") {
-    const child = kidById(route.kidId);
-    if (child && (await hashSecret(draft.pin, child.salt)) === child.pinHash) {
-      db.session = { role: "kid", id: child.id };
-      save();
-      go("today");
+    const { data: token, error } = await supabase.rpc("kid_sign_in", { p_kid: route.kidId, p_pin: draft.pin });
+    if (error || !token) {
+      draft.pin = "";
+      route.error = "That PIN does not match.";
+      render();
       return;
     }
-    draft.pin = "";
-    route.error = "That PIN does not match.";
+    sessionStorage.setItem(KID_TOKEN, token);
+    await loadKid();
+    notice = "";
+    route = { name: "today" };
+    render();
+    return;
   } else if (draft.pin.length < 4) draft.pin += key;
   render();
 }
 
-function removeParent(id) {
-  const person = db.parents.find((p) => p.id === id);
-  if (!person || person.id === parent().id) return;
-  db.parents = db.parents.filter((p) => p.id !== id);
-  log(`${parent().name} removed parent ${person.name}.`);
-  save();
-  render();
+async function signOut() {
+  sessionStorage.removeItem(KID_TOKEN);
+  if (db.session?.role === "parent") await supabase.auth.signOut();
+  db = blank();
+  notice = "";
+  go("welcome");
 }
 
-function removeKid(id) {
-  const child = kidById(id);
-  if (!child) return;
-  db.kids = db.kids.filter((k) => k.id !== id);
-  db.chores = db.chores.filter((c) => c.kidId !== id);
-  db.requests = db.requests.filter((r) => r.kidId !== id);
-  log(`${parent().name} removed ${child.name}.`);
-  save();
-  notice = `${child.name} was removed.`;
-  route = { name: "family" };
-  render();
-}
-
-function addChore(data) {
-  const title = data.title.trim();
-  if (!title || !data.kidId) return;
-  db.chores.push({
-    id: uid(),
-    kidId: data.kidId,
-    title,
-    points: Number(data.points) || 0,
-    cashCents: 0,
-    minutes: 0,
-    status: "open",
-  });
-  log(`${parent().name} added “${title}” for ${kidById(data.kidId).name}.`);
-  save();
-  render();
-}
-
-function markDone(id) {
-  const chore = db.chores.find((c) => c.id === id && c.kidId === kid().id);
-  if (!chore || chore.status !== "open") return;
-  chore.status = "submitted";
-  log(`${kid().name} marked “${chore.title}” done.`);
-  save();
-  notice = "Marked done. A parent still has to approve it.";
-  render();
-}
-
-function approveChore(id) {
-  const chore = db.chores.find((c) => c.id === id);
-  const child = chore && kidById(chore.kidId);
-  if (!chore || !child || chore.status === "approved") return;
-  chore.status = "approved";
-  child.points += chore.points;
-  child.cashCents += chore.cashCents;
-  if (!grounded(child)) child.minutes += chore.minutes;
-  log(`${parent().name} approved “${chore.title}” for ${child.name}.`);
-  save();
-  notice = chore.minutes && !grounded(child) ? `Add ${chore.minutes} minutes in Screen Time for ${child.name}.` : `${child.name} was paid.`;
-  render();
-}
-
-function grant(data) {
-  const child = kidById(data.kidId);
-  if (!child) return;
-  const points = Math.max(0, Number(data.points) || 0);
-  const cashCents = Math.round(Math.max(0, Number(data.dollars) || 0) * 100);
-  const minutes = Math.max(0, Number(data.minutes) || 0);
-  if (!points && !cashCents && !minutes) return fail("Add points, cash, or minutes.");
-  child.points += points;
-  child.cashCents += cashCents;
-  if (minutes && !grounded(child)) child.minutes += minutes;
-  const note = data.note.trim() || "Reward";
-  log(`${parent().name} granted ${child.name}: ${note}.`);
-  save();
-  notice = minutes ? `Reward saved. Add ${minutes} minutes in Screen Time for ${child.name}.` : "Reward saved.";
-  route = { name: "chart" };
-  render();
-}
-
-function ground(data) {
-  const child = kidById(data.kidId);
-  if (!child || !data.until || !data.reason.trim()) return fail("Pick an end time and a reason.");
-  child.groundedUntil = new Date(data.until).toISOString();
-  if (data.clearMinutes) child.minutes = 0;
-  log(`${parent().name} grounded ${child.name} until ${when(child.groundedUntil)}. ${data.reason.trim()}`);
-  save();
-  notice = `Grounding saved until ${when(child.groundedUntil)}. Set the same end time in Screen Time.`;
-  route = { name: "chart" };
-  render();
-}
-
-function liftOne(id) {
-  const child = kidById(id);
-  if (!child) return;
-  child.groundedUntil = null;
-  log(`${parent().name} lifted ${child.name}'s grounding.`);
-  save();
-  notice = `Grounding lifted for ${child.name}. Turn it off in Screen Time too.`;
-  render();
-}
-
-function saveRates(data) {
-  db.family.pointsPerDollar = Math.max(1, Number(data.pointsPerDollar) || 10);
-  db.family.pointsPer30 = Math.max(1, Number(data.pointsPer30) || 4);
-  save();
-  notice = "Rates saved.";
-  render();
-}
-
-function addItem(data) {
-  const name = data.name.trim();
-  const cost = Number(data.cost);
-  if (!name || cost < 1) return;
-  db.items.push({ id: uid(), name, cost });
-  save();
-  render();
-}
-
-function cashOut() {
-  const child = kid();
-  const cost = db.family.pointsPerDollar;
-  if (child.points < cost) return;
-  child.points -= cost;
-  child.cashCents += 100;
-  log(`${child.name} cashed ${cost} points for $1.00.`);
-  save();
-  notice = "$1.00 added to your cash balance.";
-  render();
-}
-
-function buyTime() {
-  const child = kid();
-  if (grounded(child)) return;
-  const cost = db.family.pointsPer30;
-  if (child.points < cost) return;
-  child.points -= cost;
-  child.minutes += 30;
-  log(`${child.name} bought 30 device minutes.`);
-  save();
-  notice = "30 minutes added. A parent still turns that on in Screen Time.";
-  render();
-}
-
-function askItem(id) {
-  const child = kid();
-  const item = db.items.find((entry) => entry.id === id);
-  if (!item || child.points < item.cost) return;
-  child.points -= item.cost;
-  db.requests.push({ id: uid(), kidId: child.id, itemId: item.id, cost: item.cost, status: "pending" });
-  log(`${child.name} asked for ${item.name}.`);
-  save();
-  notice = `Asked for ${item.name}. A parent has the points until they say yes or hand them back.`;
-  render();
-}
-
-function fulfill(id) {
-  const req = db.requests.find((r) => r.id === id);
-  const item = req && db.items.find((i) => i.id === req.itemId);
-  const child = req && kidById(req.kidId);
-  if (!req || req.status !== "pending") return;
-  req.status = "approved";
-  log(`${parent().name} handed ${child.name} ${item?.name || "an item"}.`);
-  save();
-  render();
-}
-
-function deny(id) {
-  const req = db.requests.find((r) => r.id === id);
-  const child = req && kidById(req.kidId);
-  const item = req && db.items.find((i) => i.id === req.itemId);
-  if (!req || !child || req.status !== "pending") return;
-  req.status = "denied";
-  child.points += req.cost;
-  log(`${parent().name} returned ${req.cost} points to ${child.name} for ${item?.name || "an item"}.`);
-  save();
-  render();
-}
-
-function fail(message) {
-  route.error = message;
-  render();
-}
-
-render();
+boot();
