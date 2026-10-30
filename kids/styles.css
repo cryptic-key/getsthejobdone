@@ -564,6 +564,20 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
 .hero-bob { transform-box: fill-box; transform-origin: center bottom; animation: bob 1.35s ease-in-out infinite; }
 .floater { transform-box: fill-box; transform-origin: center; animation: floaty 2.8s ease-in-out infinite; }
 .star-a { animation-delay: .7s; }
+.stage-caption { font-family: Fredoka, Nunito, sans-serif; font-size: 14px; font-weight: 700; fill: #24312c; stroke: #fffdf8; stroke-width: 4px; paint-order: stroke fill; }
+.broom { opacity: 0; transform-box: fill-box; transform-origin: 0 0; }
+.bunny-hop { transform-box: fill-box; transform-origin: center bottom; animation: hop .6s ease-in-out infinite; }
+.bunny:nth-child(2n) .bunny-hop { animation-delay: .12s; }
+.bunny:nth-child(3n) .bunny-hop { animation-delay: .24s; }
+.puff-cloud, .coin-pop { opacity: 0; }
+.coin-pop text { font-family: Fredoka, Nunito, sans-serif; font-size: 11px; font-weight: 700; fill: #24312c; }
+.stage.battle .floater, .stage.victory .floater { opacity: 0; }
+.stage.battle .broom, .stage.victory .broom { opacity: 1; animation: swing .55s ease-in-out infinite; }
+.stage.battle .hero-bob { animation: lunge .55s ease-in-out infinite; }
+.stage.victory .hero-bob { animation: collect .8s ease forwards; }
+.bunny.puff .bunny-hop { animation: puff .8s ease-out forwards; }
+.bunny.puff .puff-cloud { animation: puff .9s ease-out forwards; }
+.bunny.puff .coin-pop { animation: coin-grab 1.15s ease-in .25s forwards; }
 
 .hud-stats {
   display: grid;
@@ -692,6 +706,12 @@ body.play .loot strong::before { content: "★ "; color: var(--sun); }
 @keyframes drift { 50% { transform: translateX(16px); } }
 @keyframes bob { 50% { transform: translateY(-7px); } }
 @keyframes floaty { 50% { transform: translateY(-14px) scale(1.08); } }
+@keyframes hop { 50% { transform: translateY(-12px); } }
+@keyframes lunge { 50% { transform: translate(16px, -6px); } }
+@keyframes swing { 0%, 100% { transform: rotate(-52deg); } 50% { transform: rotate(16deg); } }
+@keyframes collect { to { transform: translate(36px, -8px); } }
+@keyframes puff { 0% { opacity: 1; transform: scale(.6); } 100% { opacity: 0; transform: scale(2.1); } }
+@keyframes coin-grab { 0% { opacity: 1; transform: translate(0, 0); } 100% { opacity: 0; transform: translate(var(--grab, -70px), 8px) scale(.7); } }
 @keyframes twinkle { 50% { opacity: .2; transform: scale(.6); } }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 @keyframes grow { from { transform: scaleY(.2); } }
@@ -706,7 +726,8 @@ body.play .loot strong::before { content: "★ "; color: var(--sun); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sun, .cloud-a, .cloud-b, .hero-bob, .floater, .sky-fx i, .face, .stat i, .quest, .week-col i, .ring-value {
+  .sun, .cloud-a, .cloud-b, .floater, .sky-fx i, .face, .stat i, .quest, .week-col i, .ring-value,
+  .stage.idle .hero-bob {
     animation: none !important;
     transition: none !important;
   }

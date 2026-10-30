@@ -5,6 +5,8 @@ const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal"];
 const COLOR_HEX = { leaf: "#2f7d5a", sun: "#e3a31a", sky: "#3c7f92", clay: "#a24b34", plum: "#6e6284", teal: "#2f6f6a" };
 const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "kid-shop", "me"]);
 const KID_TOKEN = "chart-kid-token";
+const BATTLE_KEY = "chart-battle-v1";
+const REPLAY_MS = 30000;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const sideAuth = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -225,7 +227,7 @@ async function run(work, message, next) {
     else route = { ...route, error: "" };
     draft = {};
     render();
-    if (db.session?.role === "kid" && message) celebrate();
+    if (db.session?.role === "kid" && message && !/marked done/i.test(message)) celebrate();
   } catch (error) {
     route = { ...route, error: nice(error) };
     render();
@@ -245,7 +247,7 @@ function face(color) {
 
 function worldScene(color) {
   const fill = COLOR_HEX[color] || COLOR_HEX.leaf;
-  return `<div class="stage" aria-hidden="true">
+  return `<div class="stage idle" aria-hidden="true">
     <svg class="stage-art" viewBox="0 0 360 170">
       <rect width="360" height="170" fill="#8ec8d4"/>
       <g class="sun">
@@ -259,8 +261,10 @@ function worldScene(color) {
       </g>
       <g class="cloud cloud-a"><ellipse cx="48" cy="42" rx="22" ry="12"/><ellipse cx="66" cy="38" rx="14" ry="10"/></g>
       <g class="cloud cloud-b"><ellipse cx="168" cy="30" rx="18" ry="10"/><ellipse cx="184" cy="28" rx="12" ry="8"/></g>
+      <text class="stage-caption" x="180" y="22" text-anchor="middle"></text>
       <path d="M0 118 C70 78 130 138 210 102 C270 76 320 112 360 92 V170 H0 Z" fill="#c5e3b4"/>
       <path d="M0 142 C90 112 150 162 236 132 C300 112 330 146 360 128 V170 H0 Z" fill="#6eaf72"/>
+      <g class="actors"></g>
       <g class="hero">
         <ellipse cx="78" cy="150" rx="24" ry="6" fill="#24312c" opacity=".18"/>
         <g class="hero-bob">
@@ -268,12 +272,212 @@ function worldScene(color) {
           <circle cx="70" cy="112" r="3.4" fill="#fff"/><circle cx="86" cy="112" r="3.4" fill="#fff"/>
           <circle cx="71" cy="113" r="1.6" fill="#24312c"/><circle cx="87" cy="113" r="1.6" fill="#24312c"/>
           <path d="M70 122 Q78 129 86 122" fill="none" stroke="#24312c" stroke-width="2.4" stroke-linecap="round"/>
+          <g transform="translate(100 98)"><g class="broom"><line x1="4" y1="4" x2="44" y2="20" stroke="#8a5a32" stroke-width="4" stroke-linecap="round"/><path d="M34 10 L58 14 L54 28 L30 22 Z" fill="#f0e2b8" stroke="#24312c" stroke-width="2"/></g></g>
         </g>
       </g>
       <g transform="translate(196 104)"><g class="floater coin-a"><circle r="9" fill="#f6c945" stroke="#24312c" stroke-width="2.4"/><circle r="4" fill="none" stroke="#24312c" stroke-width="1.6"/></g></g>
       <g transform="translate(252 92)"><g class="floater star-a"><path d="M0 -9 L2.4 -2.6 L9 -2.2 L3.6 2.2 L5.4 9 L0 5.2 L-5.4 9 L-3.6 2.2 L-9 -2.2 L-2.4 -2.6 Z" fill="#fffdf8" stroke="#24312c" stroke-width="1.6"/></g></g>
     </svg>
   </div>`;
+}
+
+let watchedFights = new Set();
+let replayIds = new Set();
+let replayChores = [];
+let fightChores = [];
+let victoryChores = [];
+let winningIds = new Set();
+let lineIds = [];
+let victoryUntil = 0;
+let replayTimer = 0;
+let pollTimer = 0;
+let paintedKey = "";
+let lastKidSig = "";
+
+function battleStore() {
+  try {
+    const data = JSON.parse(localStorage.getItem(BATTLE_KEY) || "{}");
+    if (data && data.kids && typeof data.kids === "object" && !Array.isArray(data.kids)) return data.kids;
+    if (data && data.kidId && Array.isArray(data.chores)) return { [data.kidId]: data.chores };
+  } catch {
+    /* keep an empty board if storage is unreadable */
+  }
+  return {};
+}
+
+function loadTracked(kidId) {
+  const chores = battleStore()[kidId];
+  return Array.isArray(chores) ? chores.filter((chore) => chore && chore.id) : [];
+}
+
+function saveTracked(kidId, chores) {
+  const kids = battleStore();
+  kids[kidId] = chores;
+  localStorage.setItem(BATTLE_KEY, JSON.stringify({ kids }));
+}
+
+function bunnyLayout(index, total) {
+  const start = 178;
+  const end = 330;
+  const gap = total <= 1 ? 0 : Math.min(44, (end - start) / (total - 1));
+  const scale = total > 8 ? 0.58 : total > 5 ? 0.72 : total > 3 ? 0.86 : 1;
+  const x = Math.round(start + index * gap);
+  const y = Math.round(132 - 12 * scale);
+  return { x, y, scale: Math.round(scale * 100) / 100 };
+}
+
+function bunnyMarkup(chore, index, total, winning) {
+  const { x, y, scale } = bunnyLayout(index, total);
+  const grab = Math.round(96 - x);
+  return `<g class="bunny${winning ? " puff" : ""}" data-id="${esc(chore.id)}" transform="translate(${x} ${y}) scale(${scale})" style="--grab:${grab}px">
+    <g class="bunny-hop">
+      <ellipse cx="-7" cy="-16" rx="3.4" ry="8" fill="#e7dccb" stroke="#24312c" stroke-width="2" transform="rotate(-16)"/>
+      <ellipse cx="7" cy="-16" rx="3.4" ry="8" fill="#e7dccb" stroke="#24312c" stroke-width="2" transform="rotate(16)"/>
+      <circle r="13" fill="#d9cbb8" stroke="#24312c" stroke-width="2.4"/>
+      <circle cx="-4.5" cy="-1" r="1.7" fill="#24312c"/><circle cx="4.5" cy="-1" r="1.7" fill="#24312c"/>
+    </g>
+    <g class="puff-cloud"><circle r="8" cx="-7" cy="-3" fill="#f7f1e6"/><circle r="11" cx="4" cy="-1" fill="#efe4d2"/><circle r="6" cx="0" cy="7" fill="#fffaf3"/></g>
+    <g class="coin-pop"><circle r="6" cy="-8" fill="#f6c945" stroke="#24312c" stroke-width="2"/><circle r="5" cx="14" cy="-16" fill="#f6c945" stroke="#24312c" stroke-width="2"/><text x="0" y="18" text-anchor="middle">+${Number(chore.points) || 0}</text></g>
+  </g>`;
+}
+
+function shownFights() {
+  const seen = new Set();
+  const list = [];
+  for (const chore of [...fightChores, ...replayChores, ...victoryChores]) {
+    if (!chore?.id || seen.has(chore.id)) continue;
+    seen.add(chore.id);
+    list.push(chore);
+  }
+  return list;
+}
+
+function linedUp(chores) {
+  const ids = new Set(chores.map((chore) => chore.id));
+  lineIds = lineIds.filter((id) => ids.has(id));
+  for (const chore of chores) {
+    if (!lineIds.includes(chore.id)) lineIds.push(chore.id);
+  }
+  const byId = new Map(chores.map((chore) => [chore.id, chore]));
+  return lineIds.map((id) => byId.get(id));
+}
+
+function paintStage() {
+  const stage = document.querySelector(".stage");
+  if (!stage) return;
+  const now = Date.now();
+  const fighting = fightChores.length > 0 || replayChores.length > 0;
+  const mode = now < victoryUntil ? "victory" : fighting ? "battle" : "idle";
+  stage.classList.remove("idle", "battle", "victory");
+  stage.classList.add(mode);
+  const shown = linedUp(shownFights());
+  const caption = stage.querySelector(".stage-caption");
+  if (caption) {
+    caption.textContent = mode === "victory" ? "Coins collected" : mode === "battle" ? (shown.length > 1 ? `${shown.length} dust bunnies` : "Dust bunny fight") : "";
+  }
+  const actors = stage.querySelector(".actors");
+  if (!actors) return;
+  const key = `${mode}|${shown.map((chore) => `${chore.id}:${winningIds.has(chore.id) ? "win" : "fight"}`).join(",")}`;
+  const actorsReady = actors.childElementCount === shown.length;
+  if (key === paintedKey && actorsReady) return;
+  paintedKey = key;
+  actors.innerHTML = shown.map((chore, index) => bunnyMarkup(chore, index, shown.length, winningIds.has(chore.id))).join("");
+}
+
+function resetBattleMemory() {
+  clearTimeout(replayTimer);
+  clearInterval(pollTimer);
+  replayTimer = 0;
+  pollTimer = 0;
+  watchedFights = new Set();
+  replayIds = new Set();
+  replayChores = [];
+  fightChores = [];
+  victoryChores = [];
+  winningIds = new Set();
+  lineIds = [];
+  victoryUntil = 0;
+  paintedKey = "";
+  lastKidSig = "";
+}
+
+function finishWins(list) {
+  if (!list.length) return;
+  const kidId = db.session?.role === "kid" ? db.session.id : "";
+  const drop = new Set(list.map((chore) => chore.id));
+  victoryChores = [...victoryChores.filter((chore) => !drop.has(chore.id)), ...list];
+  list.forEach((chore) => winningIds.add(chore.id));
+  victoryUntil = Date.now() + 2600;
+  paintedKey = "";
+  if (kidId) saveTracked(kidId, loadTracked(kidId).filter((chore) => !drop.has(chore.id)));
+  paintStage();
+  setTimeout(() => {
+    fightChores = fightChores.filter((chore) => !drop.has(chore.id));
+    replayChores = replayChores.filter((chore) => !drop.has(chore.id));
+    victoryChores = victoryChores.filter((chore) => !drop.has(chore.id));
+    drop.forEach((id) => {
+      winningIds.delete(id);
+      replayIds.delete(id);
+      watchedFights.delete(id);
+    });
+    if (winningIds.size === 0) victoryUntil = 0;
+    paintedKey = "";
+    paintStage();
+  }, 2600);
+}
+
+function syncBattles() {
+  if (db.session?.role !== "kid") return;
+  const kidId = db.session.id;
+  const submitted = (db.chores || [])
+    .filter((chore) => chore.status === "submitted")
+    .map((chore) => ({ id: chore.id, title: chore.title, points: Number(chore.points) || 0 }));
+  const tracked = loadTracked(kidId);
+  const known = new Set(tracked.map((chore) => chore.id));
+  const fresh = submitted.filter((chore) => !known.has(chore.id));
+  const submittedIds = new Set(submitted.map((chore) => chore.id));
+  const still = tracked.filter((chore) => submittedIds.has(chore.id));
+  const live = [...still, ...fresh];
+  const gone = tracked.filter((chore) => !submittedIds.has(chore.id) && !winningIds.has(chore.id));
+  const instant = gone.filter((chore) => watchedFights.has(chore.id));
+  const away = gone.filter((chore) => !watchedFights.has(chore.id) && !replayIds.has(chore.id));
+  fightChores = live;
+  live.forEach((chore) => watchedFights.add(chore.id));
+  if (away.length) {
+    away.forEach((chore) => replayIds.add(chore.id));
+    replayChores = replayChores.concat(away);
+    if (!replayTimer) {
+      replayTimer = setTimeout(() => {
+        replayTimer = 0;
+        finishWins(replayChores.slice());
+      }, REPLAY_MS);
+    }
+  }
+  saveTracked(
+    kidId,
+    [...live, ...replayChores.filter((chore) => !live.some((item) => item.id === chore.id))].filter(
+      (chore, index, list) => !winningIds.has(chore.id) && list.findIndex((item) => item.id === chore.id) === index
+    )
+  );
+  if (instant.length) finishWins(instant);
+  else paintStage();
+}
+
+function ensurePoll() {
+  if (pollTimer || db.session?.role !== "kid") return;
+  pollTimer = setInterval(async () => {
+    if (busy || db.session?.role !== "kid") return;
+    const ok = await loadKid();
+    if (!ok || db.session?.role !== "kid") return;
+    const sig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status).join(",")}`;
+    syncBattles();
+    if (sig !== lastKidSig) {
+      lastKidSig = sig;
+      render();
+    } else {
+      paintStage();
+    }
+  }, 5000);
 }
 
 function hudStats(child) {
@@ -448,6 +652,13 @@ function render() {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", play ? "#7eb8c9" : "#f3efe4");
   app.innerHTML = view();
+  if (db.session?.role === "kid") {
+    syncBattles();
+    lastKidSig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status).join(",")}`;
+    ensurePoll();
+  } else {
+    paintStage();
+  }
   requestAnimationFrame(() => {
     document.querySelectorAll(".ring-value").forEach((el) => {
       if (el.dataset.offset) el.setAttribute("stroke-dashoffset", el.dataset.offset);
@@ -930,7 +1141,7 @@ app.addEventListener("click", (event) => {
   if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
   if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Grounding lifted here. Turn it off in Screen Time too.");
-  if (action === "done") run(() => rpc("kid_mark_done", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: btn.dataset.id }), "Marked done. A parent still has to approve it.");
+  if (action === "done") run(() => rpc("kid_mark_done", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: btn.dataset.id }), "Marked done. A dust bunny lined up to battle until a parent approves it.");
   if (action === "cash-out") run(() => rpc("kid_cash_out", { p_token: sessionStorage.getItem(KID_TOKEN) }), "$1.00 added to your cash balance.");
   if (action === "buy-time") run(() => rpc("kid_buy_time", { p_token: sessionStorage.getItem(KID_TOKEN) }), "30 minutes added. A parent still turns that on in Screen Time.");
   if (action === "ask") run(() => rpc("kid_ask", { p_token: sessionStorage.getItem(KID_TOKEN), p_item: btn.dataset.id }), "Asked. A parent has the points until they say yes or hand them back.");
@@ -1123,6 +1334,7 @@ async function submitPin() {
 }
 
 async function signOut() {
+  resetBattleMemory();
   sessionStorage.removeItem(KID_TOKEN);
   if (db.session?.role === "parent") await supabase.auth.signOut();
   db = blank();
