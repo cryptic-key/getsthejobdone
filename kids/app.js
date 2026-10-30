@@ -96,7 +96,7 @@ function go(name, extra) {
 async function boot() {
   try {
   const { error } = await supabase.from("households").select("id").limit(1);
-  schemaReady = !error;
+  schemaReady = !error || (error.code !== "PGRST205" && !/schema cache/i.test(error.message || ""));
   if (!schemaReady) {
     route = { name: "welcome" };
     render();
@@ -324,7 +324,7 @@ const views = {
           <span class="btn small leaf">Open</span>
         </button>
         <button class="door sun" data-action="kids-door">
-          <span><strong>Kids</strong><span>Tap your name and enter your PIN.</span></span>
+          <span><strong>Kids</strong><span>Tap your name and enter your 4-digit PIN.</span></span>
           <span class="btn small sun">Open</span>
         </button>
       </div>`;
@@ -897,23 +897,41 @@ async function openKidGate() {
 }
 
 async function onPin(key) {
+  if (busy) return;
   draft.pin = draft.pin || "";
-  if (key === "clear") draft.pin = draft.pin.slice(0, -1);
-  else if (key === "go") {
-    const { data: token, error } = await supabase.rpc("kid_sign_in", { p_kid: route.kidId, p_pin: draft.pin });
-    if (error || !token) {
-      draft.pin = "";
-      route.error = "That PIN does not match.";
-      render();
-      return;
-    }
-    sessionStorage.setItem(KID_TOKEN, token);
-    await loadKid();
-    notice = "";
-    route = { name: "today" };
+  if (key === "clear") {
+    draft.pin = draft.pin.slice(0, -1);
+    route.error = "";
     render();
     return;
-  } else if (draft.pin.length < 4) draft.pin += key;
+  }
+  if (key !== "go") {
+    if (draft.pin.length >= 4) return;
+    draft.pin += key;
+    render();
+  }
+  if (draft.pin.length === 4) await submitPin();
+  else if (key === "go") {
+    route.error = "Enter all 4 digits.";
+    render();
+  }
+}
+
+async function submitPin() {
+  if (busy || (draft.pin || "").length !== 4) return;
+  busy = true;
+  const { data: token, error } = await supabase.rpc("kid_sign_in", { p_kid: route.kidId, p_pin: draft.pin });
+  busy = false;
+  if (error || !token) {
+    draft.pin = "";
+    route.error = "That PIN does not match.";
+    render();
+    return;
+  }
+  sessionStorage.setItem(KID_TOKEN, token);
+  await loadKid();
+  notice = "";
+  route = { name: "today" };
   render();
 }
 
