@@ -24,6 +24,8 @@ export const SPRITES = [
   { id: "dressed", name: "Pajama Phantom" },
   { id: "petbrush", name: "Fur Tumbleweed" },
   { id: "leaves", name: "Leaf Pile Lurker" },
+  { id: "snow", name: "Sneaky Snowman" },
+  { id: "outside", name: "Couch Monster" },
 ];
 
 const SPRITE_IDS = new Set(SPRITES.map((sprite) => sprite.id));
@@ -34,6 +36,8 @@ export function normalizeSprite(value) {
 
 export function guessSprite(title) {
   const text = String(title || "").toLowerCase();
+  if (/snow|shovel/.test(text)) return "snow";
+  if (/outside|fresh air/.test(text)) return "outside";
   if (/bed|sheet|pillow|blanket/.test(text)) return "bed";
   if (/shoe|boot/.test(text)) return "shoes";
   if (/bookshelf|book shelf|\bshelf\b/.test(text)) return "bookshelf";
@@ -571,6 +575,35 @@ const leafPileS = sprite([
   ".KKKKKKKKKKKKKKKKKK.",
 ], leafPal);
 const leafS = [leafPal.O, leafPal.R, leafPal.Y].map((color) => sprite(["..K..", ".KOK.", "KOOOK", ".KOK.", "..K.."], { K, O: color }));
+const snowPal = { K, W: "#f4f8ff", w: "#c8d8ee", O: "#f4862e", H: "#2a2a38", R: "#d64545", r: "#9a2626", E: K, B: "#7a4a26" };
+const snowHead = ["....KKKKK.....", "....KHHHK.....", "....KHHHK.....", "..KKKKKKKKK..."];
+const snowBody = ["OOOOWWWWWWK...", "..KWKWKWWWK...", "..KRRRRRRRK...", ".KRrRRRRRRRK.."];
+const snowLow = ["..KWWWEWWWWWK.", ".KWWWWWWWWWWWK", "KWWWWWEWWWWWWK", "KWWWWWWWWWWWwK", "KWwWWWWWWWWwwK", ".KwwWWWWWWwwK.", "..KKKKKKKKKK.."];
+const snowA = sprite([...snowHead, "...KWWWWWK....", "..KWEWWEWWK...", ...snowBody, "B.KWRrWWWWWK.B", ".BKWWRWWWWWKB.", ...snowLow], snowPal);
+const snowB = sprite([...snowHead, "B..KWWWWWK..B.", ".BKWEWWEWWKB..", ...snowBody, "..KWRrWWWWWK..", "..KWWRWWWWWK..", ...snowLow], snowPal);
+const snowballS = sprite([".KKK.", "KWWWK", "KWWwK", "KWwwK", ".KKK."], { K, W: "#ffffff", w: "#c8d8ee" });
+const couchPal = { K, C: "#c8403a", c: "#8a2a26", h: "#e86a5a", W: "#ffffff", E: K, T: "#ffffff" };
+const couchTop = sprite([
+  "...KKKKKKKKKKKKKKKK...",
+  "..KChCCCCCCCCCCCChCK..",
+  "..KCCWWWCCCCCCWWWCCK..",
+  "..KCCKEWCCCCCCKEWCCK..",
+  "..KCCcCCCCCCCCCCcCCK..",
+  "KKKCCCCCCCCCCCCCCCCKKK",
+  "KhCKCCCCCCCCCCCCCCKChK",
+  "KCCKKKKKKKKKKKKKKKKCCK",
+  "KCCKTKTKTKTKTKTKTKKCCK",
+], couchPal);
+const couchBot = sprite([
+  "KCCKccccccccccccccKCCK",
+  "KCCKCCCCCCKCCCCCCCKCCK",
+  "KCCKccccccKcccccccKCCK",
+  "KKKKKKKKKKKKKKKKKKKKKK",
+  ".KK................KK.",
+], couchPal);
+const cushionS = sprite(["KKKKK", "KChCK", "KCCCK", "KKKKK"], couchPal);
+const remoteS = sprite(["KKKKKK", "KRrRRK", "KKKKKK"], { K, R: "#3a3a48", r: "#e04a4a" });
+const chipS = sprite([".KK.", "KYYK", "KYyK", ".KK."], { K, Y: "#f4d06a", y: "#d4a84a" });
 
 function jaw(g, x, y, m, top, bottom, split, c0, cw, inside, teeth) {
   const o = Math.round(m.open * 4);
@@ -979,6 +1012,34 @@ const MON = {
     draw(g, x, y) { g.drawImage(leafPileS, x, y); },
     attack(m, api) {
       return toss(m, api, [0, 1, 2].map((i) => ({ s: leafS[i], y: G - 10, vx: -rnd(60, 75), vy: -rnd(30, 50), g: 60, gap: 0.15 })));
+    },
+  },
+  snow: {
+    name: "Sneaky Snowman",
+    w: 14,
+    h: 19,
+    snow: true,
+    hit: ["#f4f8ff", "#c8d8ee", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 ? snowB : snowA, x, y); },
+    attack(m, api) {
+      return toss(m, api, [0, 1, 2].map(() => ({ s: snowballS, spin: false, y: G - 15, vx: -rnd(70, 85), vy: -rnd(35, 60), gap: 0.18 })), { lift: false });
+    },
+  },
+  outside: {
+    name: "Couch Monster",
+    w: 22,
+    h: 14,
+    chomp: true,
+    hit: ["#c8403a", "#e86a5a", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 1.5) | 0) % 2) : 0),
+    draw(g, x, y, m) { jaw(g, x, y, m, couchTop, couchBot, 9, 4, 14, "#3a0c14", "#ffffff"); },
+    attack(m, api) {
+      return toss(m, api, [
+        { s: cushionS, y: G - 8, vx: -72, vy: -55, gap: 0.2 },
+        { s: remoteS, y: G - 8, vx: -80, vy: -40, gap: 0.15 },
+        { s: chipS, y: G - 8, vx: -85, vy: -60 },
+      ], { lift: false });
     },
   },
 };
@@ -1726,6 +1787,9 @@ function update(dt) {
     mon.lunge += (mon.lungeT - mon.lunge) * Math.min(1, dt * 12);
     mon.flash = Math.max(0, mon.flash - dt);
     mon.shake = Math.max(0, mon.shake - dt);
+    if (mon.def.snow && R() < dt * 30) {
+      particles.push({ x: rnd(0, W + 30), y: -2, vx: -10, vy: rnd(12, 22), g: 0, life: 4.5, c: R() < 0.3 ? "#c8d8ee" : "#ffffff" });
+    }
   }
   const hx = heroX() + 17;
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {

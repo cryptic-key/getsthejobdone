@@ -70,7 +70,7 @@ create table if not exists public.chores (
   template_id uuid,
   chore_day date,
   approved_at timestamptz,
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside')),
   created_at timestamptz not null default now()
 );
 
@@ -80,7 +80,7 @@ create table if not exists public.chore_templates (
   title text not null,
   points integer not null default 1 check (points >= 0),
   kind text not null default 'daily' check (kind in ('daily', 'special')),
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside')),
   created_at timestamptz not null default now()
 );
 
@@ -122,11 +122,11 @@ begin
   alter table public.chores drop constraint if exists chores_sprite_check;
   alter table public.chores
     add constraint chores_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves'));
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside'));
   alter table public.chore_templates drop constraint if exists chore_templates_sprite_check;
   alter table public.chore_templates
     add constraint chore_templates_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves'));
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside'));
 end $$;
 
 create or replace function private.normalize_sprite(p_sprite text)
@@ -136,7 +136,7 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves') then p_sprite
+    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside') then p_sprite
     else 'dust'
   end
 $$;
@@ -1635,5 +1635,3 @@ grant execute on function public.list_players() to anon, authenticated;
 grant execute on function public.set_parent_pin(uuid, text) to authenticated;
 grant execute on function public.door_ready() to authenticated;
 grant execute on function public.claim_parent_pin(uuid, text) to service_role;
-
-notify pgrst, 'reload schema';
