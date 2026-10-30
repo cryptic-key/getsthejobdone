@@ -23,6 +23,7 @@ const app = document.querySelector("#app");
 let schemaReady = false;
 let db = blank();
 let gateKids = [];
+let gateParents = [];
 let route = { name: "loading" };
 let draft = {};
 let notice = "";
@@ -80,6 +81,7 @@ async function rpc(name, args) {
 function nice(error) {
   const msg = error?.message || "Something went wrong";
   if (/wrong pin/i.test(msg)) return "That PIN does not match.";
+  if (/too many tries/i.test(msg)) return "Too many tries. Wait a few minutes.";
   if (/email not confirmed/i.test(msg)) return "Confirm that email first, then sign in.";
   if (/not a parent/i.test(msg)) return "This login is not on a family yet.";
   if (/already has an account/i.test(msg)) return "That email already has an account. They can sign in.";
@@ -110,6 +112,7 @@ async function boot() {
     render();
     return;
   }
+  await loadPlayers();
   const { data } = await supabase.auth.getSession();
   if (data.session) {
     const ok = await loadParent();
@@ -155,7 +158,7 @@ async function loadParent() {
   if (!me?.households) return false;
   await rpc("ensure_today");
   const day = torontoToday();
-  const [parents, kids, chores, templates, items, requests, activity] = await Promise.all([
+  const [parents, kids, chores, templates, items, requests, activity, doorPins] = await Promise.all([
     supabase.from("parents").select("id,name,email").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite").or(`chore_day.is.null,chore_day.eq.${day}`).neq("status", "approved").order("created_at"),
@@ -163,10 +166,12 @@ async function loadParent() {
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
     supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(20),
+    supabase.rpc("door_ready"),
   ]);
   for (const result of [parents, kids, chores, templates, items, requests, activity]) {
     if (result.error) throw result.error;
   }
+  const readyPins = new Set((doorPins.data || []).map((row) => row.parent_id));
   db = {
     family: {
       name: me.households.name,
@@ -174,7 +179,7 @@ async function loadParent() {
       pointsPerDollar: me.households.points_per_dollar,
       pointsPer30: me.households.points_per_30,
     },
-    parents: parents.data,
+    parents: parents.data.map((person) => ({ ...person, hasPin: readyPins.has(person.id) })),
     kids: kids.data.map(mapKid),
     chores: chores.data.map((chore) => ({
       ...chore,
@@ -250,6 +255,69 @@ function face(color) {
   return `<svg class="face" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="34" r="26" fill="${fill}"/><circle cx="22" cy="30" r="4" fill="#fff"/><circle cx="42" cy="30" r="4" fill="#fff"/><circle cx="23" cy="31" r="2" fill="#24312c"/><circle cx="43" cy="31" r="2" fill="#24312c"/><path d="M22 42 Q32 50 42 42" fill="none" stroke="#24312c" stroke-width="3" stroke-linecap="round"/></svg>`;
 }
 
+function pinPad(title) {
+  return `<div class="card pin-card">
+    <h2 class="page-title">${title}</h2>
+    <div class="pin-dots">${[0, 1, 2, 3].map((i) => `<i class="${(draft.pin || "").length > i ? "on" : ""}"></i>`).join("")}</div>
+    ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+    <div class="pad">
+      ${["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "go"]
+        .map((key) => `<button type="button" data-action="pin" data-key="${key}">${key === "clear" ? "⌫" : key === "go" ? "Go" : key}</button>`)
+        .join("")}
+    </div>
+  </div>`;
+}
+
+function roster() {
+  const people = [
+    ...gateKids.map((child) => ({ id: child.id, name: child.name, color: child.color, kind: "kid", hasPin: true })),
+    ...gateParents.map((person) => ({ id: person.id, name: person.name, color: person.color || "teal", kind: "parent", hasPin: person.hasPin })),
+  ];
+  const selected = people.find((person) => person.id === route.playerId);
+  const pad = !selected
+    ? ""
+    : selected.kind === "parent" && !selected.hasPin
+      ? `<form class="card stack" data-action="parent-auth-submit">
+          <h2 class="page-title">${esc(selected.name)}</h2>
+          <p class="lede">This parent does not have a door PIN yet. Sign in once, then set one on the Family page.</p>
+          <label>Email<input name="email" type="email" autocomplete="username" required value="${esc(draft.email || "")}"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+          ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+          <button class="btn leaf" type="submit">Sign in</button>
+        </form>`
+      : pinPad(`PIN for ${esc(selected.name)}`);
+  return `<div class="stack">
+    <div class="roster">${people
+      .map(
+        (person) => `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
+          ${face(person.color)}
+          <strong>${esc(person.name)}</strong>
+          ${person.kind === "parent" ? `<span class="role">Parent</span>` : ""}
+        </button>`
+      )
+      .join("")}</div>
+    ${pad}
+  </div>`;
+}
+
+async function loadPlayers() {
+  gateKids = [];
+  gateParents = [];
+  const { data, error } = await supabase.rpc("list_players");
+  if (!error && data) {
+    gateKids = data.filter((row) => row.kind === "kid");
+    gateParents = data.filter((row) => row.kind === "parent").map((row) => ({
+      id: row.id,
+      name: row.name,
+      color: row.color || "teal",
+      hasPin: Boolean(row.has_pin),
+    }));
+    return;
+  }
+  const kids = await supabase.rpc("list_kids", { p_code: "" });
+  if (!kids.error) gateKids = kids.data || [];
+}
+
 function worldScene(color) {
   return `<div class="stage-slot" data-color="${esc(color || "leaf")}"></div>`;
 }
@@ -317,6 +385,16 @@ function actor(chore) {
 function paintStage() {
   const host = document.querySelector(".stage");
   if (!host || host.hidden) return;
+  if (!db.session && route.name === "welcome") {
+    setStageScene({
+      parade: gateKids.map((child) => ({
+        id: child.id,
+        name: child.name,
+        color: COLOR_HEX[child.color] || COLOR_HEX.leaf,
+      })),
+    });
+    return;
+  }
   const name = host.dataset.color || "leaf";
   const playing = new Set(playChores.map((chore) => chore.id));
   setStageScene({
@@ -610,35 +688,23 @@ const views = {
       <header class="top hud"><div class="brand">${mark()}<span><h1>Our chart</h1><p>Gets the job done</p></span></div></header>
       ${worldScene("sun")}
       <section class="hero">
-        <h2>Ready to play?</h2>
-        <p class="lede">Parents keep the accounts. Kids pick a player and use a PIN.</p>
+        <h2>Who's here?</h2>
+        <p class="lede">Tap your name and enter your PIN.</p>
       </section>
-      <div class="doors">
-        <button class="door leaf" data-action="goto" data-to="parent-auth">
-          <span><strong>Parents</strong><span>Create an account or sign in.</span></span>
-          <span class="btn small leaf">Open</span>
-        </button>
-        <button class="door sun" data-action="kids-door">
-          <span><strong>Kids</strong><span>Tap your name and enter your 4-digit PIN.</span></span>
-          <span class="btn small sun">Play</span>
-        </button>
-      </div>`;
+      ${roster()}`;
   },
 
   "parent-auth"() {
-    const creating = route.mode !== "signin";
     return shell(
       "Our chart",
-      creating ? "New parent" : "Parent sign in",
+      "Parent sign in",
       `<form class="card stack" data-action="parent-auth-submit">
-        <div class="section-title"><h2>${creating ? "Create a parent account" : "Parent sign in"}</h2></div>
-        ${creating ? `<label>Your name<input name="name" autocomplete="name" required value="${esc(draft.name || "")}"></label>` : ""}
-        ${creating ? `<label>Family name<input name="family" required value="${esc(draft.family || "Our family")}"></label>` : ""}
+        <div class="section-title"><h2>Parent sign in</h2></div>
+        <p class="lede">Use the email and password for this parent. A new parent is added from the Family page.</p>
         <label>Email<input name="email" type="email" autocomplete="username" required value="${esc(draft.email || route.email || "")}"></label>
-        <label>Password<input name="password" type="password" autocomplete="${creating ? "new-password" : "current-password"}" required minlength="8"></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
         ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
-        <button class="btn leaf wide" type="submit">${creating ? "Create account" : "Sign in"}</button>
-        <button class="btn ghost wide" type="button" data-action="auth-mode" data-mode="${creating ? "signin" : "create"}">${creating ? "I already have an account" : "Create a parent account"}</button>
+        <button class="btn leaf wide" type="submit">Sign in</button>
         <button class="btn ghost wide" type="button" data-action="goto" data-to="welcome">Back</button>
       </form>`
     );
@@ -692,11 +758,15 @@ const views = {
         <div class="split">
           <section class="card">
             <div class="section-title"><h2>Parents</h2><button class="btn small leaf" data-action="goto" data-to="add-parent">Add</button></div>
+            ${me?.hasPin ? "" : `<p class="lede">Choose a 4-digit PIN on your name. That is how you open the chart from the front page.</p>`}
             ${db.parents
               .map(
                 (person) => `<div class="person">
-                  <div><strong>${esc(person.name)}</strong><div class="tiny muted">${esc(person.email)}${person.id === me?.id ? " · You" : ""}</div></div>
-                  ${person.id === me?.id ? "" : `<button class="btn ghost small" data-action="remove-parent" data-id="${person.id}">Remove</button>`}
+                  <div><strong>${esc(person.name)}</strong><div class="tiny muted">${esc(person.email)}${person.id === me?.id ? " · You" : ""}${person.hasPin ? "" : " · no door PIN"}</div></div>
+                  <div class="row">
+                    <button class="btn ghost small" data-action="edit-parent-pin" data-id="${person.id}">PIN</button>
+                    ${person.id === me?.id ? "" : `<button class="btn ghost small" data-action="remove-parent" data-id="${person.id}">Remove</button>`}
+                  </div>
                 </div>`
               )
               .join("")}
@@ -727,10 +797,11 @@ const views = {
       db.family.name,
       "Add a parent",
       `<form class="card stack" data-action="add-parent-submit">
-        <p class="lede">They sign in on the Parents door with this email and password. Supabase will email them a confirmation first.</p>
+        <p class="lede">They tap their name on the front page and enter this PIN. Supabase still emails them to confirm the account.</p>
         <label>Name<input name="name" required value="${esc(draft.name || "")}"></label>
         <label>Email<input name="email" type="email" required value="${esc(draft.email || "")}"></label>
         <label>Password<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+        <label>4-digit PIN<input name="pin" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required value="${esc(draft.pin || "")}"></label>
         ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
         <button class="btn leaf" type="submit">Save parent</button>
         <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
@@ -746,7 +817,7 @@ const views = {
       db.family.name,
       "Add a kid",
       `<form class="card stack" data-action="add-kid-submit">
-        <p class="lede">They tap their name on the Kids door and enter this PIN.</p>
+        <p class="lede">They tap their name on the front page and enter this PIN.</p>
         <label>Name<input name="name" required value="${esc(draft.name || "")}"></label>
         <div>
           <div class="field-label">Color</div>
@@ -761,6 +832,25 @@ const views = {
         ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
         <button class="btn sun" type="submit">Save kid</button>
         <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
+      </form>`,
+      parentNav("family")
+    );
+  },
+
+  "edit-parent-pin"() {
+    const person = db.parents.find((parentRow) => parentRow.id === route.id);
+    if (!person) return views.family();
+    return shell(
+      db.family.name,
+      `PIN for ${person.name}`,
+      `<form class="card stack" data-action="save-parent-pin">
+        <p class="lede">${esc(person.name)} uses this 4-digit PIN on the front page.</p>
+        <label>4-digit PIN<input name="pin" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label>
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+        <div class="row">
+          <button class="btn leaf" type="submit">Save PIN</button>
+          <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
+        </div>
       </form>`,
       parentNav("family")
     );
@@ -1077,6 +1167,13 @@ app.addEventListener("click", (event) => {
   if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "family" : "welcome");
   if (action === "auth-mode") go("parent-auth", { mode: btn.dataset.mode, email: draft.email || "" });
   if (action === "kids-door") openKidGate();
+  if (action === "pick-player") {
+    route = { name: "welcome", playerId: btn.dataset.id, playerKind: btn.dataset.kind, error: "" };
+    draft = {};
+    notice = "";
+    render();
+  }
+  if (action === "edit-parent-pin") go("edit-parent-pin", { id: btn.dataset.id });
   if (action === "sign-out") signOut();
   if (action === "pick-kid") {
     route = { ...route, kidId: btn.dataset.id, error: "" };
@@ -1130,6 +1227,7 @@ app.addEventListener("submit", (event) => {
   if (action === "add-parent-submit") addParent(data);
   if (action === "add-kid-submit") addKid(data);
   if (action === "save-pin") savePin(data);
+  if (action === "save-parent-pin") saveParentPin(data);
   if (action === "add-daily") run(() => rpc("add_daily_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)) }), "Added for every kid. It comes back each day.", "chores");
   if (action === "add-special") run(() => rpc("add_special_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)) }), "Added once for every kid.", "chores");
   if (action === "save-daily") run(() => rpc("save_daily_chore", { p_id: data.id, p_points: Number(data.points) || 0 }), "Points updated for everybody.", "chores");
@@ -1180,33 +1278,9 @@ app.addEventListener("submit", (event) => {
 
 async function parentAuth(data) {
   const email = data.email.trim().toLowerCase();
-  const creating = route.mode !== "signin";
   if (busy) return;
   busy = true;
   try {
-    if (creating) {
-      const { data: created, error } = await supabase.auth.signUp({
-        email,
-        password: data.password,
-        options: { data: { name: data.name.trim(), family_name: (data.family || "Our family").trim() } },
-      });
-      if (error) throw error;
-      if (!created.user || created.user.identities?.length === 0) {
-        throw new Error("That email already has an account. Sign in instead.");
-      }
-      if (!created.session) {
-        notice = "Check that email and confirm it, then sign in. Use the password you just chose.";
-        route = { name: "parent-auth", mode: "signin", email, error: "" };
-        draft = { email };
-        render();
-        return;
-      }
-      await loadParent();
-      notice = "Parent account ready. Add kids and other parents next.";
-      route = { name: "family" };
-      render();
-      return;
-    }
     const { error } = await supabase.auth.signInWithPassword({ email, password: data.password });
     if (error) throw error;
     const ok = await loadParent();
@@ -1225,6 +1299,11 @@ async function parentAuth(data) {
 async function addParent(data) {
   const email = data.email.trim().toLowerCase();
   const person = data.name.trim();
+  if (!/^[0-9]{4}$/.test(data.pin || "")) {
+    route = { ...route, error: "PIN must be 4 digits." };
+    render();
+    return;
+  }
   if (busy) return;
   busy = true;
   try {
@@ -1239,7 +1318,11 @@ async function addParent(data) {
       throw new Error("That email already has an account.");
     }
     await loadParent();
-    notice = `${person} can sign in on the Parents door after they confirm the email. The password is the one you set.`;
+    const createdParent = db.parents.find((row) => row.email.toLowerCase() === email);
+    if (!createdParent) throw new Error("That parent did not join the family.");
+    if (!/^[0-9]{4}$/.test(data.pin || "")) throw new Error("pin must be 4 digits");
+    await rpc("set_parent_pin", { p_parent: createdParent.id, p_pin: data.pin });
+    notice = `${person} can tap their name on the front page and enter that PIN.`;
     route = { name: "family" };
     draft = {};
     render();
@@ -1254,13 +1337,53 @@ async function addParent(data) {
 async function addKid(data) {
   await run(
     () => rpc("add_kid", { p_name: data.name.trim(), p_color: draft.color || "leaf", p_pin: data.pin }),
-    `${data.name.trim()} can sign in on the Kids door with that PIN.`,
+    `${data.name.trim()} can tap their name on the front page and enter that PIN.`,
     "family"
   );
 }
 
 async function savePin(data) {
   await run(() => rpc("set_kid_pin", { p_kid: route.id, p_pin: data.pin }), "PIN updated.", "family");
+}
+
+async function saveParentPin(data) {
+  await run(() => rpc("set_parent_pin", { p_parent: route.id, p_pin: data.pin }), "Door PIN saved.", "family");
+}
+
+async function parentPinSignIn(parentId, pin) {
+  if (busy) return;
+  busy = true;
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/parent-pin`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ parent_id: parentId, pin }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.access_token) throw new Error(body.error || "wrong pin");
+    const { error } = await supabase.auth.setSession({
+      access_token: body.access_token,
+      refresh_token: body.refresh_token,
+    });
+    if (error) throw error;
+    const ok = await loadParent();
+    if (!ok) throw new Error("This login is not on a family yet.");
+    notice = "";
+    route = { name: "family" };
+    draft = {};
+    render();
+  } catch (error) {
+    draft.pin = "";
+    route.error = nice(error);
+    render();
+    document.querySelector(".pin-card")?.classList.add("shake");
+  } finally {
+    busy = false;
+  }
 }
 
 async function openKidGate() {
@@ -1297,8 +1420,12 @@ async function onPin(key) {
 
 async function submitPin() {
   if (busy || (draft.pin || "").length !== 4) return;
+  if (route.playerKind === "parent") {
+    await parentPinSignIn(route.playerId, draft.pin);
+    return;
+  }
   busy = true;
-  const { data: token, error } = await supabase.rpc("kid_sign_in", { p_kid: route.kidId, p_pin: draft.pin });
+  const { data: token, error } = await supabase.rpc("kid_sign_in", { p_kid: route.playerId || route.kidId, p_pin: draft.pin });
   busy = false;
   if (error || !token) {
     draft.pin = "";
@@ -1321,6 +1448,7 @@ async function signOut() {
   if (db.session?.role === "parent") await supabase.auth.signOut();
   db = blank();
   notice = "";
+  await loadPlayers();
   go("welcome");
 }
 

@@ -1472,4 +1472,168 @@ grant execute on function public.add_special_chore(text, integer, text) to authe
 grant execute on function public.set_chore_sprite(uuid, text) to authenticated;
 grant execute on function public.remove_special_chore(uuid) to authenticated;
 
+create table if not exists private.parent_pins (
+  parent_id uuid primary key references public.parents (id) on delete cascade,
+  pin_hash text not null
+);
+
+create table if not exists private.parent_pin_guard (
+  parent_id uuid primary key references public.parents (id) on delete cascade,
+  failures integer not null default 0,
+  locked_until timestamptz
+);
+
+revoke all on table private.parent_pins, private.parent_pin_guard from public, anon, authenticated;
+alter table private.parent_pins enable row level security;
+alter table private.parent_pin_guard enable row level security;
+
+create or replace function private.list_players()
+returns table (id uuid, name text, color text, kind text, has_pin boolean)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select q.id, q.name, q.color, q.kind, q.has_pin
+  from (
+    select k.id, k.name, k.color, 'kid'::text as kind, true as has_pin, k.created_at, 0 as grp
+    from public.kids k
+    union all
+    select p.id, p.name, 'teal'::text, 'parent'::text,
+      exists (select 1 from private.parent_pins pins where pins.parent_id = p.id),
+      p.created_at, 1
+    from public.parents p
+  ) q
+  order by q.grp, q.created_at
+$$;
+
+create or replace function private.set_parent_pin(p_parent uuid, p_pin text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  pname text;
+begin
+  if p_pin !~ '^[0-9]{4}$' then
+    raise exception 'pin must be 4 digits';
+  end if;
+  select name into pname from public.parents where id = p_parent and household_id = hid;
+  if pname is null then
+    raise exception 'parent not found';
+  end if;
+  insert into private.parent_pins (parent_id, pin_hash)
+  values (p_parent, extensions.crypt(p_pin, extensions.gen_salt('bf')))
+  on conflict (parent_id) do update set pin_hash = excluded.pin_hash;
+  insert into private.parent_pin_guard (parent_id, failures, locked_until)
+  values (p_parent, 0, null)
+  on conflict (parent_id) do update set failures = 0, locked_until = null;
+  insert into public.activity (household_id, body)
+  values (hid, pname || ' has a door PIN.');
+end;
+$$;
+
+create or replace function private.door_ready()
+returns table (parent_id uuid)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  return query
+  select pins.parent_id
+  from private.parent_pins pins
+  join public.parents p on p.id = pins.parent_id
+  where p.household_id = hid;
+end;
+$$;
+
+create or replace function private.claim_parent_pin(p_parent uuid, p_pin text)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hash text;
+  uid uuid;
+  fails integer;
+  locked timestamptz;
+begin
+  if p_pin !~ '^[0-9]{4}$' then
+    raise exception 'wrong pin';
+  end if;
+  select user_id into uid from public.parents where id = p_parent;
+  if uid is null then
+    raise exception 'wrong pin';
+  end if;
+  select failures, locked_until into fails, locked
+  from private.parent_pin_guard where parent_id = p_parent;
+  if locked is not null and locked > now() then
+    raise exception 'too many tries';
+  end if;
+  select pin_hash into hash from private.parent_pins where parent_id = p_parent;
+  if hash is null or extensions.crypt(p_pin, hash) is distinct from hash then
+    fails := coalesce(fails, 0) + 1;
+    if fails >= 8 then
+      insert into private.parent_pin_guard (parent_id, failures, locked_until)
+      values (p_parent, 0, now() + interval '15 minutes')
+      on conflict (parent_id) do update
+      set failures = 0, locked_until = excluded.locked_until;
+    else
+      insert into private.parent_pin_guard (parent_id, failures, locked_until)
+      values (p_parent, fails, null)
+      on conflict (parent_id) do update
+      set failures = excluded.failures, locked_until = null;
+    end if;
+    raise exception 'wrong pin';
+  end if;
+  insert into private.parent_pin_guard (parent_id, failures, locked_until)
+  values (p_parent, 0, null)
+  on conflict (parent_id) do update set failures = 0, locked_until = null;
+  return uid;
+end;
+$$;
+
+create or replace function public.list_players()
+returns table (id uuid, name text, color text, kind text, has_pin boolean)
+language sql security invoker set search_path = ''
+as $$ select * from private.list_players() $$;
+
+create or replace function public.set_parent_pin(p_parent uuid, p_pin text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.set_parent_pin(p_parent, p_pin); end $$;
+
+create or replace function public.door_ready()
+returns table (parent_id uuid)
+language sql security invoker set search_path = ''
+as $$ select * from private.door_ready() $$;
+
+create or replace function public.claim_parent_pin(p_parent uuid, p_pin text)
+returns uuid language sql security invoker set search_path = ''
+as $$ select private.claim_parent_pin(p_parent, p_pin) $$;
+
+revoke all on function private.list_players() from public, anon, authenticated;
+revoke all on function private.set_parent_pin(uuid, text) from public, anon, authenticated;
+revoke all on function private.door_ready() from public, anon, authenticated;
+revoke all on function private.claim_parent_pin(uuid, text) from public, anon, authenticated;
+revoke all on function public.list_players() from public, anon, authenticated;
+revoke all on function public.set_parent_pin(uuid, text) from public, anon, authenticated;
+revoke all on function public.door_ready() from public, anon, authenticated;
+revoke all on function public.claim_parent_pin(uuid, text) from public, anon, authenticated;
+
+grant execute on function private.list_players() to anon, authenticated;
+grant execute on function private.set_parent_pin(uuid, text) to authenticated;
+grant execute on function private.door_ready() to authenticated;
+grant execute on function private.claim_parent_pin(uuid, text) to service_role;
+grant execute on function public.list_players() to anon, authenticated;
+grant execute on function public.set_parent_pin(uuid, text) to authenticated;
+grant execute on function public.door_ready() to authenticated;
+grant execute on function public.claim_parent_pin(uuid, text) to service_role;
+
 notify pgrst, 'reload schema';

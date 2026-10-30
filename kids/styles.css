@@ -164,6 +164,8 @@ button { cursor: pointer; }
   letter-spacing: -0.04em;
 }
 
+.roster { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.roster .role { color: var(--muted); font-size: 0.78rem; font-weight: 800; }
 .doors { display: grid; gap: 12px; }
 
 @media (min-width: 700px) {

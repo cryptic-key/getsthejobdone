@@ -142,6 +142,12 @@ function buildHero(color) {
     b: sprite([...heroTop, "....KBBKBBK...", "...KBBBKBBBK..", "...KKKKKKKKK.."], pal),
   };
 }
+const heroCache = new Map();
+function heroFor(color) {
+  const key = color || "#3fa34d";
+  if (!heroCache.has(key)) heroCache.set(key, buildHero(key));
+  return heroCache.get(key);
+}
 
 const dustPal = { K, g: "#b4b4c4", D: "#6e6e82", W: "#ffffff", E: K, P: "#e88aa6" };
 const dustTop = [
@@ -1141,7 +1147,9 @@ let full = "";
 let shown = 0;
 let lastFrame = 0;
 let loopOn = false;
-const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d" };
+const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "" };
+let parade = [];
+let paradeOn = false;
 
 function say(text) {
   const next = text || "";
@@ -1150,7 +1158,10 @@ function say(text) {
   shown = 0;
   if (dialog) dialog.textContent = "";
 }
-function heroX() { return 26 + hero.ox + hero.kx; }
+function heroX() {
+  if (paradeOn && parade.length) return parade.reduce((max, walker) => Math.max(max, walker.x), 0);
+  return 26 + hero.ox + hero.kx;
+}
 function heroY() { return G - 15 + hero.jy; }
 function burst(x, y, cols, n = 12, sp = 50) {
   for (let i = 0; i < n; i += 1) {
@@ -1316,6 +1327,77 @@ async function presentIdle(item, token) {
   hero.alert = 0;
   say(idleLine(item, scene.waiting.length, scene.waiting));
 }
+function shuffleWalkers(list) {
+  const next = list.slice();
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+}
+function layoutParade() {
+  const ordered = shuffleWalkers(parade);
+  ordered.forEach((walker, index) => {
+    const fromFront = ordered.length - 1 - index;
+    walker.tx = 30 - fromFront * 15;
+  });
+  parade = ordered;
+}
+function paradeNames() {
+  return parade.slice().sort((a, b) => a.tx - b.tx).map((walker) => walker.name);
+}
+async function runParade() {
+  const token = runToken;
+  while (paradeOn && token === runToken && parade.length) {
+    layoutParade();
+    mon = null;
+    projectiles.length = 0;
+    scrollTarget = reduce ? 0 : 16;
+    parade.forEach((walker) => {
+      walker.pose = "walk";
+      walker.angT = POSE.walk;
+    });
+    const names = paradeNames();
+    say(names.length ? `${names.join(", ")} are on the trail.` : "Walking the forest trail...");
+    if (!(await waitFor(reduce ? 0.4 : 2.6, token))) return;
+    if (!paradeOn || token !== runToken) return;
+    const sprite = SPRITES[Math.floor(Math.random() * SPRITES.length)];
+    const def = MON[sprite.id];
+    const front = parade.slice().sort((a, b) => a.tx - b.tx).at(-1);
+    mon = makeMon(def, { id: `parade-${sprite.id}-${time}`, title: def.name, sprite: sprite.id, points: 0 });
+    mon.showHp = false;
+    scrollTarget = reduce ? 0 : 22;
+    say(front ? `${front.name} meets the ${def.name}.` : `${def.name} is on the trail.`);
+    if (!(await until(() => !mon || mon.x <= def.tx + 6, token))) return;
+    scrollTarget = 0;
+    if (front && mon?.alive) {
+      front.pose = "windup";
+      front.angT = POSE.windup;
+      if (!(await waitFor(0.22, token))) return;
+      front.pose = "swing";
+      front.angT = POSE.swing;
+      mon.flash = 0.2;
+      mon.shake = 0.2;
+      burst(mon.x + def.w / 2, G - def.h / 2, def.hit, 12, 50);
+      if (!(await waitFor(0.28, token))) return;
+      front.pose = "block";
+      front.angT = POSE.block;
+      try {
+        await def.attack(mon, apiFor(token));
+        if (!(await until(() => projectiles.length === 0, token))) return;
+      } catch {
+        projectiles.length = 0;
+      }
+      front.pose = "walk";
+      front.angT = POSE.walk;
+    }
+    if (mon) {
+      burst(mon.x + def.w / 2, G - 8, def.hit, 8, 30);
+      mon.alive = false;
+    }
+    if (!(await waitFor(0.35, token))) return;
+  }
+}
 function reconcile() {
   const token = runToken;
   const play = scene.plays[0];
@@ -1355,6 +1437,44 @@ export function stageElement() {
 
 export function setStageScene(next) {
   stageElement();
+  if (Array.isArray(next.parade)) {
+    const key = next.parade.map((kid) => `${kid.id}:${kid.color}`).sort().join("|");
+    if (paradeOn && scene.paradeKey === key) return;
+    scene.paradeKey = key;
+    scene.waiting = [];
+    scene.plays = [];
+    scene.onDone = null;
+    lastLead = null;
+    lastFront = null;
+    parade = next.parade.map((kid) => ({
+      id: kid.id,
+      name: kid.name,
+      x: 8,
+      tx: 8,
+      pose: "walk",
+      ang: POSE.walk,
+      angT: POSE.walk,
+      sprites: heroFor(kid.color),
+    }));
+    paradeOn = parade.length > 0;
+    runToken += 1;
+    projectiles.length = 0;
+    mon = null;
+    if (!paradeOn) {
+      goTrail();
+      return;
+    }
+    runParade();
+    return;
+  }
+  if (paradeOn || scene.paradeKey) {
+    paradeOn = false;
+    parade = [];
+    scene.paradeKey = "";
+    runToken += 1;
+    mon = null;
+    projectiles.length = 0;
+  }
   const color = next.color || "#3fa34d";
   const waiting = next.waiting || [];
   const plays = next.plays || [];
@@ -1577,6 +1697,12 @@ function update(dt) {
   hero.ang += (target - hero.ang) * Math.min(1, dt * 28);
   hero.smear = Math.max(0, hero.smear - dt);
   hero.alert = Math.max(0, hero.alert - dt);
+  if (paradeOn) {
+    parade.forEach((walker) => {
+      walker.x += (walker.tx - walker.x) * Math.min(1, dt * 5);
+      walker.ang += ((walker.angT ?? POSE.walk) - walker.ang) * Math.min(1, dt * 18);
+    });
+  }
   shake = Math.max(0, shake - dt);
   if (mon) {
     mon.t += dt;
@@ -1649,10 +1775,22 @@ function draw() {
   drawLayer(midPines, worldX * 0.5);
   drawLayer(trees, worldX * 0.7);
   drawLayer(ground, worldX);
+  if (paradeOn && parade.length) {
+    const walking = scroll > 2;
+    parade.slice().sort((a, b) => a.x - b.x).forEach((walker) => {
+      const fr = walking && walker.pose === "walk" && ((time * 8 + walker.x) | 0) % 2;
+      const x = Math.round(walker.x);
+      const y = Math.round(G - 15) - (fr ? 1 : 0);
+      rect(ctx, x + 3, G, 8, 1, "#3e8c2c");
+      ctx.drawImage(fr ? walker.sprites.b : walker.sprites.a, x, y);
+      drawBroom(x + 11, y + 10, walker.ang);
+    });
+  }
   const x = Math.round(heroX());
   const walking = scroll > 2 && hero.pose === "walk";
   const fr = walking && ((time * 8) | 0) % 2;
   const y = Math.round(heroY()) - (fr ? 1 : 0);
+  if (!(paradeOn && parade.length)) {
   rect(ctx, x + 3, G, 8, 1, "#3e8c2c");
   if (hero.smear > 0) {
     for (let a = -160; a <= 35; a += 7) {
@@ -1668,6 +1806,7 @@ function draw() {
     rect(ctx, x + 5, y - 10, 5, 7, "#ffffff");
     rect(ctx, x + 7, y - 9, 1, 3, "#e04a4a");
     px(ctx, x + 7, y - 5, "#e04a4a");
+  }
   }
   if (mon?.alive) drawMonster(mon);
   projectiles.forEach(drawProj);
