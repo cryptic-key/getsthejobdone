@@ -763,6 +763,92 @@ body.play .toast { margin-bottom: 14px; }
 .medal.done .meter span { background: var(--leaf); }
 .meter-count { display: block; margin-top: 4px; font-weight: 800; color: var(--ink); }
 .monster-log { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+
+details.library > summary,
+.task-log > summary {
+  cursor: pointer;
+  font-weight: 800;
+  list-style: none;
+}
+details.library > summary { font-size: 1.35rem; letter-spacing: -0.03em; }
+details.library > summary::-webkit-details-marker,
+.task-log > summary::-webkit-details-marker { display: none; }
+details.library > summary::after { content: "  ▾"; color: var(--muted); font-size: 0.85rem; }
+details.library[open] > summary::after { content: "  ▴"; }
+details.library .lede { margin-top: 8px; }
+.task-log { border-top: 2px solid var(--line); padding-top: 8px; }
+.task-log > summary::before { content: "▸  "; color: var(--muted); }
+.task-log[open] > summary::before { content: "▾  "; }
+
+.switch {
+  width: 54px;
+  height: 32px;
+  border-radius: 999px;
+  border: 3px solid var(--ink);
+  background: #e7e1d6;
+  position: relative;
+  flex: none;
+  padding: 0;
+}
+.switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fffdf8;
+  border: 2px solid var(--ink);
+  display: block;
+  transition: transform .15s ease;
+}
+.switch[aria-pressed="true"] { background: var(--leaf); }
+.switch[aria-pressed="true"] i { transform: translateX(20px); }
+.daily-chore .chore-copy { flex: 1; min-width: 140px; }
+.daily-chore .monster-choice { flex-basis: 100%; }
+.daily-chore .chore-copy .btn { margin-top: 6px; }
+.chore.off .chore-copy strong,
+.chore.off .chore-copy .tiny { opacity: 0.45; }
+.monster-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 3px solid var(--ink);
+  background: #fffdf8;
+  border-radius: 14px;
+  padding: 4px 10px 4px 4px;
+  font-weight: 800;
+}
+.monster-choice canvas,
+button.monster-option canvas {
+  width: 40px;
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.monster-dialog {
+  width: min(720px, calc(100vw - 28px));
+  max-height: min(80vh, 640px);
+  overflow: auto;
+  border: 3px solid var(--ink);
+  border-radius: 22px;
+  background: #fffdf8;
+  padding: 16px;
+  box-shadow: 0 12px 0 rgba(36, 49, 44, 0.16);
+}
+.monster-dialog::backdrop { background: rgba(36, 49, 44, 0.45); }
+button.monster-option {
+  border: 3px solid transparent;
+  background: transparent;
+  border-radius: 14px;
+  padding: 6px;
+  font: inherit;
+  font-weight: 800;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+button.monster-option:hover,
+button.monster-option:focus-visible { border-color: var(--ink); background: #fff3c4; }
 .monster-count { margin: 0; display: grid; justify-items: center; gap: 4px; text-align: center; }
 .monster-count figcaption { display: grid; gap: 2px; }
 .monster-count small { font-weight: 800; }

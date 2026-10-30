@@ -70,7 +70,7 @@ create table if not exists public.chores (
   template_id uuid,
   chore_day date,
   approved_at timestamptz,
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood')),
   created_at timestamptz not null default now()
 );
 
@@ -80,7 +80,7 @@ create table if not exists public.chore_templates (
   title text not null,
   points integer not null default 1 check (points >= 0),
   kind text not null default 'daily' check (kind in ('daily', 'special')),
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood')),
   created_at timestamptz not null default now()
 );
 
@@ -90,6 +90,12 @@ alter table public.chores add column if not exists approved_at timestamptz;
 alter table public.chore_templates add column if not exists kind text not null default 'daily' check (kind in ('daily', 'special'));
 alter table public.chores add column if not exists sprite text not null default 'dust';
 alter table public.chore_templates add column if not exists sprite text not null default 'dust';
+alter table public.chore_templates add column if not exists active boolean not null default true;
+alter table public.chore_templates add column if not exists assignee_id uuid references public.kids (id) on delete cascade;
+alter table public.chores add column if not exists verdict text;
+alter table public.kids add column if not exists progress_reset_at timestamptz;
+alter table public.chores drop constraint if exists chores_verdict_check;
+alter table public.chores add constraint chores_verdict_check check (verdict is null or verdict = 'flee');
 create unique index if not exists chores_daily_once on public.chores (template_id, kid_id, chore_day);
 create unique index if not exists chores_special_once on public.chores (template_id, kid_id) where chore_day is null and template_id is not null;
 
@@ -122,11 +128,11 @@ begin
   alter table public.chores drop constraint if exists chores_sprite_check;
   alter table public.chores
     add constraint chores_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside'));
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood'));
   alter table public.chore_templates drop constraint if exists chore_templates_sprite_check;
   alter table public.chore_templates
     add constraint chore_templates_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside'));
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood'));
 end $$;
 
 create or replace function private.normalize_sprite(p_sprite text)
@@ -136,7 +142,7 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside') then p_sprite
+    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood') then p_sprite
     else 'dust'
   end
 $$;
@@ -401,7 +407,7 @@ begin
   insert into public.chores (household_id, kid_id, template_id, title, points, sprite)
   select hid, kid, t.id, t.title, t.points, t.sprite
   from public.chore_templates t
-  where t.household_id = hid and t.kind = 'special'
+  where t.household_id = hid and t.kind = 'special' and t.assignee_id is null
   on conflict (template_id, kid_id) where chore_day is null and template_id is not null do nothing;
   insert into public.activity (household_id, kid_id, body)
   values (hid, kid, btrim(p_name) || ' can sign in with a PIN.');
@@ -873,6 +879,7 @@ begin
         'id', c.id, 'title', c.title, 'points', c.points,
         'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
         'sprite', c.sprite,
+        'verdict', c.verdict,
         'special', (c.chore_day is null)
       ) order by c.created_at)
       from public.chores c
@@ -892,6 +899,7 @@ begin
                sum(c.cash_cents)::int as cash_cents
         from public.chores c
         where c.kid_id = k.id and c.status = 'approved' and c.approved_at is not null
+          and (k.progress_reset_at is null or c.approved_at > k.progress_reset_at)
         group by 1
       ) e on e.day = d::date
     ), '[]'::jsonb),
@@ -938,7 +946,7 @@ begin
     raise exception 'sign in again';
   end if;
   update public.chores
-  set status = 'submitted'
+  set status = 'submitted', verdict = null
   where id = p_chore and kid_id = kid and status = 'open'
   returning chores.title, chores.household_id into chore_title, hid;
   if chore_title is null then
@@ -1057,7 +1065,7 @@ begin
   insert into public.chores (household_id, kid_id, template_id, title, points, sprite, chore_day)
   select k.household_id, k.id, t.id, t.title, t.points, t.sprite, today
   from public.kids k
-  join public.chore_templates t on t.household_id = k.household_id and t.kind = 'daily'
+  join public.chore_templates t on t.household_id = k.household_id and t.kind = 'daily' and t.active
   where k.household_id = p_household
   on conflict (template_id, kid_id, chore_day) do nothing;
 end;
@@ -1141,8 +1149,10 @@ $$;
 
 drop function if exists public.add_special_chore(text, integer);
 drop function if exists private.add_special_chore(text, integer);
+drop function if exists public.add_special_chore(text, integer, text);
+drop function if exists private.add_special_chore(text, integer, text);
 
-create or replace function private.add_special_chore(p_title text, p_points integer, p_sprite text default 'dust')
+create or replace function private.add_special_chore(p_title text, p_points integer, p_sprite text default 'dust', p_kid uuid default null)
 returns uuid
 language plpgsql
 security definer
@@ -1158,13 +1168,19 @@ begin
   if title is null or title = '' then
     raise exception 'chore required';
   end if;
-  insert into public.chore_templates (household_id, title, points, kind, sprite)
-  values (hid, title, pts, 'special', chosen)
+  if p_kid is not null and not exists (
+    select 1 from public.kids where id = p_kid and household_id = hid
+  ) then
+    raise exception 'kid not found';
+  end if;
+  insert into public.chore_templates (household_id, title, points, kind, sprite, assignee_id)
+  values (hid, title, pts, 'special', chosen, p_kid)
   returning id into tid;
   insert into public.chores (household_id, kid_id, template_id, title, points, sprite)
   select hid, k.id, tid, title, pts, chosen
   from public.kids k
-  where k.household_id = hid;
+  where k.household_id = hid
+    and (p_kid is null or k.id = p_kid);
   return tid;
 end;
 $$;
@@ -1317,9 +1333,9 @@ create or replace function public.remove_daily_chore(p_id uuid)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.remove_daily_chore(p_id); end $$;
 
-create or replace function public.add_special_chore(p_title text, p_points integer, p_sprite text default 'dust')
+create or replace function public.add_special_chore(p_title text, p_points integer, p_sprite text default 'dust', p_kid uuid default null)
 returns uuid language sql security invoker set search_path = ''
-as $$ select private.add_special_chore(p_title, p_points, p_sprite) $$;
+as $$ select private.add_special_chore(p_title, p_points, p_sprite, p_kid) $$;
 
 create or replace function public.set_chore_sprite(p_id uuid, p_sprite text)
 returns void language plpgsql security invoker set search_path = ''
@@ -1395,10 +1411,10 @@ begin
     'public.add_daily_chore(text, integer, text)',
     'public.save_daily_chore(uuid, integer)',
     'public.remove_daily_chore(uuid)',
-    'private.add_special_chore(text, integer, text)',
+    'private.add_special_chore(text, integer, text, uuid)',
     'private.set_chore_sprite(uuid, text)',
     'private.remove_special_chore(uuid)',
-    'public.add_special_chore(text, integer, text)',
+    'public.add_special_chore(text, integer, text, uuid)',
     'public.set_chore_sprite(uuid, text)',
     'public.remove_special_chore(uuid)'
   ]
@@ -1465,10 +1481,10 @@ grant execute on function public.ensure_today() to authenticated;
 grant execute on function public.add_daily_chore(text, integer, text) to authenticated;
 grant execute on function public.save_daily_chore(uuid, integer) to authenticated;
 grant execute on function public.remove_daily_chore(uuid) to authenticated;
-grant execute on function private.add_special_chore(text, integer, text) to authenticated;
+grant execute on function private.add_special_chore(text, integer, text, uuid) to authenticated;
 grant execute on function private.set_chore_sprite(uuid, text) to authenticated;
 grant execute on function private.remove_special_chore(uuid) to authenticated;
-grant execute on function public.add_special_chore(text, integer, text) to authenticated;
+grant execute on function public.add_special_chore(text, integer, text, uuid) to authenticated;
 grant execute on function public.set_chore_sprite(uuid, text) to authenticated;
 grant execute on function public.remove_special_chore(uuid) to authenticated;
 
@@ -1679,7 +1695,8 @@ as $$
     ('bookmark', 'chore', 20, 'reading'),
     ('bone', 'chore', 25, 'pet'),
     ('shovel', 'chore', 10, 'snow'),
-    ('bat', 'chore', 15, 'outside')
+    ('bat', 'chore', 15, 'outside'),
+    ('mallet', 'chore', 15, 'wood')
   ) as rules(key, mode, goal, chore)
 $$;
 
@@ -1699,25 +1716,31 @@ declare
   streak integer := 0;
 begin
   select count(*)::integer,
-         coalesce(sum(points), 0)::integer,
-         count(*) filter (where extract(hour from approved_at at time zone 'America/Toronto') < 8)::integer
+         coalesce(sum(c.points), 0)::integer,
+         count(*) filter (where extract(hour from c.approved_at at time zone 'America/Toronto') < 8)::integer
   into battles, coins, early
-  from public.chores
-  where kid_id = p_kid and status = 'approved';
+  from public.chores c
+  join public.kids kid on kid.id = c.kid_id
+  where c.kid_id = p_kid and c.status = 'approved'
+    and (kid.progress_reset_at is null or c.approved_at > kid.progress_reset_at);
 
   select coalesce(jsonb_object_agg(sprite, n), '{}'::jsonb)
   into chores
   from (
-    select sprite, count(*)::integer as n
-    from public.chores
-    where kid_id = p_kid and status = 'approved'
-    group by sprite
+    select c.sprite, count(*)::integer as n
+    from public.chores c
+    join public.kids kid on kid.id = c.kid_id
+    where c.kid_id = p_kid and c.status = 'approved'
+      and (kid.progress_reset_at is null or c.approved_at > kid.progress_reset_at)
+    group by c.sprite
   ) counts;
 
   with days as (
-    select distinct (approved_at at time zone 'America/Toronto')::date as day
-    from public.chores
-    where kid_id = p_kid and status = 'approved' and approved_at is not null
+    select distinct (c.approved_at at time zone 'America/Toronto')::date as day
+    from public.chores c
+    join public.kids kid on kid.id = c.kid_id
+    where c.kid_id = p_kid and c.status = 'approved' and c.approved_at is not null
+      and (kid.progress_reset_at is null or c.approved_at > kid.progress_reset_at)
   ),
   islands as (
     select day, day - (row_number() over (order by day))::integer as grp
@@ -1779,7 +1802,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select array['dust','bed','shoes','pack','dishes','teeth','laundry','toys','reading','pet','plants','table','trash','counters','towels','bookshelf','lunch','coats','groceries','homework','dressed','petbrush','leaves','snow','outside']
+  select array['dust','bed','shoes','pack','dishes','teeth','laundry','toys','reading','pet','plants','table','trash','counters','towels','bookshelf','lunch','coats','groceries','homework','dressed','petbrush','leaves','snow','outside','wood']
 $$;
 
 create or replace function private.sync_kid_rewards(p_kid uuid)
@@ -1815,12 +1838,13 @@ begin
         ('suds', 15, coalesce((stats->'chores'->>'dishes')::integer, 0)),
         ('snowday', 5, coalesce((stats->'chores'->>'snow')::integer, 0)),
         ('freshair', 10, coalesce((stats->'chores'->>'outside')::integer, 0)),
+        ('firekeeper', 10, coalesce((stats->'chores'->>'wood')::integer, 0)),
         ('early', 1, coalesce((stats->>'earlyBird')::integer, 0)),
         ('week', 7, greatest(coalesce((stats->>'streak')::integer, 0), coalesce((stats->>'bestStreak')::integer, 0))),
         ('month', 30, greatest(coalesce((stats->>'streak')::integer, 0), coalesce((stats->>'bestStreak')::integer, 0))),
         ('arsenal', 5, private.unlocked_weapon_count(stats)),
-        ('armory', 22, private.unlocked_weapon_count(stats)),
-        ('encyclopedia', 25, (
+        ('armory', 23, private.unlocked_weapon_count(stats)),
+        ('encyclopedia', 26, (
           select count(*)::integer
           from unnest(private.monster_kinds()) as kind
           where coalesce((stats->'chores'->>kind)::integer, 0) > 0
@@ -1974,5 +1998,172 @@ grant execute on function public.kid_hero_board(text) to anon, authenticated;
 grant execute on function public.kid_set_hero(text, text) to anon, authenticated;
 grant execute on function public.kid_set_weapon(text, text) to anon, authenticated;
 grant execute on function public.kid_sync_rewards(text) to anon, authenticated;
+
+create or replace function private.set_daily_active(p_id uuid, p_on boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  update public.chore_templates
+  set active = coalesce(p_on, false)
+  where id = p_id and household_id = hid and kind = 'daily';
+  if not found then
+    raise exception 'chore not found';
+  end if;
+  if coalesce(p_on, false) then
+    perform private.ensure_daily(hid);
+  else
+    delete from public.chores
+    where template_id = p_id and household_id = hid and status = 'open';
+  end if;
+end;
+$$;
+
+create or replace function private.reject_chore(p_chore uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  chore public.chores%rowtype;
+  kname text;
+begin
+  select * into chore
+  from public.chores
+  where id = p_chore and household_id = hid and status = 'submitted';
+  if chore.id is null then
+    raise exception 'nothing to reject';
+  end if;
+  update public.chores
+  set status = 'open', verdict = 'flee'
+  where id = chore.id;
+  select name into kname from public.kids where id = chore.kid_id;
+  insert into public.activity (household_id, kid_id, body)
+  values (hid, chore.kid_id, coalesce(kname, 'A kid') || ' was sent back on ' || chore.title || '.');
+end;
+$$;
+
+create or replace function private.undo_approval(p_chore uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  chore public.chores%rowtype;
+  kname text;
+begin
+  select * into chore
+  from public.chores
+  where id = p_chore and household_id = hid and status = 'approved';
+  if chore.id is null then
+    raise exception 'nothing to undo';
+  end if;
+  update public.kids
+  set points = greatest(0, points - chore.points),
+      cash_cents = greatest(0, cash_cents - chore.cash_cents),
+      minutes = greatest(0, minutes - chore.minutes)
+  where id = chore.kid_id;
+  update public.chores
+  set status = 'submitted', approved_at = null
+  where id = chore.id;
+  select name into kname from public.kids where id = chore.kid_id;
+  insert into public.activity (household_id, kid_id, body)
+  values (hid, chore.kid_id, 'Approval undone for ' || coalesce(kname, 'a kid') || ' on ' || chore.title || '.');
+end;
+$$;
+
+create or replace function private.reset_kid_progress(p_kid uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  kname text;
+begin
+  select name into kname from public.kids where id = p_kid and household_id = hid;
+  if kname is null then
+    raise exception 'kid not found';
+  end if;
+  delete from public.activity where kid_id = p_kid and household_id = hid;
+  delete from public.kid_rewards where kid_id = p_kid;
+  update public.kids
+  set hero = 'knight',
+      weapon = 'broom',
+      progress_reset_at = now()
+  where id = p_kid;
+  insert into public.activity (household_id, kid_id, body)
+  values (hid, p_kid, kname || ' was reset. Hero, achievements, and the log start over.');
+end;
+$$;
+
+create or replace function private.kid_ack_verdict(p_token text, p_chore uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  update public.chores
+  set verdict = null
+  where id = p_chore and kid_id = kid and verdict = 'flee';
+end;
+$$;
+
+create or replace function public.set_daily_active(p_id uuid, p_on boolean)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.set_daily_active(p_id, p_on); end $$;
+
+create or replace function public.reject_chore(p_chore uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.reject_chore(p_chore); end $$;
+
+create or replace function public.undo_approval(p_chore uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.undo_approval(p_chore); end $$;
+
+create or replace function public.reset_kid_progress(p_kid uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.reset_kid_progress(p_kid); end $$;
+
+create or replace function public.kid_ack_verdict(p_token text, p_chore uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.kid_ack_verdict(p_token, p_chore); end $$;
+
+revoke all on function private.set_daily_active(uuid, boolean) from public, anon, authenticated;
+revoke all on function private.reject_chore(uuid) from public, anon, authenticated;
+revoke all on function private.undo_approval(uuid) from public, anon, authenticated;
+revoke all on function private.reset_kid_progress(uuid) from public, anon, authenticated;
+revoke all on function private.kid_ack_verdict(text, uuid) from public, anon, authenticated;
+revoke all on function public.set_daily_active(uuid, boolean) from public, anon, authenticated;
+revoke all on function public.reject_chore(uuid) from public, anon, authenticated;
+revoke all on function public.undo_approval(uuid) from public, anon, authenticated;
+revoke all on function public.reset_kid_progress(uuid) from public, anon, authenticated;
+revoke all on function public.kid_ack_verdict(text, uuid) from public, anon, authenticated;
+
+grant execute on function private.set_daily_active(uuid, boolean) to authenticated;
+grant execute on function private.reject_chore(uuid) to authenticated;
+grant execute on function private.undo_approval(uuid) to authenticated;
+grant execute on function private.reset_kid_progress(uuid) to authenticated;
+grant execute on function private.kid_ack_verdict(text, uuid) to anon, authenticated;
+grant execute on function public.set_daily_active(uuid, boolean) to authenticated;
+grant execute on function public.reject_chore(uuid) to authenticated;
+grant execute on function public.undo_approval(uuid) to authenticated;
+grant execute on function public.reset_kid_progress(uuid) to authenticated;
+grant execute on function public.kid_ack_verdict(text, uuid) to anon, authenticated;
 
 notify pgrst, 'reload schema';

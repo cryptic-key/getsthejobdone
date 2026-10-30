@@ -26,6 +26,7 @@ export const SPRITES = [
   { id: "leaves", name: "Leaf Pile Lurker" },
   { id: "snow", name: "Sneaky Snowman" },
   { id: "outside", name: "Couch Monster" },
+  { id: "wood", name: "Woodpile Grump" },
 ];
 
 const SPRITE_IDS = new Set(SPRITES.map((sprite) => sprite.id));
@@ -38,6 +39,7 @@ export function guessSprite(title) {
   const text = String(title || "").toLowerCase();
   if (/snow|shovel/.test(text)) return "snow";
   if (/outside|fresh air/.test(text)) return "outside";
+  if (/firewood|woodpile|fire wood/.test(text)) return "wood";
   if (/bed|sheet|pillow|blanket/.test(text)) return "bed";
   if (/shoe|boot/.test(text)) return "shoes";
   if (/bookshelf|book shelf|\bshelf\b/.test(text)) return "bookshelf";
@@ -582,6 +584,31 @@ const snowLow = ["..KWWWEWWWWWK.", ".KWWWWWWWWWWWK", "KWWWWWEWWWWWWK", "KWWWWWWW
 const snowA = sprite([...snowHead, "...KWWWWWK....", "..KWEWWEWWK...", ...snowBody, "B.KWRrWWWWWK.B", ".BKWWRWWWWWKB.", ...snowLow], snowPal);
 const snowB = sprite([...snowHead, "B..KWWWWWK..B.", ".BKWEWWEWWKB..", ...snowBody, "..KWRrWWWWWK..", "..KWWRWWWWWK..", ...snowLow], snowPal);
 const snowballS = sprite([".KKK.", "KWWWK", "KWWwK", "KWwwK", ".KKK."], { K, W: "#ffffff", w: "#c8d8ee" });
+const woodPal = { K, B: "#b07840", w: "#e8c07a", r: "#b88848", W: "#ffffff", E: K, T: "#ffffff", D: "#3a0c14", G: "#5cc96a", g: "#3a8f4a" };
+const logPlain = sprite([".KKKK.", "KBBBBK", "KBwwBK", "KBwrBK", "KBBBBK", ".KKKK."], woodPal);
+const logEye = sprite([".KKKK.", "KBBBBK", "KBWWBK", "KBEWBK", "KBBBBK", ".KKKK."], woodPal);
+const logMouthA = sprite([".KKKK.", "KBwwBK", "KwKKwK", "KwwwwK", "KBwwBK", ".KKKK."], woodPal);
+const logMouthB = sprite([".KKKK.", "KBwwBK", "KTDDTK", "KDDDDK", "KBwwBK", ".KKKK."], woodPal);
+function woodpile(mouth) {
+  const [c, g] = canvas(22, 17);
+  const o = 2;
+  g.drawImage(logPlain, o + 6, 1);
+  px(g, o + 8, 0, "#5cc96a");
+  px(g, o + 9, 0, "#3a8f4a");
+  px(g, o + 7, 1, "#5cc96a");
+  g.drawImage(logEye, o + 3, 6);
+  g.drawImage(logEye, o + 9, 6);
+  rect(g, o + 4, 5, 2, 1, K);
+  rect(g, o + 12, 5, 2, 1, K);
+  g.drawImage(logPlain, o, 11);
+  g.drawImage(mouth, o + 6, 11);
+  g.drawImage(logPlain, o + 12, 11);
+  [[0, 9], [1, 9], [1, 8], [20, 9], [21, 9], [20, 8]].forEach(([x, y]) => px(g, x, y, "#6b4426"));
+  return c;
+}
+const woodA = woodpile(logMouthA);
+const woodB = woodpile(logMouthB);
+const logS = sprite(["KKKKKK", "KBBBBw", "KKKKKK"], woodPal);
 const couchPal = { K, C: "#c8403a", c: "#8a2a26", h: "#e86a5a", W: "#ffffff", E: K, T: "#ffffff" };
 const couchTop = sprite([
   "...KKKKKKKKKKKKKKKK...",
@@ -1042,6 +1069,20 @@ const MON = {
       ], { lift: false });
     },
   },
+  wood: {
+    name: "Woodpile Grump",
+    w: 22,
+    h: 17,
+    hit: ["#7a4a26", "#e8c07a", "#b88848"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 ? woodB : woodA, x, y); },
+    attack(m, api) {
+      return toss(m, api, [
+        { s: logS, y: G - 14, vx: -72, vy: -50, gap: 0.25 },
+        { s: logS, y: G - 14, vx: -82, vy: -35 },
+      ]);
+    },
+  },
 };
 for (const def of Object.values(MON)) def.tx = Math.round(94 - def.w / 2);
 
@@ -1204,7 +1245,7 @@ let scroll = 18;
 let scrollTarget = 18;
 let shake = 0;
 let time = 0;
-const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0 };
+const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0, down: false };
 let mon = null;
 const projectiles = [];
 const particles = [];
@@ -1282,6 +1323,7 @@ function apiFor(token) {
 function goTrail() {
   mon = null;
   hero.pose = "walk";
+  hero.down = false;
   hero.oxT = 0;
   scrollTarget = 18;
   projectiles.length = 0;
@@ -1310,7 +1352,38 @@ async function approach(item, token, showHp) {
   hero.pose = "idle";
   return true;
 }
+async function playFlee(item, token) {
+  const ready = await approach(item, token, false);
+  if (!ready || token !== runToken || !mon) return;
+  const def = mon.def;
+  hero.down = false;
+  mon.flee = false;
+  say(`${def.name} wins this one!`);
+  hero.pose = "block";
+  hero.alert = 1;
+  if (!(await waitFor(0.35, token))) return;
+  hero.kx = -12;
+  hero.down = true;
+  if (!reduce) shake = 0.22;
+  burst(heroX() + 10, G - 6, ["#ffffff", "#e04a4a", "#f4c542"], 14, 50);
+  say("Knocked down!");
+  if (!(await waitFor(0.45, token))) return;
+  mon.approach = false;
+  mon.idle = false;
+  mon.flee = true;
+  say(`${def.name} runs away.`);
+  if (!(await until(() => !mon || mon.x > W + 16, token))) return;
+  mon = null;
+  if (!(await waitFor(0.55, token))) return;
+  if (token !== runToken) return;
+  hero.down = false;
+  hero.pose = "walk";
+  say("Back on the trail.");
+  if (!(await waitFor(0.35, token))) return;
+  scene.onDone?.(item.id);
+}
 async function playBattle(item, token) {
+  hero.down = false;
   const def = MON[normalizeSprite(item.sprite)];
   const ready = await approach(item, token, true);
   if (!ready) return;
@@ -1474,7 +1547,8 @@ function reconcile() {
   const token = runToken;
   const play = scene.plays[0];
   if (play) {
-    playBattle(play, token);
+    if (play.flee) playFlee(play, token);
+    else playBattle(play, token);
     return;
   }
   const waiting = scene.waiting[0];
@@ -1795,6 +1869,7 @@ function update(dt) {
   if (mon) {
     mon.t += dt;
     if (mon.approach) mon.x -= scroll * dt;
+    if (mon.flee && mon.alive) mon.x += 78 * dt;
     let openTarget = mon.openT;
     if (mon.def.chomp && mon.idle && !mon.approach && mon.alive) openTarget = Math.max(openTarget, Math.sin(mon.t * 5) > 0.55 ? 0.6 : 0);
     mon.open += (openTarget - mon.open) * Math.min(1, dt * 18);
@@ -1891,9 +1966,17 @@ function draw() {
     }
   }
   const sprites = scene.gear?.frames?.a ? scene.gear.frames : heroSprites;
-  ctx.drawImage(fr ? sprites.b : sprites.a, x, y);
-  if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + 10, hero.ang);
-  else drawBroom(x + 11, y + 10, hero.ang);
+  if (hero.down) {
+    ctx.save();
+    ctx.translate(x + 8, y + 15);
+    ctx.rotate(-Math.PI / 2);
+    ctx.drawImage(sprites.a, -8, -15);
+    ctx.restore();
+  } else {
+    ctx.drawImage(fr ? sprites.b : sprites.a, x, y);
+    if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + 10, hero.ang);
+    else drawBroom(x + 11, y + 10, hero.ang);
+  }
   if (hero.alert > 0) {
     rect(ctx, x + 4, y - 11, 7, 9, K);
     rect(ctx, x + 5, y - 10, 5, 7, "#ffffff");

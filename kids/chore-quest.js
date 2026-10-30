@@ -8,8 +8,8 @@
  *   quest.play('bed');
  *
  * Heroes: knight, princess
- * Monster keys (25): dust, bed, shoes, pack, dishes, teeth, laundry, toys, reading, pet, plants, table, trash, counters, towels, bookshelf, lunch, coats, groceries, homework, dressed, petbrush, leaves, snow, outside
- * Weapon keys (22): broom, duster, mop, squeegee, vacuum, golden, toothbrush, spatula, rake, pencil, plunger, dustpan, sponge, spray, diamond, bubble, lint, watering, bookmark, bone, shovel, bat
+ * Monster keys (26): dust, bed, shoes, pack, dishes, teeth, laundry, toys, reading, pet, plants, table, trash, counters, towels, bookshelf, lunch, coats, groceries, homework, dressed, petbrush, leaves, snow, outside, wood
+ * Weapon keys (23): broom, duster, mop, squeegee, vacuum, golden, toothbrush, spatula, rake, pencil, plunger, dustpan, sponge, spray, diamond, bubble, lint, watering, bookmark, bone, shovel, bat, mallet
  * Canvas renders at 128x72; scale it up with CSS and `image-rendering: pixelated`.
  */
 export function createChoreQuest(canvasEl, opts = {}) {
@@ -336,6 +336,18 @@ const cushionS=sprite(["KKKKK","KChCK","KCCCK","KKKKK"],couchPal);
 const remoteS=sprite(["KKKKKK","KRrRRK","KKKKKK"],{K,R:'#3a3a48',r:'#e04a4a'});
 const chipS=sprite([".KK.","KYYK","KYyK",".KK."],{K,Y:'#f4d06a',y:'#d4a84a'});
 const snowballS=sprite([".KKK.","KWWWK","KWWwK","KWwwK",".KKK."],{K,W:'#ffffff',w:'#c8d8ee'});
+const woodPal={K,B:'#b07840',w:'#e8c07a',r:'#b88848',W:'#ffffff',E:K,T:'#ffffff',D:'#3a0c14',G:'#5cc96a',g:'#3a8f4a'};
+const logPlain=sprite([".KKKK.","KBBBBK","KBwwBK","KBwrBK","KBBBBK",".KKKK."],woodPal);
+const logEye=sprite([".KKKK.","KBBBBK","KBWWBK","KBEWBK","KBBBBK",".KKKK."],woodPal);
+const logMouthA=sprite([".KKKK.","KBwwBK","KwKKwK","KwwwwK","KBwwBK",".KKKK."],woodPal);
+const logMouthB=sprite([".KKKK.","KBwwBK","KTDDTK","KDDDDK","KBwwBK",".KKKK."],woodPal);
+function woodpile(mouth){const[c,g]=canvas(22,17);const o=2;
+  g.drawImage(logPlain,o+6,1);px(g,o+8,0,'#5cc96a');px(g,o+9,0,'#3a8f4a');px(g,o+7,1,'#5cc96a');
+  g.drawImage(logEye,o+3,6);g.drawImage(logEye,o+9,6);rect(g,o+4,5,2,1,K);rect(g,o+12,5,2,1,K);
+  g.drawImage(logPlain,o,11);g.drawImage(mouth,o+6,11);g.drawImage(logPlain,o+12,11);
+  [[0,9],[1,9],[1,8],[20,9],[21,9],[20,8]].forEach(([x,y])=>px(g,x,y,'#6b4426'));return c}
+const woodA=woodpile(logMouthA),woodB=woodpile(logMouthB);
+const logS=sprite(["KKKKKK","KBBBBw","KKKKKK"],woodPal);
 
 function jaw(g,x,y,m,top,bottom,split,c0,cw,inside,teeth){const o=Math.round(m.open*4);g.drawImage(top,x,y-o);
   if(o>0){rect(g,x+c0-1,y+split-o,cw+2,o,K);rect(g,x+c0,y+split-o,cw,o,inside);if(teeth&&o>=2)for(let c=c0+1;c<c0+cw;c+=2){px(g,x+c,y+split-o,teeth);px(g,x+c,y+split-1,teeth)}}
@@ -534,7 +546,12 @@ const MON={
   intro:'The COUCH MONSTER wants you to stay inside all day!',atk:'It spits out cushions, the remote and old chips!',win:'You played outside! The Couch Monster flopped back into the living room.',
   hit:['#c8403a','#e86a5a','#ffffff'],yoff:m=>m.idle?-((m.t*1.5|0)%2):0,
   draw(g,x,y,m){jaw(g,x,y,m,couchTop,couchBot,9,4,14,'#3a0c14','#ffffff')},
-  attack(m){return toss(m,[{s:cushionS,y:G-8,vx:-72,vy:-55,gap:.2},{s:remoteS,y:G-8,vx:-80,vy:-40,gap:.15},{s:chipS,y:G-8,vx:-85,vy:-60}],{lift:false})}}
+  attack(m){return toss(m,[{s:cushionS,y:G-8,vx:-72,vy:-55,gap:.2},{s:remoteS,y:G-8,vx:-80,vy:-40,gap:.15},{s:chipS,y:G-8,vx:-85,vy:-60}],{lift:false})}},
+ wood:{name:'Woodpile Grump',chore:'Brought in firewood',coins:4,w:22,h:17,attackName:'log toss',
+  intro:'A WOODPILE GRUMP stacks itself up by the back door!',atk:'It hurls spinning logs!',win:'Firewood brought in! The Grump is stacked neatly by the fireplace.',
+  hit:['#7a4a26','#e8c07a','#b88848'],yoff:m=>m.idle?-((m.t*2|0)%2):0,
+  draw(g,x,y,m){g.drawImage(m.open>.5?woodB:woodA,x,y)},
+  attack(m){return toss(m,[{s:logS,y:G-14,vx:-72,vy:-50,gap:.25},{s:logS,y:G-14,vx:-82,vy:-35}])}}
 };
 for(const d of Object.values(MON))d.tx=Math.round(94-d.w/2);
 
@@ -556,6 +573,7 @@ const ACH=[
  {key:'suds',name:'Bubble Master',desc:'Do the dishes 15 times',tier:1,icon:'bubble',goal:15,v:s=>cnt(s,'dishes')},
  {key:'snowday',name:'Snow Day Hero',desc:'Shovel snow 5 times',tier:1,icon:'snow',goal:5,v:s=>cnt(s,'snow')},
  {key:'freshair',name:'Fresh Air Fan',desc:'Play outside 10 times',tier:1,icon:'tree',goal:10,v:s=>cnt(s,'outside')},
+ {key:'firekeeper',name:'Cozy Fire Keeper',desc:'Bring in firewood 10 times',tier:1,icon:'flame',goal:10,v:s=>cnt(s,'wood')},
  {key:'early',name:'Early Bird',desc:'Finish a chore before 8 a.m.',tier:0,icon:'sun',goal:1,v:s=>s.earlyBird||0},
  {key:'week',name:'Week Warrior',desc:'Do chores 7 days in a row',tier:1,icon:'flame',goal:7,v:s=>Math.max(s.bestStreak||0,s.streak||0)},
  {key:'month',name:'Unstoppable',desc:'Do chores 30 days in a row',tier:3,icon:'flame',goal:30,v:s=>Math.max(s.bestStreak||0,s.streak||0)},
@@ -663,13 +681,16 @@ const WEAPONS={
   pal:{H:'#7a4a26',S:'#3b74d9',s:'#27509e'},smear:['#ffffff','#c8d8ee'],fx:['#ffffff','#e6f0ff','#c8d8ee'],fxG:40},
  bat:{name:'Slugger Bat',perk:'Home-run hits send sparks flying.',heavy:true,grip:[2,1],
   map:["...........wWWWw.","KHHHwWWWWWWWWWWWW","...........wWWWw."],
-  pal:{K,H:'#3a3a48',W:'#e0b070',w:'#b88848'},smear:['#ffffff','#f4d06a'],fx:['#f4c542','#ffffff','#e0b070']}
+  pal:{K,H:'#3a3a48',W:'#e0b070',w:'#b88848'},smear:['#ffffff','#f4d06a'],fx:['#f4c542','#ffffff','#e0b070']},
+ mallet:{name:'Lumberjack Mallet',perk:'Heavy thuds and flying wood chips.',heavy:true,grip:[2,3],
+  map:["..........KKKKKK","..........KBwwBK","..........KBwwBK","HHHHHHHHHHKBwwBK","..........KBwwBK","..........KBwwBK","..........KKKKKK"],
+  pal:{K,H:'#9a6232',B:'#7a4a26',w:'#e8c07a'},smear:['#e8c07a','#b88848'],fx:['#e8c07a','#7a4a26','#b88848']}
 };
 // How each weapon is earned: a day streak, a total-chores milestone, or mastery of one chore. No coin cost.
 const REQ={broom:null,duster:{streak:3},dustpan:{total:10},mop:{streak:7},sponge:{total:25},squeegee:{streak:14},spray:{total:50},
  vacuum:{streak:21},golden:{streak:30},diamond:{total:100},plunger:{total:75},
  toothbrush:{chore:'teeth',n:20},spatula:{chore:'dishes',n:20},rake:{chore:'leaves',n:10},pencil:{chore:'homework',n:20},
- bubble:{chore:'dishes',n:50},lint:{chore:'laundry',n:30},watering:{chore:'plants',n:20},bookmark:{chore:'reading',n:20},bone:{chore:'pet',n:25},shovel:{chore:'snow',n:10},bat:{chore:'outside',n:15}};
+ bubble:{chore:'dishes',n:50},lint:{chore:'laundry',n:30},watering:{chore:'plants',n:20},bookmark:{chore:'reading',n:20},bone:{chore:'pet',n:25},shovel:{chore:'snow',n:10},bat:{chore:'outside',n:15},mallet:{chore:'wood',n:15}};
 for(const [k,w] of Object.entries(WEAPONS)){w.icon=sprite(w.map,w.pal);const r=w.req=REQ[k]??null;
   if(!r){w.tier='Starter';w.unlock='Ready from day one'}
   else if(r.streak){w.tier='Streak';w.unlock=`${r.streak}-day chore streak`;w.goal=r.streak}

@@ -29,6 +29,7 @@ let route = { name: "loading" };
 let draft = {};
 let notice = "";
 let busy = false;
+let libraryOpen = false;
 
 function blank() {
   return { family: null, parents: [], kids: [], chores: [], templates: [], items: [], requests: [], activity: [], week: [], hero: null, session: null };
@@ -164,8 +165,8 @@ async function loadParent() {
   const [parents, kids, chores, templates, items, requests, activity, doorPins] = await Promise.all([
     supabase.from("parents").select("id,name,email").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until").order("created_at"),
-    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite").or(`chore_day.is.null,chore_day.eq.${day}`).neq("status", "approved").order("created_at"),
-    supabase.from("chore_templates").select("id,title,points,kind,sprite").order("created_at"),
+    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
+    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
     supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(20),
@@ -190,7 +191,7 @@ async function loadParent() {
       cashCents: chore.cash_cents,
       special: chore.chore_day == null,
     })),
-    templates: templates.data,
+    templates: (templates.data || []).map((row) => ({ ...row, assigneeId: row.assignee_id, active: row.active !== false })),
     items: items.data,
     requests: requests.data.map((req) => ({ ...req, kidId: req.kid_id, itemId: req.item_id })),
     activity: activity.data.map((row) => ({ id: row.id, kidId: row.kid_id, text: row.body, at: row.created_at })),
@@ -553,20 +554,30 @@ function resetBattleMemory() {
 
 function onFightDone(id) {
   finishedIds.add(id);
-  applyBattleLine(battleLine.filter((chore) => chore.id !== id));
+  const chore = (db.chores || []).find((item) => item.id === id);
+  if (chore?.verdict === "flee") {
+    chore.verdict = "";
+    supabase.rpc("kid_ack_verdict", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: id });
+  }
+  applyBattleLine(battleLine.filter((item) => item.id !== id));
 }
 
 function syncBattles() {
   if (db.session?.role !== "kid") return;
   const kidId = db.session.id;
   const submitted = (db.chores || []).filter((chore) => chore.status === "submitted").map(actor);
-  applyBattleLine(mergeBattleLine({
+  const fleeing = (db.chores || [])
+    .filter((chore) => chore.verdict === "flee" && !finishedIds.has(chore.id))
+    .map((chore) => ({ ...actor(chore), flee: true, approved: true }));
+  const line = mergeBattleLine({
     order: lineIds,
     stored: loadTracked(kidId).map(actor),
     memory: battleLine,
     submitted,
     finished: [...finishedIds],
-  }));
+  });
+  const fleeIds = new Set(fleeing.map((chore) => chore.id));
+  applyBattleLine([...fleeing, ...line.filter((chore) => !fleeIds.has(chore.id))]);
 }
 
 function ensurePoll() {
@@ -671,6 +682,24 @@ function torontoToday() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(new Date());
 }
 
+function torontoMidnightIso() {
+  const day = torontoToday();
+  const start = new Date(`${day}T00:00:00Z`);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Toronto",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(start).map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return new Date(start.getTime() - (asUtc - start.getTime())).toISOString();
+}
+
 function dayLetter(iso) {
   const [year, month, day] = String(iso).slice(0, 10).split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", { weekday: "narrow", timeZone: "UTC" });
@@ -752,20 +781,37 @@ function payLabel(chore) {
   return parts.join(" · ") || "No pay set";
 }
 
-function spriteButtons(current, action, id) {
-  return `<div class="sprite-picks" role="group" aria-label="Monster">${SPRITES.map(
-    (sprite) => `<button type="button" class="sprite-pick" data-action="${action}"${id ? ` data-id="${esc(id)}"` : ""} data-sprite="${sprite.id}" aria-pressed="${sprite.id === current ? "true" : "false"}" aria-label="${esc(sprite.name)}"><canvas data-sprite="${sprite.id}" width="16" height="16"></canvas></button>`
-  ).join("")}</div>`;
+function monsterChoice(sprite, templateId) {
+  const id = normalizeSprite(sprite);
+  return `<button type="button" class="monster-choice" data-action="open-monster"${templateId ? ` data-id="${esc(templateId)}"` : ""}>
+    <canvas data-sprite="${esc(id)}" width="16" height="16"></canvas>
+    <span>${esc(spriteName(id))}</span>
+  </button>`;
+}
+
+function monsterDialog() {
+  return `<dialog class="monster-dialog">
+    <div class="section-title"><h2>Choose a monster</h2><button type="button" class="btn small ghost" data-action="close-monster">Close</button></div>
+    <div class="sprite-library">
+      ${SPRITES.map((sprite) => `<button type="button" class="sprite-card monster-option" data-action="choose-monster" data-sprite="${esc(sprite.id)}"><canvas data-sprite="${esc(sprite.id)}" width="16" height="16"></canvas><span>${esc(sprite.name)}</span></button>`).join("")}
+    </div>
+  </dialog>`;
 }
 
 function spriteLibrary() {
-  return `<section class="card">
-    <h2 class="page-title">Sprite library</h2>
+  return `<details class="card library"${libraryOpen ? " open" : ""}>
+    <summary>Sprite library</summary>
     <p class="lede">Each task gets one monster. It waits on the trail when a kid taps Done, and the fight plays when you approve it.</p>
     <div class="sprite-library">
       ${SPRITES.map((sprite) => `<figure class="sprite-card"><canvas data-sprite="${sprite.id}" width="16" height="16" aria-hidden="true"></canvas><figcaption>${esc(sprite.name)}</figcaption></figure>`).join("")}
     </div>
-  </section>`;
+  </details>`;
+}
+
+function assigneeName(chore) {
+  const id = chore.assigneeId || chore.assignee_id;
+  if (!id) return "Everybody";
+  return kidById(id)?.name || "One kid";
 }
 
 function render() {
@@ -1007,6 +1053,7 @@ const views = {
   chores() {
     const daily = db.templates.filter((chore) => chore.kind !== "special");
     const specials = db.templates.filter((chore) => chore.kind === "special");
+    const kidChoices = `<option value="">Everybody</option>${db.kids.map((child) => `<option value="${esc(child.id)}">${esc(child.name)}</option>`).join("")}`;
     return shell(
       db.family.name,
       "Tasks",
@@ -1014,56 +1061,58 @@ const views = {
         <p class="lede">Finished tasks are paid on the Approve page, after a kid taps Done.</p>
         ${spriteLibrary()}
         <section class="card">
-          <h2 class="page-title">Daily tasks</h2>
-          <p class="lede">Every kid can do these once a day. They come back tomorrow with the same points and the same monster.</p>
-          ${
-            daily.length
-              ? daily
-                  .map((chore) => {
-                    const sprite = taskSprite(chore);
-                    return `<form class="chore" data-action="save-daily">
-                      <input type="hidden" name="id" value="${chore.id}">
-                      <div><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day · ${esc(spriteName(sprite))}</div></div>
-                      <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
-                      <button class="btn small leaf" type="submit">Save</button>
-                      <button class="btn small ghost" type="button" data-action="remove-daily" data-id="${chore.id}">Remove</button>
-                      ${spriteButtons(sprite, "sprite", chore.id)}
-                    </form>`;
-                  })
-                  .join("")
-              : `<p class="muted">No daily tasks yet.</p>`
-          }
-          <form class="two" data-action="add-daily" style="margin-top:12px">
-            <label>Task<input name="title" required placeholder="Make the bed"></label>
-            <label>Points<input name="points" type="number" min="0" value="2" required></label>
-            <input type="hidden" name="sprite" value="dust">
-            <div class="field-label">Monster</div>
-            ${spriteButtons("dust", "pick-sprite")}
-            <button class="btn leaf" type="submit">Add daily task</button>
-          </form>
-        </section>
-        <section class="card">
           <h2 class="page-title">Special task board</h2>
-          <p class="lede">Bonus chores for everybody, one time. They stay until a kid finishes them or you remove them.</p>
+          <p class="lede">Bonus chores, one time. Pick one kid or everybody. They stay until that kid finishes them or you remove them.</p>
           ${
             specials.length
               ? specials
                   .map((chore) => {
                     const sprite = taskSprite(chore);
-                    return `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(spriteName(sprite))}</div></div><button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${spriteButtons(sprite, "sprite", chore.id)}</div>`;
+                    return `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}</div></div><button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
                   })
                   .join("")
               : `<p class="muted">No bonus tasks yet.</p>`
           }
-          <form class="two" data-action="add-special" style="margin-top:12px">
+          <form class="two" id="add-special-form" data-action="add-special" style="margin-top:12px">
             <label>Bonus task<input name="title" required placeholder="Wash the car"></label>
             <label>Points<input name="points" type="number" min="0" value="5" required></label>
+            <label>Who<select name="kidId">${kidChoices}</select></label>
             <input type="hidden" name="sprite" value="dust">
-            <div class="field-label">Monster</div>
-            ${spriteButtons("dust", "pick-sprite")}
+            ${monsterChoice("dust")}
             <button class="btn sun" type="submit">Add once</button>
           </form>
         </section>
+        <section class="card">
+          <h2 class="page-title">Daily tasks</h2>
+          <p class="lede">Every kid can do these once a day. Turn one off to hide it from the daily board. Send once still puts it on the special board.</p>
+          ${
+            daily.length
+              ? daily
+                  .map((chore) => {
+                    const sprite = taskSprite(chore);
+                    const on = chore.active !== false;
+                    return `<form class="chore daily-chore${on ? "" : " off"}" data-action="save-daily">
+                      <input type="hidden" name="id" value="${chore.id}">
+                      <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
+                      <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day · ${esc(spriteName(sprite))}${on ? "" : " · Hidden from the daily board"}</div><button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button></div>
+                      <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
+                      <button class="btn small leaf" type="submit">Save</button>
+                      <button class="btn small ghost" type="button" data-action="remove-daily" data-id="${chore.id}">Remove</button>
+                      ${monsterChoice(sprite, chore.id)}
+                    </form>`;
+                  })
+                  .join("")
+              : `<p class="muted">No daily tasks yet.</p>`
+          }
+          <form class="two" id="add-daily-form" data-action="add-daily" style="margin-top:12px">
+            <label>Task<input name="title" required placeholder="Make the bed"></label>
+            <label>Points<input name="points" type="number" min="0" value="2" required></label>
+            <input type="hidden" name="sprite" value="dust">
+            ${monsterChoice("dust")}
+            <button class="btn leaf" type="submit">Add daily task</button>
+          </form>
+        </section>
+        ${monsterDialog()}
         ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
       </div>`,
       parentNav("chores")
@@ -1084,7 +1133,7 @@ const views = {
               ? waiting
                   .map((chore) => {
                     const child = kidById(chore.kidId);
-                    return `<div class="chore waiting"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}</div></div><button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button></div>`;
+                    return `<div class="chore waiting"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}</div></div><span class="row"><button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button><button class="btn small clay" data-action="reject-chore" data-id="${chore.id}">Reject</button></span></div>`;
                   })
                   .join("")
               : `<p class="muted">Nothing is waiting. When a kid taps Done, it shows up here.</p>`
@@ -1094,20 +1143,34 @@ const views = {
           db.kids.length
             ? db.kids
                 .map((child) => {
-                  const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted");
-                  return `<section class="card stack"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong></div>${balances(child)}${
+                  const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted" && chore.status !== "approved");
+                  const approved = db.chores.filter((chore) => chore.kidId === child.id && chore.status === "approved");
+                  const confirming = route.confirmReset === child.id;
+                  return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong></div>${
+                    confirming
+                      ? ""
+                      : `<button class="btn small clay" type="button" data-action="reset-kid" data-id="${child.id}">Reset all</button>`
+                  }</div>${
+                    confirming
+                      ? `<div class="banner">Reset ${esc(child.name)}? This clears the log and starts the hero over: adventurer, broom, no achievements, and monster counts back at zero. Coins, cash, and minutes stay. <span class="row"><button class="btn small clay" type="button" data-action="confirm-reset" data-id="${child.id}">Reset</button><button class="btn small ghost" type="button" data-action="cancel-reset">Keep</button></span></div>`
+                      : ""
+                  }${balances(child)}${
                     grounded(child)
                       ? `<div class="banner">Grounded until ${esc(when(child.groundedUntil))}. Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
                       : ""
-                  }${
-                    open.length
-                      ? open
+                  }<details class="task-log"><summary>Task log</summary>${
+                    open.length || approved.length
+                      ? `${open
                           .map(
                             (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Still open</div></div></div>`
                           )
-                          .join("")
-                      : `<p class="muted">No open tasks.</p>`
-                  }</section>`;
+                          .join("")}${approved
+                          .map(
+                            (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Approved</div></div><button class="btn small ghost" type="button" data-action="undo-approval" data-id="${chore.id}">Undo</button></div>`
+                          )
+                          .join("")}`
+                      : `<p class="muted">Nothing in the log.</p>`
+                  }</details></section>`;
                 })
                 .join("")
             : `<div class="card">Add a kid on the Family page first.</div>`
@@ -1288,6 +1351,10 @@ const views = {
   },
 };
 
+app.addEventListener("toggle", (event) => {
+  if (event.target.classList?.contains("library")) libraryOpen = event.target.open;
+});
+
 app.addEventListener("input", (event) => {
   if (event.target.name) draft[event.target.name] = event.target.value;
   if (event.target.name !== "title") return;
@@ -1296,9 +1363,12 @@ app.addEventListener("input", (event) => {
   const sprite = guessSprite(event.target.value);
   const input = form.querySelector('input[name="sprite"]');
   if (input) input.value = sprite;
-  form.querySelectorAll("[data-action='pick-sprite']").forEach((pick) => {
-    pick.setAttribute("aria-pressed", pick.dataset.sprite === sprite ? "true" : "false");
-  });
+  const button = form.querySelector("[data-action='open-monster']");
+  const canvas = button?.querySelector("canvas");
+  const label = button?.querySelector("span");
+  if (canvas) canvas.dataset.sprite = sprite;
+  if (label) label.textContent = spriteName(sprite);
+  if (button) paintSpriteIcons(button);
 });
 
 app.addEventListener("click", (event) => {
@@ -1343,7 +1413,60 @@ app.addEventListener("click", (event) => {
       pick.setAttribute("aria-pressed", pick === btn ? "true" : "false");
     });
   }
-  if (action === "sprite") run(() => rpc("set_chore_sprite", { p_id: btn.dataset.id, p_sprite: btn.dataset.sprite }), "Monster saved for that task.", "chores");
+  if (action === "open-monster") {
+    const dialog = document.querySelector(".monster-dialog");
+    if (!dialog) return;
+    dialog.dataset.templateId = btn.dataset.id || "";
+    dialog.dataset.formId = btn.closest("form")?.id || "";
+    if (!dialog.open) dialog.showModal();
+  }
+  if (action === "close-monster") document.querySelector(".monster-dialog")?.close();
+  if (action === "choose-monster") {
+    const dialog = document.querySelector(".monster-dialog");
+    const sprite = normalizeSprite(btn.dataset.sprite);
+    const templateId = dialog?.dataset.templateId || "";
+    const form = dialog?.dataset.formId ? document.getElementById(dialog.dataset.formId) : null;
+    dialog?.close();
+    if (templateId) {
+      run(() => rpc("set_chore_sprite", { p_id: templateId, p_sprite: sprite }), "Monster saved.", "chores");
+    } else if (form) {
+      form.dataset.spritePicked = "1";
+      const input = form.querySelector('input[name="sprite"]');
+      if (input) input.value = sprite;
+      const choice = form.querySelector("[data-action='open-monster']");
+      const canvas = choice?.querySelector("canvas");
+      const label = choice?.querySelector("span");
+      if (canvas) canvas.dataset.sprite = sprite;
+      if (label) label.textContent = spriteName(sprite);
+      if (choice) paintSpriteIcons(choice);
+    }
+  }
+  if (action === "toggle-daily") {
+    const turningOn = btn.getAttribute("aria-pressed") !== "true";
+    run(() => rpc("set_daily_active", { p_id: btn.dataset.id, p_on: turningOn }), turningOn ? "Back on the daily board." : "Hidden from the daily board.", "chores");
+  }
+  if (action === "send-once") {
+    const chore = db.templates.find((item) => item.id === btn.dataset.id);
+    if (!chore) return;
+    const form = btn.closest("form");
+    const points = form ? Number(new FormData(form).get("points")) : Number(chore.points) || 0;
+    run(
+      () => rpc("add_special_chore", { p_title: chore.title, p_points: points, p_sprite: taskSprite(chore), p_kid: null }),
+      "Sent to the special board once, for everybody.",
+      "chores"
+    );
+  }
+  if (action === "reset-kid") {
+    route = { ...route, confirmReset: btn.dataset.id };
+    render();
+  }
+  if (action === "cancel-reset") {
+    route = { ...route, confirmReset: "" };
+    render();
+  }
+  if (action === "confirm-reset") run(() => rpc("reset_kid_progress", { p_kid: btn.dataset.id }), "Reset. The log, hero, and achievements start over.", "chart");
+  if (action === "reject-chore") run(() => rpc("reject_chore", { p_chore: btn.dataset.id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
+  if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
   if (action === "done") {
     const chore = (db.chores || []).find((item) => item.id === btn.dataset.id);
     run(
@@ -1373,7 +1496,15 @@ app.addEventListener("submit", (event) => {
   if (action === "save-pin") savePin(data);
   if (action === "save-parent-pin") saveParentPin(data);
   if (action === "add-daily") run(() => rpc("add_daily_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)) }), "Added for every kid. It comes back each day.", "chores");
-  if (action === "add-special") run(() => rpc("add_special_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)) }), "Added once for every kid.", "chores");
+  if (action === "add-special") {
+    const kidId = data.kidId || null;
+    const name = kidId ? db.kids.find((child) => child.id === kidId)?.name : "";
+    run(
+      () => rpc("add_special_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)), p_kid: kidId }),
+      name ? `Added once for ${name}.` : "Added once for every kid.",
+      "chores"
+    );
+  }
   if (action === "save-daily") run(() => rpc("save_daily_chore", { p_id: data.id, p_points: Number(data.points) || 0 }), "Points updated for everybody.", "chores");
   if (action === "grant") {
     run(
