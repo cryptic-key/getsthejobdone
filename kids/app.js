@@ -551,7 +551,13 @@ function paintStage() {
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
     hero: heroKey,
     waiting: locked ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
-    plays: locked ? [] : playChores.map(actor),
+    plays: locked
+      ? []
+      : playChores.map((chore) => ({
+          ...actor(chore),
+          flee: Boolean(chore.flee),
+          approved: Boolean(chore.approved),
+        })),
     onDone: onFightDone,
     gear: heroGear(),
     hearts: child?.hearts ?? 3,
@@ -772,7 +778,7 @@ function ensurePoll() {
     if (busy || db.session?.role !== "kid") return;
     const ok = await loadKid();
     if (!ok || db.session?.role !== "kid") return;
-    const sig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status).join(",")}`;
+    const sig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
     syncBattles();
     if (sig !== lastKidSig) {
       lastKidSig = sig;
@@ -1099,7 +1105,7 @@ function render() {
   mountStage();
   if (db.session?.role === "kid") {
     syncBattles();
-    lastKidSig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status).join(",")}`;
+    lastKidSig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
     ensurePoll();
   } else {
     paintStage();

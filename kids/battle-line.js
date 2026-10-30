@@ -26,12 +26,14 @@ export function mergeBattleLine({ order = [], stored = [], memory = [], submitte
   return line.map((id) => {
     const fresh = submitted.find((chore) => chore.id === id);
     const base = fresh || known.get(id);
+    const flee = Boolean(base.flee);
     return {
       id,
       title: base.title,
       points: Number(base.points) || 0,
       sprite: base.sprite || "dust",
-      approved: !submittedIds.has(id),
+      approved: flee || !submittedIds.has(id),
+      flee,
     };
   });
 }

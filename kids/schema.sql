@@ -1009,6 +1009,7 @@ begin
         and (
           c.chore_day is null
           or c.status = 'submitted'
+          or c.verdict = 'flee'
           or t.section_id is null
           or private.section_is_open(s.start_minute, s.end_minute, now_min)
         )
