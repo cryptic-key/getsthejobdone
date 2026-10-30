@@ -690,8 +690,6 @@ set search_path = ''
 as $$
   select k.id, k.name, k.color
   from public.kids k
-  join public.households h on h.id = k.household_id
-  where h.code = p_code
   order by k.created_at
 $$;
 

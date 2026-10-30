@@ -2,7 +2,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal"];
-const CODE_KEY = "chart-family-code";
 const KID_TOKEN = "chart-kid-token";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
@@ -145,7 +144,6 @@ async function loadParent() {
     .maybeSingle();
   if (error) throw error;
   if (!me?.households) return false;
-  localStorage.setItem(CODE_KEY, me.households.code);
   await rpc("ensure_today");
   const day = torontoToday();
   const [parents, kids, chores, templates, items, requests, activity] = await Promise.all([
@@ -420,15 +418,10 @@ const views = {
 
   "kid-gate"() {
     const selected = route.kidId || "";
-    const code = draft.code ?? localStorage.getItem(CODE_KEY) ?? "";
     return shell(
       "Our chart",
       "Who's here?",
       `<div class="stack">
-        <form class="card stack" data-action="save-code">
-          <label>Family code<input name="code" value="${esc(code)}" autocomplete="off" required></label>
-          <button class="btn ghost" type="submit">Show kids</button>
-        </form>
         ${
           gateKids.length
             ? `<div class="kid-grid">${gateKids
@@ -439,7 +432,7 @@ const views = {
                   </button>`
                 )
                 .join("")}</div>`
-            : `<p class="hint">Enter the family code from a parent. It is on the Family page.</p>`
+            : `<p class="hint">A parent adds each kid on the Family page. Then the name shows up here.</p>`
         }
         ${
           selected
@@ -466,7 +459,6 @@ const views = {
       db.family.name,
       me?.name || "",
       `<div class="stack">
-        <div class="banner info">Kids door code <strong>${esc(db.family.code)}</strong>. This browser remembers it.</div>
         <div class="split">
           <section class="card">
             <div class="section-title"><h2>Parents</h2><button class="btn small leaf" data-action="goto" data-to="add-parent">Add</button></div>
@@ -832,7 +824,6 @@ app.addEventListener("submit", (event) => {
   if (action === "add-parent-submit") addParent(data);
   if (action === "add-kid-submit") addKid(data);
   if (action === "save-pin") savePin(data);
-  if (action === "save-code") saveCode(data);
   if (action === "add-daily") run(() => rpc("add_daily_chore", { p_title: data.title, p_points: Number(data.points) || 0 }), "Added for every kid. It comes back each day.", "chores");
   if (action === "save-daily") run(() => rpc("save_daily_chore", { p_id: data.id, p_points: Number(data.points) || 0 }), "Points updated for everybody.", "chores");
   if (action === "grant") {
@@ -951,27 +942,12 @@ async function savePin(data) {
   await run(() => rpc("set_kid_pin", { p_kid: route.id, p_pin: data.pin }), "PIN updated.", "family");
 }
 
-async function saveCode(data) {
-  const code = data.code.trim();
-  localStorage.setItem(CODE_KEY, code);
-  draft.code = code;
-  const { data: rows, error } = await supabase.rpc("list_kids", { p_code: code });
-  if (error) {
-    route.error = nice(error);
-  } else {
-    gateKids = rows || [];
-    route.error = gateKids.length ? "" : "No kids for that code yet.";
-  }
-  render();
-}
-
 async function openKidGate() {
-  const code = localStorage.getItem(CODE_KEY) || "";
-  draft = { code };
+  draft = {};
   gateKids = [];
-  if (schemaReady && code) {
-    const { data: rows } = await supabase.rpc("list_kids", { p_code: code });
-    gateKids = rows || [];
+  if (schemaReady) {
+    const { data: rows, error } = await supabase.rpc("list_kids", { p_code: "" });
+    if (!error) gateKids = rows || [];
   }
   route = { name: "kid-gate" };
   render();
@@ -1024,4 +1000,84 @@ async function signOut() {
   go("welcome");
 }
 
+installPullToRefresh();
 boot();
+
+function installPullToRefresh() {
+  const hint = document.createElement("div");
+  hint.className = "pull-refresh";
+  hint.hidden = true;
+  hint.innerHTML = "<span>Pull to refresh</span>";
+  document.body.appendChild(hint);
+  const label = hint.querySelector("span");
+
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+  let pulled = 0;
+
+  const reset = () => {
+    tracking = false;
+    pulled = 0;
+    hint.hidden = true;
+    hint.classList.remove("ready");
+    label.textContent = "Pull to refresh";
+    document.body.style.removeProperty("--pull-space");
+  };
+
+  const typing = () => {
+    const tag = document.activeElement?.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  };
+
+  document.addEventListener(
+    "touchstart",
+    (event) => {
+      if (event.touches.length !== 1 || window.scrollY > 2 || typing()) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      tracking = true;
+      pulled = 0;
+    },
+    { passive: true }
+  );
+
+  document.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!tracking) return;
+      if (window.scrollY > 2) {
+        reset();
+        return;
+      }
+      const touch = event.touches[0];
+      const dx = Math.abs(touch.clientX - startX);
+      const dy = touch.clientY - startY;
+      if (dy < 12 || dx > dy) return;
+      event.preventDefault();
+      pulled = Math.min(dy, 140);
+      const space = Math.min(pulled, 76);
+      hint.hidden = false;
+      hint.style.setProperty("--pull", `${space}px`);
+      document.body.style.setProperty("--pull-space", `${space}px`);
+      const ready = pulled >= 72;
+      hint.classList.toggle("ready", ready);
+      label.textContent = ready ? "Let go to refresh" : "Pull to refresh";
+    },
+    { passive: false }
+  );
+
+  const finish = () => {
+    if (!tracking) return;
+    if (pulled >= 72 && window.scrollY <= 2) {
+      hint.classList.add("ready");
+      label.textContent = "Refreshing…";
+      location.reload();
+      return;
+    }
+    reset();
+  };
+
+  document.addEventListener("touchend", finish);
+  document.addEventListener("touchcancel", reset);
+}

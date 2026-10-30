@@ -22,6 +22,37 @@
 
 * { box-sizing: border-box; }
 
+html { overscroll-behavior-y: contain; }
+
+.pull-refresh {
+  position: fixed;
+  top: 10px;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+
+.pull-refresh[hidden] { display: none !important; }
+
+.pull-refresh span {
+  transform: translateY(calc(var(--pull, 0px) - 64px));
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 800;
+  color: var(--leaf);
+}
+
+.pull-refresh.ready span {
+  background: var(--sun-soft);
+  border-color: var(--sun);
+  color: var(--ink);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -29,6 +60,7 @@ body {
   background: var(--bg);
   font-size: 17px;
   line-height: 1.45;
+  padding-top: var(--pull-space, 0px);
 }
 
 button, input, select {
