@@ -152,7 +152,7 @@ async function loadParent() {
     supabase.from("parents").select("id,name,email").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day").or(`chore_day.is.null,chore_day.eq.${day}`).neq("status", "approved").order("created_at"),
-    supabase.from("chore_templates").select("id,title,points").order("created_at"),
+    supabase.from("chore_templates").select("id,title,points,kind").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
     supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(20),
@@ -173,6 +173,7 @@ async function loadParent() {
       ...chore,
       kidId: chore.kid_id,
       cashCents: chore.cash_cents,
+      special: chore.chore_day == null,
     })),
     templates: templates.data,
     items: items.data,
@@ -201,7 +202,7 @@ async function loadKid() {
     },
     parents: [],
     kids: [mapKid(snap.kid)],
-    chores: snap.chores.map((chore) => ({ ...chore, kidId: snap.kid.id, cashCents: chore.cash_cents })),
+    chores: snap.chores.map((chore) => ({ ...chore, kidId: snap.kid.id, cashCents: chore.cash_cents, special: Boolean(chore.special) })),
     items: snap.items,
     requests: snap.requests.map((req) => ({ ...req, kidId: snap.kid.id, itemId: req.item_id })),
     activity: snap.activity.map((row) => ({ id: row.id, text: row.body, at: row.created_at })),
@@ -320,10 +321,11 @@ function shell(title, sub, body, nav) {
 }
 
 function parentNav(current) {
+  const waiting = (db.chores || []).filter((chore) => chore.status === "submitted").length;
   return `<nav class="nav">${[
     ["family", "Family"],
-    ["chores", "Chores"],
-    ["chart", "Chart"],
+    ["chores", "Tasks"],
+    ["chart", waiting ? `Approve (${waiting})` : "Approve"],
     ["shop", "Shop"],
   ]
     .map(
@@ -414,6 +416,21 @@ function kidCharts(child) {
     </div>
     <p class="hint">The bars are points a parent approved this week.</p>
   </section>`;
+}
+
+function isSpecial(chore) {
+  return chore.special === true;
+}
+
+function questBlock(list, empty) {
+  if (!list.length) return `<p class="muted">${empty}</p>`;
+  return list
+    .map(
+      (chore) => `<div class="quest"><span class="quest-pay">+${Number(chore.points) || 0}</span><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>${
+        chore.status === "submitted" ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`
+      }</div>`
+    )
+    .join("");
 }
 
 function payLabel(chore) {
@@ -637,32 +654,53 @@ const views = {
   },
 
   chores() {
+    const daily = db.templates.filter((chore) => chore.kind !== "special");
+    const specials = db.templates.filter((chore) => chore.kind === "special");
     return shell(
       db.family.name,
-      "Daily chores",
+      "Tasks",
       `<div class="stack">
+        <p class="lede">Finished tasks are paid on the Approve page, after a kid taps Done.</p>
         <section class="card">
-          <h2 class="page-title">Same chores for everybody</h2>
-          <p class="lede">Add a chore once. Every kid sees it each day, and the points are the same for all of them.</p>
+          <h2 class="page-title">Daily tasks</h2>
+          <p class="lede">Every kid can do these once a day. They come back tomorrow with the same points.</p>
           ${
-            db.templates.length
-              ? db.templates
+            daily.length
+              ? daily
                   .map(
                     (chore) => `<form class="chore" data-action="save-daily">
                       <input type="hidden" name="id" value="${chore.id}">
-                      <div><strong>${esc(chore.title)}</strong><div class="tiny muted">Every day</div></div>
+                      <div><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day</div></div>
                       <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
                       <button class="btn small leaf" type="submit">Save</button>
                       <button class="btn small ghost" type="button" data-action="remove-daily" data-id="${chore.id}">Remove</button>
                     </form>`
                   )
                   .join("")
-              : `<p class="muted">No daily chores yet.</p>`
+              : `<p class="muted">No daily tasks yet.</p>`
           }
           <form class="two" data-action="add-daily" style="margin-top:12px">
-            <label>Chore<input name="title" required placeholder="Make the bed"></label>
+            <label>Task<input name="title" required placeholder="Make the bed"></label>
             <label>Points<input name="points" type="number" min="0" value="2" required></label>
-            <button class="btn leaf" type="submit">Add for everybody</button>
+            <button class="btn leaf" type="submit">Add daily task</button>
+          </form>
+        </section>
+        <section class="card">
+          <h2 class="page-title">Special task board</h2>
+          <p class="lede">Bonus chores for everybody, one time. They stay until a kid finishes them or you remove them.</p>
+          ${
+            specials.length
+              ? specials
+                  .map(
+                    (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time</div></div><button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button></div>`
+                  )
+                  .join("")
+              : `<p class="muted">No bonus tasks yet.</p>`
+          }
+          <form class="two" data-action="add-special" style="margin-top:12px">
+            <label>Bonus task<input name="title" required placeholder="Wash the car"></label>
+            <label>Points<input name="points" type="number" min="0" value="5" required></label>
+            <button class="btn sun" type="submit">Add once</button>
           </form>
           ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
         </section>
@@ -672,35 +710,48 @@ const views = {
   },
 
   chart() {
+    const waiting = db.chores.filter((chore) => chore.status === "submitted");
     return shell(
       db.family.name,
-      "Today",
+      "Approve",
       `<div class="stack">
+        <section class="card">
+          <h2 class="page-title">Waiting for approval</h2>
+          <p class="lede">This is where finished chores get paid. A kid taps Done, then you tap Approve.</p>
+          ${
+            waiting.length
+              ? waiting
+                  .map((chore) => {
+                    const child = kidById(chore.kidId);
+                    return `<div class="chore waiting"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}</div></div><button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button></div>`;
+                  })
+                  .join("")
+              : `<p class="muted">Nothing is waiting. When a kid taps Done, it shows up here.</p>`
+          }
+        </section>
         ${
           db.kids.length
             ? db.kids
                 .map((child) => {
-                  const mine = db.chores.filter((chore) => chore.kidId === child.id);
+                  const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted");
                   return `<section class="card stack"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong></div>${balances(child)}${
                     grounded(child)
                       ? `<div class="banner">Grounded until ${esc(when(child.groundedUntil))}. Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
                       : ""
                   }${
-                    mine.length
-                      ? mine
+                    open.length
+                      ? open
                           .map(
-                            (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)} · ${chore.status === "submitted" ? "Marked done" : "Open"}</div></div>${
-                              chore.status === "submitted" ? `<button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button>` : ""
-                            }</div>`
+                            (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Still open</div></div></div>`
                           )
                           .join("")
-                      : `<p class="muted">Nothing for today. Add chores that repeat.</p>`
+                      : `<p class="muted">No open tasks.</p>`
                   }</section>`;
                 })
                 .join("")
             : `<div class="card">Add a kid on the Family page first.</div>`
         }
-        ${db.templates.length ? "" : `<button class="btn leaf" data-action="goto" data-to="chores">Add daily chores</button>`}
+        ${db.templates.length ? "" : `<button class="btn leaf" data-action="goto" data-to="chores">Add tasks</button>`}
         <section class="card stack">
           <h2 class="page-title">Grant or ground</h2>
           <form class="stack" data-action="grant">
@@ -781,18 +832,12 @@ const views = {
         ${kidCharts(child)}
         ${grounded(child) ? `<div class="banner">Devices are grounded until ${esc(when(child.groundedUntil))}.</div>` : ""}
         <section class="card">
-          <h2 class="page-title">Quests</h2>
-          ${
-            mine.length
-              ? mine
-                  .map(
-                    (chore) => `<div class="quest"><span class="quest-pay">+${Number(chore.points) || 0}</span><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>${
-                      chore.status === "submitted" ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`
-                    }</div>`
-                  )
-                  .join("")
-              : `<p class="muted">No quests right now. Check back tomorrow.</p>`
-          }
+          <h2 class="page-title">Daily tasks</h2>
+          ${questBlock(mine.filter((chore) => !isSpecial(chore)), "No daily tasks right now. They come back each day.")}
+        </section>
+        <section class="card">
+          <h2 class="page-title">Special board</h2>
+          ${questBlock(mine.filter((chore) => isSpecial(chore)), "No bonus tasks right now.")}
         </section>
       </div>`,
       kidNav("today")
@@ -892,7 +937,8 @@ app.addEventListener("click", (event) => {
   if (action === "fulfill") run(() => rpc("fulfill_request", { p_request: btn.dataset.id }));
   if (action === "deny") run(() => rpc("deny_request", { p_request: btn.dataset.id }), "Points returned.");
   if (action === "remove-item") run(() => rpc("remove_item", { p_item: btn.dataset.id }));
-  if (action === "remove-daily") run(() => rpc("remove_daily_chore", { p_id: btn.dataset.id }), "Chore removed.", "chores");
+  if (action === "remove-daily") run(() => rpc("remove_daily_chore", { p_id: btn.dataset.id }), "Daily task removed.", "chores");
+  if (action === "remove-special") run(() => rpc("remove_special_chore", { p_id: btn.dataset.id }), "Bonus task removed.", "chores");
 });
 
 app.addEventListener("submit", (event) => {
@@ -906,6 +952,7 @@ app.addEventListener("submit", (event) => {
   if (action === "add-kid-submit") addKid(data);
   if (action === "save-pin") savePin(data);
   if (action === "add-daily") run(() => rpc("add_daily_chore", { p_title: data.title, p_points: Number(data.points) || 0 }), "Added for every kid. It comes back each day.", "chores");
+  if (action === "add-special") run(() => rpc("add_special_chore", { p_title: data.title, p_points: Number(data.points) || 0 }), "Added once for every kid.", "chores");
   if (action === "save-daily") run(() => rpc("save_daily_chore", { p_id: data.id, p_points: Number(data.points) || 0 }), "Points updated for everybody.", "chores");
   if (action === "grant") {
     run(

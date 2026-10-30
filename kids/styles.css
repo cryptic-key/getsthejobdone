@@ -284,6 +284,14 @@ input:focus, select:focus, button:focus-visible {
 
 .person:first-of-type, .list .item:first-child, .list .chore:first-child { border-top: 0; padding-top: 0; }
 
+.chore.waiting {
+  background: var(--sun-soft);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  padding: 12px;
+  margin-top: 10px;
+}
+
 .who { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .swatch {
   width: 38px;

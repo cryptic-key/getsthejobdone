@@ -78,13 +78,16 @@ create table if not exists public.chore_templates (
   household_id uuid not null references public.households (id) on delete cascade,
   title text not null,
   points integer not null default 1 check (points >= 0),
+  kind text not null default 'daily' check (kind in ('daily', 'special')),
   created_at timestamptz not null default now()
 );
 
 alter table public.chores add column if not exists template_id uuid references public.chore_templates (id) on delete set null;
 alter table public.chores add column if not exists chore_day date;
 alter table public.chores add column if not exists approved_at timestamptz;
+alter table public.chore_templates add column if not exists kind text not null default 'daily' check (kind in ('daily', 'special'));
 create unique index if not exists chores_daily_once on public.chores (template_id, kid_id, chore_day);
+create unique index if not exists chores_special_once on public.chores (template_id, kid_id) where chore_day is null and template_id is not null;
 
 create or replace function private.stamp_approved()
 returns trigger
@@ -371,6 +374,11 @@ begin
   returning id into kid;
   insert into private.kid_pins (kid_id, pin_hash)
   values (kid, extensions.crypt(p_pin, extensions.gen_salt('bf')));
+  insert into public.chores (household_id, kid_id, template_id, title, points)
+  select hid, kid, t.id, t.title, t.points
+  from public.chore_templates t
+  where t.household_id = hid and t.kind = 'special'
+  on conflict (template_id, kid_id) where chore_day is null and template_id is not null do nothing;
   insert into public.activity (household_id, kid_id, body)
   values (hid, kid, btrim(p_name) || ' can sign in with a PIN.');
   return kid;
@@ -751,7 +759,8 @@ begin
     'chores', coalesce((
       select jsonb_agg(jsonb_build_object(
         'id', c.id, 'title', c.title, 'points', c.points,
-        'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status
+        'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
+        'special', (c.chore_day is null)
       ) order by c.created_at)
       from public.chores c
       where c.kid_id = k.id and c.status <> 'approved'
@@ -935,7 +944,7 @@ begin
   insert into public.chores (household_id, kid_id, template_id, title, points, chore_day)
   select k.household_id, k.id, t.id, t.title, t.points, today
   from public.kids k
-  join public.chore_templates t on t.household_id = k.household_id
+  join public.chore_templates t on t.household_id = k.household_id and t.kind = 'daily'
   where k.household_id = p_household
   on conflict (template_id, kid_id, chore_day) do nothing;
 end;
@@ -986,7 +995,7 @@ declare
   pts integer := greatest(coalesce(p_points, 0), 0);
   today date := (now() at time zone 'America/Toronto')::date;
 begin
-  update public.chore_templates set points = pts where id = p_id and household_id = hid;
+  update public.chore_templates set points = pts where id = p_id and household_id = hid and kind = 'daily';
   if not found then
     raise exception 'chore not found';
   end if;
@@ -1005,7 +1014,50 @@ as $$
 declare
   hid uuid := private.require_household();
 begin
-  if not exists (select 1 from public.chore_templates where id = p_id and household_id = hid) then
+  if not exists (select 1 from public.chore_templates where id = p_id and household_id = hid and kind = 'daily') then
+    raise exception 'chore not found';
+  end if;
+  delete from public.chores where template_id = p_id and household_id = hid and status = 'open';
+  delete from public.chore_templates where id = p_id and household_id = hid;
+end;
+$$;
+
+create or replace function private.add_special_chore(p_title text, p_points integer)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  tid uuid;
+  title text := btrim(p_title);
+  pts integer := greatest(coalesce(p_points, 0), 0);
+begin
+  if title is null or title = '' then
+    raise exception 'chore required';
+  end if;
+  insert into public.chore_templates (household_id, title, points, kind)
+  values (hid, title, pts, 'special')
+  returning id into tid;
+  insert into public.chores (household_id, kid_id, template_id, title, points)
+  select hid, k.id, tid, title, pts
+  from public.kids k
+  where k.household_id = hid;
+  return tid;
+end;
+$$;
+
+create or replace function private.remove_special_chore(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  if not exists (select 1 from public.chore_templates where id = p_id and household_id = hid and kind = 'special') then
     raise exception 'chore not found';
   end if;
   delete from public.chores where template_id = p_id and household_id = hid and status = 'open';
@@ -1118,6 +1170,14 @@ create or replace function public.remove_daily_chore(p_id uuid)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.remove_daily_chore(p_id); end $$;
 
+create or replace function public.add_special_chore(p_title text, p_points integer)
+returns uuid language sql security invoker set search_path = ''
+as $$ select private.add_special_chore(p_title, p_points) $$;
+
+create or replace function public.remove_special_chore(p_id uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.remove_special_chore(p_id); end $$;
+
 do $$
 declare
   fn text;
@@ -1180,7 +1240,11 @@ begin
     'public.ensure_today()',
     'public.add_daily_chore(text, integer)',
     'public.save_daily_chore(uuid, integer)',
-    'public.remove_daily_chore(uuid)'
+    'public.remove_daily_chore(uuid)',
+    'private.add_special_chore(text, integer)',
+    'private.remove_special_chore(uuid)',
+    'public.add_special_chore(text, integer)',
+    'public.remove_special_chore(uuid)'
   ]
   loop
     execute format('revoke all on function %s from public, anon, authenticated', fn);
@@ -1243,3 +1307,7 @@ grant execute on function public.ensure_today() to authenticated;
 grant execute on function public.add_daily_chore(text, integer) to authenticated;
 grant execute on function public.save_daily_chore(uuid, integer) to authenticated;
 grant execute on function public.remove_daily_chore(uuid) to authenticated;
+grant execute on function private.add_special_chore(text, integer) to authenticated;
+grant execute on function private.remove_special_chore(uuid) to authenticated;
+grant execute on function public.add_special_chore(text, integer) to authenticated;
+grant execute on function public.remove_special_chore(uuid) to authenticated;
