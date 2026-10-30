@@ -67,8 +67,52 @@ create table if not exists public.chores (
   cash_cents integer not null default 0 check (cash_cents >= 0),
   minutes integer not null default 0 check (minutes >= 0),
   status text not null default 'open' check (status in ('open', 'submitted', 'approved')),
+  template_id uuid,
+  chore_day date,
+  approved_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+create table if not exists public.chore_templates (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households (id) on delete cascade,
+  title text not null,
+  points integer not null default 1 check (points >= 0),
+  created_at timestamptz not null default now()
+);
+
+alter table public.chores add column if not exists template_id uuid references public.chore_templates (id) on delete set null;
+alter table public.chores add column if not exists chore_day date;
+alter table public.chores add column if not exists approved_at timestamptz;
+create unique index if not exists chores_daily_once on public.chores (template_id, kid_id, chore_day);
+
+create or replace function private.stamp_approved()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status = 'approved' and old.status is distinct from 'approved' then
+    new.approved_at := coalesce(new.approved_at, now());
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists chores_stamp_approved on public.chores;
+create trigger chores_stamp_approved
+  before update on public.chores
+  for each row execute procedure private.stamp_approved();
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'chores_template_id_fkey') then
+    alter table public.chores
+      add constraint chores_template_id_fkey
+      foreign key (template_id) references public.chore_templates (id) on delete set null;
+  end if;
+end $$;
 
 create table if not exists public.shop_items (
   id uuid primary key default gen_random_uuid(),
@@ -104,6 +148,7 @@ alter table public.chores enable row level security;
 alter table public.shop_items enable row level security;
 alter table public.requests enable row level security;
 alter table public.activity enable row level security;
+alter table public.chore_templates enable row level security;
 
 create or replace function private.household_id()
 returns uuid
@@ -216,11 +261,16 @@ create policy activity_select on public.activity
   for select to authenticated
   using (household_id = private.household_id());
 
+drop policy if exists templates_select on public.chore_templates;
+create policy templates_select on public.chore_templates
+  for select to authenticated
+  using (household_id = private.household_id());
+
 revoke all on table public.households, public.parents, public.kids, public.parent_invites,
-  public.chores, public.shop_items, public.requests, public.activity
+  public.chores, public.chore_templates, public.shop_items, public.requests, public.activity
   from public, anon, authenticated;
 grant select on public.households, public.parents, public.kids, public.parent_invites,
-  public.chores, public.shop_items, public.requests, public.activity to authenticated;
+  public.chores, public.chore_templates, public.shop_items, public.requests, public.activity to authenticated;
 grant delete on public.parents to authenticated;
 
 revoke all on table private.kid_pins, private.kid_sessions from public, anon, authenticated;
@@ -431,7 +481,7 @@ begin
     raise exception 'nothing to approve';
   end if;
   select * into child from public.kids where id = chore.kid_id;
-  update public.chores set status = 'approved' where id = chore.id;
+  update public.chores set status = 'approved', approved_at = now() where id = chore.id;
   update public.kids
   set points = points + chore.points,
       cash_cents = cash_cents + chore.cash_cents,
@@ -669,17 +719,21 @@ $$;
 create or replace function private.kid_snapshot(p_token text)
 returns jsonb
 language plpgsql
-stable
+volatile
 security definer
 set search_path = ''
 as $$
 declare
   kid uuid := private.kid_from_token(p_token);
+  hid uuid;
   result jsonb;
+  today date := (now() at time zone 'America/Toronto')::date;
 begin
   if kid is null then
     raise exception 'sign in again';
   end if;
+  select household_id into hid from public.kids where id = kid;
+  perform private.ensure_daily(hid);
   select jsonb_build_object(
     'family', jsonb_build_object(
       'name', h.name,
@@ -703,6 +757,23 @@ begin
       ) order by c.created_at)
       from public.chores c
       where c.kid_id = k.id and c.status <> 'approved'
+        and (c.chore_day is null or c.chore_day = today)
+    ), '[]'::jsonb),
+    'week', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'day', d::date,
+        'points', coalesce(e.points, 0),
+        'cash_cents', coalesce(e.cash_cents, 0)
+      ) order by d)
+      from generate_series(today - 6, today, interval '1 day') as d
+      left join (
+        select coalesce(c.chore_day, (c.approved_at at time zone 'America/Toronto')::date) as day,
+               sum(c.points)::int as points,
+               sum(c.cash_cents)::int as cash_cents
+        from public.chores c
+        where c.kid_id = k.id and c.status = 'approved' and c.approved_at is not null
+        group by 1
+      ) e on e.day = d::date
     ), '[]'::jsonb),
     'items', coalesce((
       select jsonb_agg(jsonb_build_object('id', i.id, 'name', i.name, 'cost', i.cost) order by i.created_at)
@@ -854,6 +925,96 @@ $$;
 
 -- Public wrappers. Checks live in private.
 
+create or replace function private.ensure_daily(p_household uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  today date := (now() at time zone 'America/Toronto')::date;
+begin
+  insert into public.chores (household_id, kid_id, template_id, title, points, chore_day)
+  select k.household_id, k.id, t.id, t.title, t.points, today
+  from public.kids k
+  join public.chore_templates t on t.household_id = k.household_id
+  where k.household_id = p_household
+  on conflict (template_id, kid_id, chore_day) do nothing;
+end;
+$$;
+
+create or replace function private.ensure_today()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  perform private.ensure_daily(hid);
+end;
+$$;
+
+create or replace function private.add_daily_chore(p_title text, p_points integer)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  tid uuid;
+begin
+  if nullif(btrim(p_title), '') is null then
+    raise exception 'chore required';
+  end if;
+  insert into public.chore_templates (household_id, title, points)
+  values (hid, btrim(p_title), greatest(coalesce(p_points, 0), 0))
+  returning id into tid;
+  perform private.ensure_daily(hid);
+  return tid;
+end;
+$$;
+
+create or replace function private.save_daily_chore(p_id uuid, p_points integer)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  pts integer := greatest(coalesce(p_points, 0), 0);
+  today date := (now() at time zone 'America/Toronto')::date;
+begin
+  update public.chore_templates set points = pts where id = p_id and household_id = hid;
+  if not found then
+    raise exception 'chore not found';
+  end if;
+  update public.chores
+  set points = pts
+  where template_id = p_id and household_id = hid and status = 'open' and chore_day = today;
+end;
+$$;
+
+create or replace function private.remove_daily_chore(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  if not exists (select 1 from public.chore_templates where id = p_id and household_id = hid) then
+    raise exception 'chore not found';
+  end if;
+  delete from public.chores where template_id = p_id and household_id = hid and status = 'open';
+  delete from public.chore_templates where id = p_id and household_id = hid;
+end;
+$$;
+
 create or replace function public.invite_parent(p_email text)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.invite_parent(p_email); end $$;
@@ -943,6 +1104,22 @@ create or replace function public.kid_ask(p_token text, p_item uuid)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.kid_ask(p_token, p_item); end $$;
 
+create or replace function public.ensure_today()
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.ensure_today(); end $$;
+
+create or replace function public.add_daily_chore(p_title text, p_points integer)
+returns uuid language sql security invoker set search_path = ''
+as $$ select private.add_daily_chore(p_title, p_points) $$;
+
+create or replace function public.save_daily_chore(p_id uuid, p_points integer)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.save_daily_chore(p_id, p_points); end $$;
+
+create or replace function public.remove_daily_chore(p_id uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.remove_daily_chore(p_id); end $$;
+
 do $$
 declare
   fn text;
@@ -996,7 +1173,16 @@ begin
     'public.kid_mark_done(text, uuid)',
     'public.kid_cash_out(text)',
     'public.kid_buy_time(text)',
-    'public.kid_ask(text, uuid)'
+    'public.kid_ask(text, uuid)',
+    'private.ensure_daily(uuid)',
+    'private.ensure_today()',
+    'private.add_daily_chore(text, integer)',
+    'private.save_daily_chore(uuid, integer)',
+    'private.remove_daily_chore(uuid)',
+    'public.ensure_today()',
+    'public.add_daily_chore(text, integer)',
+    'public.save_daily_chore(uuid, integer)',
+    'public.remove_daily_chore(uuid)'
   ]
   loop
     execute format('revoke all on function %s from public, anon, authenticated', fn);
@@ -1050,3 +1236,12 @@ grant execute on function public.kid_mark_done(text, uuid) to anon, authenticate
 grant execute on function public.kid_cash_out(text) to anon, authenticated;
 grant execute on function public.kid_buy_time(text) to anon, authenticated;
 grant execute on function public.kid_ask(text, uuid) to anon, authenticated;
+grant execute on function private.ensure_daily(uuid) to authenticated;
+grant execute on function private.ensure_today() to authenticated;
+grant execute on function private.add_daily_chore(text, integer) to authenticated;
+grant execute on function private.save_daily_chore(uuid, integer) to authenticated;
+grant execute on function private.remove_daily_chore(uuid) to authenticated;
+grant execute on function public.ensure_today() to authenticated;
+grant execute on function public.add_daily_chore(text, integer) to authenticated;
+grant execute on function public.save_daily_chore(uuid, integer) to authenticated;
+grant execute on function public.remove_daily_chore(uuid) to authenticated;
