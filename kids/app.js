@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { SPRITES, guessSprite, normalizeSprite, paintSpriteIcons, setStageScene, stageElement } from "./battle.js";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal"];
 const COLOR_HEX = { leaf: "#2f7d5a", sun: "#e3a31a", sky: "#3c7f92", clay: "#a24b34", plum: "#6e6284", teal: "#2f6f6a" };
@@ -266,10 +267,9 @@ function mountStage() {
   }
 }
 
-let watchedFights = new Set();
-let fightChores = [];
+let battleLine = [];
 let playChores = [];
-let winningIds = new Set();
+let finishedIds = new Set();
 let lineIds = [];
 let pollTimer = 0;
 let lastKidSig = "";
@@ -314,16 +314,6 @@ function actor(chore) {
   };
 }
 
-function linedUp(chores) {
-  const ids = new Set(chores.map((chore) => chore.id));
-  lineIds = lineIds.filter((id) => ids.has(id));
-  for (const chore of chores) {
-    if (!lineIds.includes(chore.id)) lineIds.push(chore.id);
-  }
-  const byId = new Map(chores.map((chore) => [chore.id, chore]));
-  return lineIds.map((id) => byId.get(id));
-}
-
 function paintStage() {
   const host = document.querySelector(".stage");
   if (!host || host.hidden) return;
@@ -331,65 +321,47 @@ function paintStage() {
   const playing = new Set(playChores.map((chore) => chore.id));
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
-    waiting: linedUp(fightChores).filter((chore) => !playing.has(chore.id) && !winningIds.has(chore.id)).map(actor),
+    waiting: battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
     plays: playChores.map(actor),
     onDone: onFightDone,
   });
 }
 
+function applyBattleLine(line) {
+  battleLine = line.filter((chore) => chore?.id && !finishedIds.has(chore.id));
+  lineIds = battleLine.map((chore) => chore.id);
+  playChores = splitBattleLine(battleLine).plays;
+  const kidId = db.session?.role === "kid" ? db.session.id : "";
+  if (kidId) saveTracked(kidId, playChores.length ? battleLine.slice(1) : battleLine);
+  paintStage();
+}
+
 function resetBattleMemory() {
   clearInterval(pollTimer);
   pollTimer = 0;
-  watchedFights = new Set();
-  fightChores = [];
+  battleLine = [];
   playChores = [];
-  winningIds = new Set();
+  finishedIds = new Set();
   lineIds = [];
   lastKidSig = "";
 }
 
 function onFightDone(id) {
-  playChores = playChores.filter((chore) => chore.id !== id);
-  fightChores = fightChores.filter((chore) => chore.id !== id);
-  winningIds.delete(id);
-  watchedFights.delete(id);
-  lineIds = lineIds.filter((item) => item !== id);
-  paintStage();
-}
-
-function finishWins(list) {
-  if (!list.length) return;
-  const kidId = db.session?.role === "kid" ? db.session.id : "";
-  const queued = new Set(playChores.map((chore) => chore.id));
-  const fresh = list.filter((chore) => chore?.id && !queued.has(chore.id));
-  if (!fresh.length) return;
-  const drop = new Set(fresh.map((chore) => chore.id));
-  fresh.forEach((chore) => winningIds.add(chore.id));
-  playChores = playChores.concat(fresh);
-  fightChores = fightChores.filter((chore) => !drop.has(chore.id));
-  if (kidId) saveTracked(kidId, loadTracked(kidId).filter((chore) => !drop.has(chore.id)));
-  paintStage();
+  finishedIds.add(id);
+  applyBattleLine(battleLine.filter((chore) => chore.id !== id));
 }
 
 function syncBattles() {
   if (db.session?.role !== "kid") return;
   const kidId = db.session.id;
-  const submitted = (db.chores || [])
-    .filter((chore) => chore.status === "submitted")
-    .map(actor);
-  const tracked = loadTracked(kidId).map(actor);
-  const known = new Set(tracked.map((chore) => chore.id));
-  const fresh = submitted.filter((chore) => !known.has(chore.id));
-  const submittedIds = new Set(submitted.map((chore) => chore.id));
-  const bySubmitted = new Map(submitted.map((chore) => [chore.id, chore]));
-  const still = tracked.filter((chore) => submittedIds.has(chore.id)).map((chore) => bySubmitted.get(chore.id) || chore);
-  const live = [...still, ...fresh].filter((chore) => !winningIds.has(chore.id));
-  const gone = tracked.filter((chore) => !submittedIds.has(chore.id) && !winningIds.has(chore.id));
-  fightChores = live;
-  live.forEach((chore) => watchedFights.add(chore.id));
-  saveTracked(kidId, live);
-  if (gone.length) finishWins(gone);
-  else paintStage();
+  const submitted = (db.chores || []).filter((chore) => chore.status === "submitted").map(actor);
+  applyBattleLine(mergeBattleLine({
+    order: lineIds,
+    stored: loadTracked(kidId).map(actor),
+    memory: battleLine,
+    submitted,
+    finished: [...finishedIds],
+  }));
 }
 
 function ensurePoll() {

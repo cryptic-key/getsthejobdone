@@ -581,8 +581,11 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
   background: rgba(16, 18, 28, 0.88);
   color: #f4f0e4;
   font-family: "Press Start 2P", monospace;
-  font-size: clamp(7px, 1.6vw, 11px);
-  line-height: 1.55;
+  font-size: clamp(6px, 1.35vw, 9px);
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-height: 48%;
   border: 2px solid #f4f0e4;
   pointer-events: none;
 }

@@ -468,8 +468,8 @@ const floats = [];
 const timers = [];
 const conds = [];
 let runToken = 0;
-let lastPlayKey = "";
-let lastWaitKey = "";
+let lastLead = null;
+let lastFront = null;
 let full = "";
 let shown = 0;
 let lastFrame = 0;
@@ -477,7 +477,9 @@ let loopOn = false;
 const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d" };
 
 function say(text) {
-  full = text || "";
+  const next = text || "";
+  if (next === full) return;
+  full = next;
   shown = 0;
   if (dialog) dialog.textContent = "";
 }
@@ -502,9 +504,14 @@ function makeMon(def, item) {
     t: 0, idle: true, approach: true, alive: true, showHp: false, lift: 0,
   };
 }
-function idleLine(item, count) {
+function idleLine(item, count, line) {
   const def = MON[normalizeSprite(item.sprite)];
-  const extra = count > 1 ? ` ${count - 1} more in line.` : "";
+  const behind = Math.max(0, count - 1);
+  const ready = (line || []).slice(1).filter((chore) => chore.ready).length;
+  const bits = [];
+  if (behind) bits.push(`${behind} more in line`);
+  if (ready) bits.push(`${ready} ready`);
+  const extra = bits.length ? ` ${bits.join(". ")}.` : "";
   return `${def.name} is waiting on ${item.title}.${extra}`;
 }
 function waitFor(seconds, token) {
@@ -640,7 +647,7 @@ async function presentIdle(item, token) {
   mon.idle = true;
   hero.pose = "idle";
   hero.alert = 0;
-  say(idleLine(item, scene.waiting.length));
+  say(idleLine(item, scene.waiting.length, scene.waiting));
 }
 function reconcile() {
   const token = runToken;
@@ -652,7 +659,7 @@ function reconcile() {
   const waiting = scene.waiting[0];
   if (waiting) {
     if (mon?.choreId === waiting.id && mon.alive && !mon.approach && !mon.showHp) {
-      say(idleLine(waiting, scene.waiting.length));
+      say(idleLine(waiting, scene.waiting.length, scene.waiting));
       return;
     }
     presentIdle(waiting, token);
@@ -684,8 +691,9 @@ export function setStageScene(next) {
   const color = next.color || "#3fa34d";
   const waiting = next.waiting || [];
   const plays = next.plays || [];
-  const playKey = plays.map((item) => `${item.id}:${item.sprite}`).join(",");
-  const waitKey = waiting.map((item) => `${item.id}:${item.sprite}:${item.title}`).join(",");
+  const lead = plays[0] ? `${plays[0].id}:${plays[0].sprite}` : "";
+  const front = waiting[0];
+  const frontKey = front ? `${front.id}:${front.sprite}:${front.title}` : "";
   scene.waiting = waiting;
   scene.plays = plays;
   scene.onDone = next.onDone;
@@ -693,20 +701,19 @@ export function setStageScene(next) {
     scene.color = color;
     heroSprites = buildHero(color);
   }
-  const samePlay = playKey === lastPlayKey;
-  const sameWait = waitKey === lastWaitKey;
-  lastPlayKey = playKey;
-  lastWaitKey = waitKey;
-  if (samePlay && sameWait) return;
-  const front = waiting[0];
-  if (samePlay && plays[0] && mon?.choreId === plays[0].id && mon.alive && mon.showHp) return;
-  if (!plays[0] && front && mon?.choreId === front.id && mon.alive && !mon.approach && !mon.showHp) {
+  const sameLead = lead === lastLead;
+  const sameFront = frontKey === lastFront;
+  lastLead = lead;
+  lastFront = frontKey;
+  if (lead && sameLead && mon?.choreId === plays[0].id && mon.alive && (mon.showHp || mon.approach)) return;
+  if (!lead && front && sameFront && mon?.choreId === front.id && mon.alive && !mon.approach && !mon.showHp) {
     mon.def = MON[normalizeSprite(front.sprite)];
     mon.title = front.title;
     mon.points = Number(front.points) || 0;
-    say(idleLine(front, waiting.length));
+    say(idleLine(front, waiting.length, waiting));
     return;
   }
+  if (sameLead && sameFront) return;
   runToken += 1;
   projectiles.length = 0;
   reconcile();
