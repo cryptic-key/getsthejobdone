@@ -315,8 +315,20 @@ async function run(work, message, next) {
 }
 
 function mark() {
-  return `<span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5 9.2 17 19 7"/></svg></span>`;
+  return `<span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32">
+    <path d="M7.5 22.5c0-3.2 2.2-6 5.2-7.1 1.1-2.4 3.5-4 6.3-4 3.8 0 6.8 3 6.8 6.8 0 .7-.1 1.4-.3 2.1 2.1 1.2 3.5 3.4 3.5 6 0 .4-.3.7-.7.7H8.2c-.4 0-.7-.3-.7-.7 0-1.3.4-2.5 1.1-3.5-.7-.9-1.1-2-1.1-3.3Z"/>
+    <circle cx="16.5" cy="16.2" r="1.35"/>
+    <circle cx="21.2" cy="16.2" r="1.35"/>
+    <path d="M17.8 18.4c.5.7 1.4 1.1 2.3 1.1s1.8-.4 2.3-1.1"/>
+    <path d="M4.2 27.2 18.8 6.4"/>
+    <path d="M17.2 5.2c1.6 1.1 2.9 2.6 3.6 4.4"/>
+    <path d="M19.6 4.4c1.3 1.5 2.2 3.3 2.6 5.2"/>
+    <path d="M3.4 25.6c1.1 1.5 2.8 2.4 4.6 2.6"/>
+  </svg></span>`;
 }
+
+const BRAND_TITLE = "Family Adventure Tasks";
+const BRAND_TAGLINE = "Work together to defeat the task monsters";
 
 function face(color) {
   const fill = COLOR_HEX[color] || COLOR_HEX.leaf;
@@ -1073,13 +1085,13 @@ function render() {
 
 const views = {
   loading() {
-    return `<div class="card"><h1>Our chart</h1><p class="lede">Loading…</p></div>`;
+    return `<div class="card"><h1>${esc(BRAND_TITLE)}</h1><p class="lede">Loading…</p></div>`;
   },
 
   welcome() {
     if (!schemaReady) {
       return `
-        <header class="top"><div class="brand">${mark()}<span><h1>Our chart</h1><p>Gets the job done</p></span></div></header>
+        <header class="top"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)}</p></span></div></header>
         <section class="hero">
           <h2>Chores, rewards, and device time.</h2>
           <p class="lede">Parents keep the accounts. Kids open the chart with a PIN.</p>
@@ -1091,7 +1103,7 @@ const views = {
         </div>`;
     }
     return `
-      <header class="top hud"><div class="brand">${mark()}<span><h1>Our chart</h1><p>Gets the job done</p></span></div></header>
+      <header class="top hud"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)}</p></span></div></header>
       ${worldScene("sun")}
       <section class="hero">
         <h2>Who's here?</h2>
@@ -1102,7 +1114,7 @@ const views = {
 
   "parent-auth"() {
     return shell(
-      "Our chart",
+      BRAND_TITLE,
       "Parent sign in",
       `<form class="card stack" data-action="parent-auth-submit">
         <div class="section-title"><h2>Parent sign in</h2></div>
