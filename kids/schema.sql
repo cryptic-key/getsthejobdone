@@ -1635,3 +1635,344 @@ grant execute on function public.list_players() to anon, authenticated;
 grant execute on function public.set_parent_pin(uuid, text) to authenticated;
 grant execute on function public.door_ready() to authenticated;
 grant execute on function public.claim_parent_pin(uuid, text) to service_role;
+
+alter table public.kids add column if not exists hero text not null default 'knight';
+alter table public.kids add column if not exists weapon text not null default 'broom';
+alter table public.kids drop constraint if exists kids_hero_check;
+alter table public.kids add constraint kids_hero_check check (hero in ('knight', 'princess'));
+
+create table if not exists public.kid_rewards (
+  kid_id uuid not null references public.kids (id) on delete cascade,
+  kind text not null check (kind in ('achievement', 'weapon')),
+  key text not null,
+  earned_at timestamptz not null default now(),
+  primary key (kid_id, kind, key)
+);
+alter table public.kid_rewards enable row level security;
+revoke all on table public.kid_rewards from public, anon, authenticated;
+
+create or replace function private.weapon_rules()
+returns table (key text, mode text, goal integer, chore text)
+language sql
+immutable
+set search_path = ''
+as $$
+  select * from (values
+    ('broom', 'starter', 1, null::text),
+    ('duster', 'streak', 3, null::text),
+    ('dustpan', 'total', 10, null::text),
+    ('mop', 'streak', 7, null::text),
+    ('sponge', 'total', 25, null::text),
+    ('squeegee', 'streak', 14, null::text),
+    ('spray', 'total', 50, null::text),
+    ('vacuum', 'streak', 21, null::text),
+    ('plunger', 'total', 75, null::text),
+    ('golden', 'streak', 30, null::text),
+    ('diamond', 'total', 100, null::text),
+    ('toothbrush', 'chore', 20, 'teeth'),
+    ('spatula', 'chore', 20, 'dishes'),
+    ('bubble', 'chore', 50, 'dishes'),
+    ('rake', 'chore', 10, 'leaves'),
+    ('pencil', 'chore', 20, 'homework'),
+    ('lint', 'chore', 30, 'laundry'),
+    ('watering', 'chore', 20, 'plants'),
+    ('bookmark', 'chore', 20, 'reading'),
+    ('bone', 'chore', 25, 'pet'),
+    ('shovel', 'chore', 10, 'snow'),
+    ('bat', 'chore', 15, 'outside')
+  ) as rules(key, mode, goal, chore)
+$$;
+
+create or replace function private.kid_stats(p_kid uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  battles integer := 0;
+  coins integer := 0;
+  early integer := 0;
+  chores jsonb := '{}'::jsonb;
+  best integer := 0;
+  streak integer := 0;
+begin
+  select count(*)::integer,
+         coalesce(sum(points), 0)::integer,
+         count(*) filter (where extract(hour from approved_at at time zone 'America/Toronto') < 8)::integer
+  into battles, coins, early
+  from public.chores
+  where kid_id = p_kid and status = 'approved';
+
+  select coalesce(jsonb_object_agg(sprite, n), '{}'::jsonb)
+  into chores
+  from (
+    select sprite, count(*)::integer as n
+    from public.chores
+    where kid_id = p_kid and status = 'approved'
+    group by sprite
+  ) counts;
+
+  with days as (
+    select distinct (approved_at at time zone 'America/Toronto')::date as day
+    from public.chores
+    where kid_id = p_kid and status = 'approved' and approved_at is not null
+  ),
+  islands as (
+    select day, day - (row_number() over (order by day))::integer as grp
+    from days
+  ),
+  runs as (
+    select count(*)::integer as len, max(day) as last_day
+    from islands
+    group by grp
+  )
+  select coalesce(max(len), 0),
+         coalesce(max(len) filter (
+           where last_day >= (timezone('America/Toronto', now()))::date - 1
+         ), 0)
+  into best, streak
+  from runs;
+
+  return jsonb_build_object(
+    'battles', battles,
+    'coins', coins,
+    'earlyBird', early,
+    'streak', streak,
+    'bestStreak', best,
+    'chores', chores
+  );
+end;
+$$;
+
+create or replace function private.weapon_value(p_key text, p_stats jsonb)
+returns integer
+language sql
+stable
+set search_path = ''
+as $$
+  select case rule.mode
+    when 'starter' then 1
+    when 'streak' then greatest(coalesce((p_stats->>'streak')::integer, 0), coalesce((p_stats->>'bestStreak')::integer, 0))
+    when 'total' then coalesce((p_stats->>'battles')::integer, 0)
+    else coalesce((p_stats->'chores'->>rule.chore)::integer, 0)
+  end
+  from private.weapon_rules() rule
+  where rule.key = p_key
+$$;
+
+create or replace function private.unlocked_weapon_count(p_stats jsonb)
+returns integer
+language sql
+stable
+set search_path = ''
+as $$
+  select count(*)::integer
+  from private.weapon_rules() rule
+  where private.weapon_value(rule.key, p_stats) >= rule.goal
+$$;
+
+create or replace function private.monster_kinds()
+returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  select array['dust','bed','shoes','pack','dishes','teeth','laundry','toys','reading','pet','plants','table','trash','counters','towels','bookshelf','lunch','coats','groceries','homework','dressed','petbrush','leaves','snow','outside']
+$$;
+
+create or replace function private.sync_kid_rewards(p_kid uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  stats jsonb := private.kid_stats(p_kid);
+  fresh jsonb;
+begin
+  with earned as (
+    select 'weapon'::text as kind, rule.key
+    from private.weapon_rules() rule
+    where private.weapon_value(rule.key, stats) >= rule.goal
+    union all
+    select 'achievement', item.key
+    from (
+      values
+        ('first', 1, coalesce((stats->>'battles')::integer, 0)),
+        ('hunter', 10, coalesce((stats->>'battles')::integer, 0)),
+        ('legend', 50, coalesce((stats->>'battles')::integer, 0)),
+        ('fame', 100, coalesce((stats->>'battles')::integer, 0)),
+        ('coins100', 100, coalesce((stats->>'coins')::integer, 0)),
+        ('coins500', 500, coalesce((stats->>'coins')::integer, 0)),
+        ('coins1000', 1000, coalesce((stats->>'coins')::integer, 0)),
+        ('bedboss', 7, coalesce((stats->'chores'->>'bed')::integer, 0)),
+        ('smile', 14, coalesce((stats->'chores'->>'teeth')::integer, 0)),
+        ('bookworm', 10, coalesce((stats->'chores'->>'reading')::integer, 0)),
+        ('socks', 10, coalesce((stats->'chores'->>'laundry')::integer, 0)),
+        ('petpal', 10, coalesce((stats->'chores'->>'pet')::integer, 0)),
+        ('suds', 15, coalesce((stats->'chores'->>'dishes')::integer, 0)),
+        ('snowday', 5, coalesce((stats->'chores'->>'snow')::integer, 0)),
+        ('freshair', 10, coalesce((stats->'chores'->>'outside')::integer, 0)),
+        ('early', 1, coalesce((stats->>'earlyBird')::integer, 0)),
+        ('week', 7, greatest(coalesce((stats->>'streak')::integer, 0), coalesce((stats->>'bestStreak')::integer, 0))),
+        ('month', 30, greatest(coalesce((stats->>'streak')::integer, 0), coalesce((stats->>'bestStreak')::integer, 0))),
+        ('arsenal', 5, private.unlocked_weapon_count(stats)),
+        ('armory', 22, private.unlocked_weapon_count(stats)),
+        ('encyclopedia', 25, (
+          select count(*)::integer
+          from unnest(private.monster_kinds()) as kind
+          where coalesce((stats->'chores'->>kind)::integer, 0) > 0
+        ))
+    ) as item(key, goal, value)
+    where item.value >= item.goal
+  ),
+  inserted as (
+    insert into public.kid_rewards (kid_id, kind, key)
+    select p_kid, earned.kind, earned.key
+    from earned
+    on conflict do nothing
+    returning kind, key
+  )
+  select jsonb_build_object(
+    'achievements', coalesce((select jsonb_agg(key) from inserted where kind = 'achievement'), '[]'::jsonb),
+    'weapons', coalesce((select jsonb_agg(key) from inserted where kind = 'weapon'), '[]'::jsonb)
+  )
+  into fresh;
+  return fresh;
+end;
+$$;
+
+create or replace function private.kid_hero_board(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  stats jsonb;
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  stats := private.kid_stats(kid);
+  return jsonb_build_object(
+    'hero', (select hero from public.kids where id = kid),
+    'weapon', (select weapon from public.kids where id = kid),
+    'stats', stats,
+    'achievements', coalesce((
+      select jsonb_agg(key order by earned_at)
+      from public.kid_rewards
+      where kid_id = kid and kind = 'achievement'
+    ), '[]'::jsonb),
+    'weapons', coalesce((
+      select jsonb_agg(key order by earned_at)
+      from public.kid_rewards
+      where kid_id = kid and kind = 'weapon'
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+create or replace function private.kid_set_hero(p_token text, p_hero text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  if p_hero not in ('knight', 'princess') then
+    raise exception 'pick a hero';
+  end if;
+  update public.kids set hero = p_hero where id = kid;
+end;
+$$;
+
+create or replace function private.kid_set_weapon(p_token text, p_weapon text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  stats jsonb;
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  if not exists (select 1 from private.weapon_rules() where key = p_weapon) then
+    raise exception 'unknown weapon';
+  end if;
+  stats := private.kid_stats(kid);
+  if private.weapon_value(p_weapon, stats) < (select goal from private.weapon_rules() where key = p_weapon) then
+    raise exception 'weapon locked';
+  end if;
+  update public.kids set weapon = p_weapon where id = kid;
+end;
+$$;
+
+create or replace function private.kid_sync_rewards(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  return private.sync_kid_rewards(kid);
+end;
+$$;
+
+create or replace function public.kid_hero_board(p_token text)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.kid_hero_board(p_token) $$;
+
+create or replace function public.kid_set_hero(p_token text, p_hero text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.kid_set_hero(p_token, p_hero); end $$;
+
+create or replace function public.kid_set_weapon(p_token text, p_weapon text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.kid_set_weapon(p_token, p_weapon); end $$;
+
+create or replace function public.kid_sync_rewards(p_token text)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.kid_sync_rewards(p_token) $$;
+
+revoke all on function private.weapon_rules() from public, anon, authenticated;
+revoke all on function private.kid_stats(uuid) from public, anon, authenticated;
+revoke all on function private.weapon_value(text, jsonb) from public, anon, authenticated;
+revoke all on function private.unlocked_weapon_count(jsonb) from public, anon, authenticated;
+revoke all on function private.monster_kinds() from public, anon, authenticated;
+revoke all on function private.sync_kid_rewards(uuid) from public, anon, authenticated;
+revoke all on function private.kid_hero_board(text) from public, anon, authenticated;
+revoke all on function private.kid_set_hero(text, text) from public, anon, authenticated;
+revoke all on function private.kid_set_weapon(text, text) from public, anon, authenticated;
+revoke all on function private.kid_sync_rewards(text) from public, anon, authenticated;
+revoke all on function public.kid_hero_board(text) from public, anon, authenticated;
+revoke all on function public.kid_set_hero(text, text) from public, anon, authenticated;
+revoke all on function public.kid_set_weapon(text, text) from public, anon, authenticated;
+revoke all on function public.kid_sync_rewards(text) from public, anon, authenticated;
+
+grant execute on function private.kid_hero_board(text) to anon, authenticated;
+grant execute on function private.kid_set_hero(text, text) to anon, authenticated;
+grant execute on function private.kid_set_weapon(text, text) to anon, authenticated;
+grant execute on function private.kid_sync_rewards(text) to anon, authenticated;
+grant execute on function public.kid_hero_board(text) to anon, authenticated;
+grant execute on function public.kid_set_hero(text, text) to anon, authenticated;
+grant execute on function public.kid_set_weapon(text, text) to anon, authenticated;
+grant execute on function public.kid_sync_rewards(text) to anon, authenticated;
+
+notify pgrst, 'reload schema';

@@ -1219,7 +1219,7 @@ let full = "";
 let shown = 0;
 let lastFrame = 0;
 let loopOn = false;
-const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "" };
+const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null };
 let parade = [];
 let paradeOn = false;
 
@@ -1510,6 +1510,7 @@ export function stageElement() {
 export function setStageScene(next) {
   stageElement();
   if (Array.isArray(next.parade)) {
+    scene.gear = null;
     const key = next.parade.map((kid) => `${kid.id}:${kid.color}`).sort().join("|");
     if (paradeOn && scene.paradeKey === key) return;
     scene.paradeKey = key;
@@ -1547,6 +1548,7 @@ export function setStageScene(next) {
     mon = null;
     projectiles.length = 0;
   }
+  scene.gear = next.gear || null;
   const color = next.color || "#3fa34d";
   const waiting = next.waiting || [];
   const plays = next.plays || [];
@@ -1607,6 +1609,19 @@ function text(s, x, y, col) {
       }
     }
   });
+}
+function drawGearWeapon(weapon, hx, hy, deg) {
+  const image = weapon?.image;
+  if (!image) {
+    drawBroom(hx, hy, deg);
+    return;
+  }
+  const q = Math.round(deg / 15) * 15 * (Math.PI / 180);
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(q);
+  ctx.drawImage(image, -(weapon.grip?.[0] || 0), -(weapon.grip?.[1] || 0));
+  ctx.restore();
 }
 function drawBroom(hx, hy, deg) {
   const q = Math.round(deg / 15) * 15 * (Math.PI / 180);
@@ -1868,15 +1883,17 @@ function draw() {
   const y = Math.round(heroY()) - (fr ? 1 : 0);
   if (!(paradeOn && parade.length)) {
   rect(ctx, x + 3, G, 8, 1, "#3e8c2c");
-  if (hero.smear > 0) {
+  if (hero.smear > 0 && !scene.gear?.weapon) {
     for (let a = -160; a <= 35; a += 7) {
       const r = a * (Math.PI / 180);
       px(ctx, x + 11 + Math.cos(r) * 14, y + 10 + Math.sin(r) * 14, "#fffbe0");
       px(ctx, x + 11 + Math.cos(r) * 13, y + 10 + Math.sin(r) * 13, "#fff3b0");
     }
   }
-  ctx.drawImage(fr ? heroSprites.b : heroSprites.a, x, y);
-  drawBroom(x + 11, y + 10, hero.ang);
+  const sprites = scene.gear?.frames?.a ? scene.gear.frames : heroSprites;
+  ctx.drawImage(fr ? sprites.b : sprites.a, x, y);
+  if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + 10, hero.ang);
+  else drawBroom(x + 11, y + 10, hero.ang);
   if (hero.alert > 0) {
     rect(ctx, x + 4, y - 11, 7, 9, K);
     rect(ctx, x + 5, y - 10, 5, 7, "#ffffff");

@@ -2,10 +2,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { SPRITES, guessSprite, normalizeSprite, paintSpriteIcons, setStageScene, stageElement } from "./battle.js";
 import { mergeBattleLine, splitBattleLine } from "./battle-line.js";
+import { createChoreQuest } from "./chore-quest.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal"];
 const COLOR_HEX = { leaf: "#2f7d5a", sun: "#e3a31a", sky: "#3c7f92", clay: "#a24b34", plum: "#6e6284", teal: "#2f6f6a" };
-const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "kid-shop", "me"]);
+const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "hero", "kid-shop", "me"]);
 const KID_TOKEN = "chart-kid-token";
 const BATTLE_KEY = "chart-battle-v1";
 
@@ -30,7 +31,7 @@ let notice = "";
 let busy = false;
 
 function blank() {
-  return { family: null, parents: [], kids: [], chores: [], templates: [], items: [], requests: [], activity: [], week: [], session: null };
+  return { family: null, parents: [], kids: [], chores: [], templates: [], items: [], requests: [], activity: [], week: [], hero: null, session: null };
 }
 
 function esc(value) {
@@ -93,6 +94,8 @@ function nice(error) {
   if (/enter coins, cash, or minutes/i.test(msg)) return "Enter coins, cash, or minutes to take off.";
   if (/already asked/i.test(msg)) return "You already asked for that.";
   if (/sign in again/i.test(msg)) return "Sign in again.";
+  if (/weapon locked/i.test(msg)) return "That weapon is still locked.";
+  if (/pick a hero/i.test(msg)) return "Pick the adventurer or the princess.";
   return msg;
 }
 
@@ -220,9 +223,17 @@ async function loadKid() {
     activity: snap.activity.map((row) => ({ id: row.id, text: row.body, at: row.created_at })),
     templates: [],
     week: snap.week || [],
+    hero: await loadHeroBoard(token),
     session: { role: "kid", id: snap.kid.id },
   };
   return true;
+}
+
+async function loadHeroBoard(token) {
+  await supabase.rpc("kid_sync_rewards", { p_token: token });
+  const board = await supabase.rpc("kid_hero_board", { p_token: token });
+  if (board.error) return null;
+  return board.data;
 }
 
 async function run(work, message, next) {
@@ -402,7 +413,123 @@ function paintStage() {
     waiting: battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
     plays: playChores.map(actor),
     onDone: onFightDone,
+    gear: heroGear(),
   });
+}
+
+let questEngine = null;
+function questCatalog() {
+  if (!questEngine) {
+    const canvas = document.createElement("canvas");
+    questEngine = createChoreQuest(canvas, {});
+    questEngine.destroy();
+  }
+  return questEngine;
+}
+
+function heroGear() {
+  if (db.session?.role !== "kid" || !db.hero) return null;
+  const quest = questCatalog();
+  const heroKey = quest.heroes[db.hero.hero] ? db.hero.hero : "knight";
+  const weaponKey = quest.weapons[db.hero.weapon] ? db.hero.weapon : "broom";
+  return { frames: quest.heroFrames(heroKey), weapon: quest.weaponSprite(weaponKey) };
+}
+
+function heroStats() {
+  const stats = db.hero?.stats || {};
+  return {
+    battles: Number(stats.battles) || 0,
+    coins: Number(stats.coins) || 0,
+    earlyBird: Number(stats.earlyBird) || 0,
+    streak: Number(stats.streak) || 0,
+    bestStreak: Number(stats.bestStreak) || 0,
+    chores: stats.chores || {},
+  };
+}
+
+function meter(value, goal) {
+  const safeGoal = Math.max(1, Number(goal) || 1);
+  const safeValue = Math.max(0, Math.min(safeGoal, Number(value) || 0));
+  const pct = Math.round((safeValue / safeGoal) * 100);
+  return `<div class="meter" role="progressbar" aria-valuenow="${safeValue}" aria-valuemin="0" aria-valuemax="${safeGoal}" aria-valuetext="${safeValue} of ${safeGoal}"><span style="width:${pct}%"></span></div><small class="meter-count">${safeValue} / ${safeGoal}</small>`;
+}
+
+function heroBoard() {
+  const quest = questCatalog();
+  const stats = heroStats();
+  const heroKey = quest.heroes[db.hero?.hero] ? db.hero.hero : "knight";
+  const weaponKey = quest.weapons[db.hero?.weapon] ? db.hero.weapon : "broom";
+  const achievementProgress = quest.achievementProgress(stats);
+  const heroes = Object.entries(quest.heroes).map(([key, hero]) => `
+    <button type="button" class="hero-pick" data-action="set-hero" data-hero="${esc(key)}" aria-pressed="${key === heroKey ? "true" : "false"}">
+      <canvas data-quest-hero="${esc(key)}" width="14" height="16" aria-hidden="true"></canvas>
+      <span>${esc(hero.name)}</span>
+    </button>`).join("");
+  const weapons = Object.entries(quest.weapons).map(([key, weapon]) => {
+    const progress = quest.weaponProgress(key, stats);
+    const open = quest.weaponUnlocked(key, stats);
+    const equipped = key === weaponKey;
+    return `<article class="armory-card${open ? " open" : " locked"}${equipped ? " equipped" : ""}">
+      <canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas>
+      <div>
+        <strong>${esc(weapon.name)}</strong>
+        <p class="tiny muted">${esc(weapon.unlock)}</p>
+        ${open ? (equipped ? `<span class="chip">Equipped</span>` : `<button class="btn small leaf" type="button" data-action="set-weapon" data-weapon="${esc(key)}">Equip</button>`) : meter(progress.value, progress.goal)}
+      </div>
+    </article>`;
+  }).join("");
+  const medals = quest.achievements.map((medal) => {
+    const progress = achievementProgress[medal.key] || { value: 0, goal: medal.goal, done: false };
+    return `<article class="medal${progress.done ? " done" : ""}">
+      <canvas data-quest-badge="${esc(medal.key)}" width="12" height="15" aria-hidden="true"></canvas>
+      <div>
+        <strong>${esc(medal.name)}</strong>
+        <p class="tiny muted">${esc(medal.desc)} · ${esc(medal.tier)}</p>
+        ${meter(progress.value, progress.goal)}
+      </div>
+    </article>`;
+  }).join("");
+  const monsters = SPRITES.map((sprite) => {
+    const count = Number(stats.chores?.[sprite.id]) || 0;
+    const info = quest.monsters[sprite.id];
+    return `<figure class="monster-count${count ? " beaten" : ""}">
+      <canvas data-sprite="${esc(sprite.id)}" width="16" height="16" aria-hidden="true"></canvas>
+      <figcaption><strong>${esc(info?.name || sprite.name)}</strong><small>${count}</small></figcaption>
+    </figure>`;
+  }).join("");
+  return `<section class="card stack">
+      <h2 class="page-title">Choose your hero</h2>
+      <div class="hero-picks">${heroes}</div>
+      <p class="hint">${stats.battles} quests finished · ${stats.streak}-day streak</p>
+    </section>
+    <section class="card stack">
+      <h2 class="page-title">Weapons</h2>
+      <p class="lede">Unlocked weapons stay in color. Locked ones show how close you are.</p>
+      <div class="armory">${weapons}</div>
+    </section>
+    <section class="card stack">
+      <h2 class="page-title">Achievements</h2>
+      <div class="medal-list">${medals}</div>
+    </section>
+    <section class="card stack">
+      <h2 class="page-title">Monsters defeated</h2>
+      <div class="monster-log">${monsters}</div>
+    </section>
+    ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}`;
+}
+
+function paintQuestArt(root) {
+  if (!root.querySelector("[data-quest-hero], [data-quest-weapon], [data-quest-badge]")) return;
+  const quest = questCatalog();
+  const swap = (slot, art) => {
+    if (!art) return;
+    art.className = slot.className;
+    art.setAttribute("aria-hidden", "true");
+    slot.replaceWith(art);
+  };
+  root.querySelectorAll("canvas[data-quest-hero]").forEach((slot) => swap(slot, quest.heroIcon(slot.dataset.questHero, 3)));
+  root.querySelectorAll("canvas[data-quest-weapon]").forEach((slot) => swap(slot, quest.weaponIcon(slot.dataset.questWeapon, 3)));
+  root.querySelectorAll("canvas[data-quest-badge]").forEach((slot) => swap(slot, quest.badgeIcon(slot.dataset.questBadge, 3)));
 }
 
 function applyBattleLine(line) {
@@ -521,6 +648,7 @@ function parentNav(current) {
 function kidNav(current) {
   return `<nav class="nav play-nav">${[
     ["today", "Quests"],
+    ["hero", "My Hero"],
     ["kid-shop", "Market"],
     ["me", "Player"],
   ]
@@ -658,6 +786,7 @@ function render() {
     paintStage();
   }
   paintSpriteIcons(app);
+  paintQuestArt(app);
   requestAnimationFrame(() => {
     document.querySelectorAll(".ring-value").forEach((el) => {
       if (el.dataset.offset) el.setAttribute("stroke-dashoffset", el.dataset.offset);
@@ -1129,6 +1258,19 @@ const views = {
     );
   },
 
+  hero() {
+    const child = kid();
+    return shell(
+      child.name,
+      "My Hero",
+      `<div class="stack">
+        ${worldScene(child.color)}
+        ${heroBoard()}
+      </div>`,
+      kidNav("hero")
+    );
+  },
+
   me() {
     const child = kid();
     return shell(
@@ -1190,6 +1332,8 @@ app.addEventListener("click", (event) => {
   if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
   if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Grounding lifted here. Turn it off in Screen Time too.");
+  if (action === "set-hero") run(() => rpc("kid_set_hero", { p_token: sessionStorage.getItem(KID_TOKEN), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
+  if (action === "set-weapon") run(() => rpc("kid_set_weapon", { p_token: sessionStorage.getItem(KID_TOKEN), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
   if (action === "pick-sprite") {
     const form = btn.closest("form");
     const input = form?.querySelector('input[name="sprite"]');

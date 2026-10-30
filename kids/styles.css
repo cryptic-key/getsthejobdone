@@ -705,13 +705,13 @@ body.play .play-nav {
   margin: 0;
   padding: 6px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   background: #fffdf8;
   border-radius: 20px;
   z-index: 5;
 }
-body.play .play-nav button { border-radius: 14px; color: var(--ink); }
+body.play .play-nav button { border-radius: 14px; color: var(--ink); padding: 8px 2px; font-size: 0.78rem; }
 body.play .play-nav button[aria-current="page"] {
   background: var(--sun);
   color: var(--ink);
@@ -719,6 +719,54 @@ body.play .play-nav button[aria-current="page"] {
 }
 
 body.play .toast { margin-bottom: 14px; }
+
+.hero-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hero-pick {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 3px solid var(--line);
+  border-radius: 16px;
+  background: #fffdf8;
+  font-weight: 800;
+}
+.hero-pick[aria-pressed="true"] { border-color: var(--ink); background: var(--sun-soft); }
+.hero-pick canvas, .armory-card canvas, .medal canvas, .monster-count canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  height: auto;
+}
+.armory, .medal-list { display: grid; gap: 8px; }
+.armory-card, .medal {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 3px solid var(--line);
+}
+.armory-card strong, .medal strong { display: block; }
+.armory-card canvas { max-width: 96px; }
+.armory-card.locked canvas { filter: grayscale(0.95); opacity: 0.55; }
+.armory-card.equipped { background: var(--sun-soft); border-radius: 14px; padding: 8px; }
+.medal.done { background: var(--leaf-soft); border-radius: 14px; padding: 8px; }
+.meter {
+  height: 12px;
+  margin-top: 6px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: #f3efe4;
+  overflow: hidden;
+}
+.meter span { display: block; height: 100%; background: var(--sun); }
+.medal.done .meter span { background: var(--leaf); }
+.meter-count { display: block; margin-top: 4px; font-weight: 800; color: var(--ink); }
+.monster-log { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.monster-count { margin: 0; display: grid; justify-items: center; gap: 4px; text-align: center; }
+.monster-count figcaption { display: grid; gap: 2px; }
+.monster-count small { font-weight: 800; }
+.monster-count:not(.beaten) canvas { filter: grayscale(0.85); opacity: 0.45; }
 body.play .loot strong::before { content: "★ "; color: var(--sun); }
 
 .shake { animation: shake .4s linear; }
