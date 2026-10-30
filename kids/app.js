@@ -166,6 +166,8 @@ function mapKid(row) {
     progressResetAt: row.progress_reset_at || null,
     hearts: Math.max(0, Math.min(3, Number(row.hearts ?? 3))),
     groundProgress: Math.max(0, Number(row.ground_progress) || 0),
+    warnParent: row.warn_parent || "",
+    warnSeq: Number(row.warn_seq) || 0,
   };
 }
 
@@ -493,6 +495,22 @@ function actor(chore) {
 
 const CAGE_SEEN = "chart-cage-seen";
 const CAGE_HELD = "chart-cage-held";
+const WARN_SEEN = "chart-warn-seen";
+
+function pendingWarn(child) {
+  if (!child?.warnParent || !child.warnSeq) return null;
+  const key = `${child.warnSeq}:${child.warnParent}`;
+  if (sessionStorage.getItem(WARN_SEEN) === key) return null;
+  return {
+    parent: child.warnParent,
+    hero: parentHero(child.warnParent),
+    color: COLOR_HEX.teal,
+    hearts: child.hearts,
+    seq: child.warnSeq,
+    locked: grounded(child),
+    lockKey: grounded(child) ? String(child.groundedUntil || child.id) : "",
+  };
+}
 
 function paintStage() {
   const host = document.querySelector(".stage");
@@ -528,21 +546,23 @@ function paintStage() {
   const name = host.dataset.color || "leaf";
   const child = db.session?.role === "kid" ? kid() : null;
   const heroKey = child ? kidHero(db.hero?.hero) : "";
-  const locked = child && grounded(child);
-  const lockKey = locked ? String(child.groundedUntil || child.id) : "";
+  const warn = child ? pendingWarn(child) : null;
+  const locked = child && grounded(child) && !warn;
+  const lockKey = child && grounded(child) ? String(child.groundedUntil || child.id) : "";
   let lockup = null;
   if (locked) {
     lockup = sessionStorage.getItem(CAGE_SEEN) === lockKey ? "held" : "arrive";
     sessionStorage.setItem(CAGE_HELD, lockKey);
-  } else if (sessionStorage.getItem(CAGE_HELD)) {
+  } else if (!warn && sessionStorage.getItem(CAGE_HELD)) {
     lockup = "free";
   }
   const playing = new Set(playChores.map((chore) => chore.id));
+  const shownHearts = warn ? Math.min(3, (child?.hearts ?? 0) + 1) : child?.hearts ?? 3;
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
     hero: heroKey,
-    waiting: locked ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
-    plays: locked
+    waiting: locked || warn ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
+    plays: locked || warn
       ? []
       : playChores.map((chore) => ({
           ...actor(chore),
@@ -551,9 +571,19 @@ function paintStage() {
         })),
     onDone: onFightDone,
     gear: heroGear(),
-    hearts: child?.hearts ?? 3,
+    hearts: shownHearts,
     lockup,
     lockKey,
+    warn,
+    onWarn: (info) => {
+      const key = `${info?.seq || child?.warnSeq || ""}:${info?.parent || child?.warnParent || ""}`;
+      sessionStorage.setItem(WARN_SEEN, key);
+      if (child) {
+        child.warnParent = "";
+        supabase.rpc("kid_ack_warn", { p_token: sessionStorage.getItem(KID_TOKEN), p_seq: info?.seq || child.warnSeq });
+      }
+      paintStage();
+    },
     onLockup: (mode) => {
       if (mode === "held") sessionStorage.setItem(CAGE_SEEN, lockKey);
       if (mode === "free") {
@@ -769,7 +799,8 @@ function ensurePoll() {
     if (busy || db.session?.role !== "kid") return;
     const ok = await loadKid();
     if (!ok || db.session?.role !== "kid") return;
-    const sig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
+    const me = kid();
+    const sig = `${me?.points}|${me?.hearts}|${me?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
     syncBattles();
     if (sig !== lastKidSig) {
       lastKidSig = sig;
@@ -1104,7 +1135,7 @@ function render() {
   mountStage();
   if (db.session?.role === "kid") {
     syncBattles();
-    lastKidSig = `${kid()?.points}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
+    lastKidSig = `${kid()?.points}|${kid()?.hearts}|${kid()?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
     ensurePoll();
   } else {
     paintStage();

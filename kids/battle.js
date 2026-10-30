@@ -1667,7 +1667,7 @@ let scroll = 18;
 let scrollTarget = 18;
 let shake = 0;
 let time = 0;
-const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0, down: false, noWeapon: false };
+const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0, down: false, noWeapon: false, hurt: 0 };
 let mon = null;
 const projectiles = [];
 const particles = [];
@@ -1682,9 +1682,13 @@ let full = "";
 let shown = 0;
 let lastFrame = 0;
 let loopOn = false;
-const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null, hero: "", lockup: null, hearts: 3, onLockup: null };
+const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null, hero: "", lockup: null, hearts: 3, onLockup: null, warn: null, onWarn: null };
 let parade = [];
 let paradeOn = false;
+let warner = null;
+let spellBolt = null;
+let warnBusy = false;
+let lastWarn = "";
 const copPal = { K, N: "#2a3f8a", S: "#f4c89c", E: K, M: "#6e3418", Y: "#f4c542", B: "#1a1c2c" };
 const copTop = [
   "...KKKKKK...", "..KNNNYNNK..", ".KKKKKKKKKK.", "..KSSSSSSSK.", "..KSESSESSK.", "..KMMMMSSSK.", "...KSSSSK...",
@@ -1982,10 +1986,118 @@ function paintHearts(count) {
   if (!host) return;
   const row = host.querySelector(".quest-hearts");
   if (!row) return;
+  if (row.querySelector("i.crack, i.fade")) return;
   const n = Math.max(0, Math.min(3, Number(count) || 0));
   row.dataset.hearts = String(n);
   row.innerHTML = [0, 1, 2].map((i) => `<i class="${i < n ? "on" : "off"}" aria-hidden="true"></i>`).join("");
   row.setAttribute("aria-label", `${n} heart${n === 1 ? "" : "s"} left`);
+}
+
+function crackHeart(lostIndex) {
+  if (!host) return Promise.resolve();
+  const row = host.querySelector(".quest-hearts");
+  if (!row) return Promise.resolve();
+  const hearts = [...row.querySelectorAll("i")];
+  const target = hearts[Math.max(0, Math.min(2, lostIndex))];
+  if (!target) return Promise.resolve();
+  target.classList.remove("on", "off");
+  target.classList.add("crack");
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      target.classList.remove("crack");
+      target.classList.add("fade");
+      window.setTimeout(() => {
+        const left = Math.max(0, lostIndex);
+        row.dataset.hearts = String(left);
+        row.innerHTML = [0, 1, 2].map((i) => `<i class="${i < left ? "on" : "off"}" aria-hidden="true"></i>`).join("");
+        row.setAttribute("aria-label", `${left} heart${left === 1 ? "" : "s"} left`);
+        resolve();
+      }, 850);
+    }, 550);
+  });
+}
+
+function parentLookKey(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (key === "alex") return "king";
+  if (key === "jackie") return "queen";
+  return "knight";
+}
+
+async function playWarn(token) {
+  const info = scene.warn;
+  if (!info || warnBusy) return;
+  warnBusy = true;
+  mon = null;
+  projectiles.length = 0;
+  spellBolt = null;
+  hero.down = false;
+  hero.hurt = 0;
+  scroll = 0;
+  scrollTarget = 0;
+  hero.pose = "idle";
+  hero.oxT = 0;
+  const tint = info.color || "#2a9d8f";
+  const look = heroLook(info.hero || parentLookKey(info.parent), tint);
+  const stand = look.h || 16;
+  const slot = 78;
+  warner = { x: W + 10, tx: slot, look, stand, cast: 0, name: info.parent || "Parent" };
+  say(`${warner.name} steps in!`);
+  if (!(await until(() => warner && warner.x <= slot + 0.5, token))) {
+    warnBusy = false;
+    return;
+  }
+  warner.x = slot;
+  warner.tx = slot;
+  say(`${warner.name} casts a warning spell!`);
+  if (!(await waitFor(0.35, token))) {
+    warnBusy = false;
+    return;
+  }
+  warner.cast = 1;
+  if (!(await waitFor(0.2, token))) {
+    warnBusy = false;
+    return;
+  }
+  const hx = heroX() + 8;
+  const hy = G - 10;
+  spellBolt = { x: slot + 2, y: G - stand + 6, tx: hx, ty: hy, t: 0 };
+  burst(spellBolt.x, spellBolt.y, ["#c77dff", "#fff3a8", "#ffffff"], 10, 40);
+  if (!(await until(() => !spellBolt || spellBolt.t >= 1, token))) {
+    warnBusy = false;
+    return;
+  }
+  spellBolt = null;
+  warner.cast = 0;
+  hero.hurt = 2.6;
+  hero.kx = -10;
+  if (!reduce) shake = 0.25;
+  burst(heroX() + 10, G - 6, ["#e04a4a", "#ffffff", "#c77dff"], 16, 55);
+  say("The spell hits! A heart cracks!");
+  const lost = Math.max(0, Math.min(2, Number(info.hearts) || 0));
+  const cracking = crackHeart(lost);
+  if (!(await waitFor(2.4, token))) {
+    warnBusy = false;
+    return;
+  }
+  await cracking;
+  paintHearts(Number(info.hearts) || 0);
+  say(info.locked ? "Last heart gone..." : "Be careful out there.");
+  warner.tx = W + 24;
+  if (!(await until(() => !warner || warner.x > W + 6, token))) {
+    warnBusy = false;
+    return;
+  }
+  warner = null;
+  hero.hurt = 0;
+  warnBusy = false;
+  const done = scene.onWarn;
+  scene.warn = null;
+  scene.onWarn = null;
+  lastWarn = "";
+  done?.(info);
+  if (token !== runToken) return;
+  if (!info.locked) goTrail();
 }
 
 function holdCage() {
@@ -2135,6 +2247,10 @@ function drawCops() {
 
 function reconcile() {
   const token = runToken;
+  if (scene.warn) {
+    playWarn(token);
+    return;
+  }
   if (scene.lockup === "arrive") {
     playLockup(token);
     return;
@@ -2169,7 +2285,7 @@ export function stageElement() {
   if (host) return host;
   host = document.createElement("div");
   host.className = "stage";
-  host.innerHTML = `<canvas class="quest-canvas" width="128" height="72" aria-label="Forest battle"></canvas><div class="quest-panel"><div class="quest-hearts" aria-label="3 hearts left"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="quest-dialog" aria-live="polite"></div></div>`;
+  host.innerHTML = `<canvas class="quest-canvas" width="128" height="72" aria-label="Forest battle"></canvas><div class="quest-hearts" aria-label="3 hearts left"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="quest-panel"><div class="quest-dialog" aria-live="polite"></div></div>`;
   const canvasEl = host.querySelector("canvas");
   ctx = canvasEl.getContext("2d");
   ctx.imageSmoothingEnabled = false;
@@ -2192,13 +2308,20 @@ export function setStageScene(next) {
     scene.hero = "";
     scene.lockup = null;
     scene.onLockup = null;
+    scene.warn = null;
+    scene.onWarn = null;
     lastLockup = "";
+    lastWarn = "";
     cage = null;
     cops = [];
     flyWeapon = null;
     siren = false;
     lockBusy = false;
+    warnBusy = false;
+    warner = null;
+    spellBolt = null;
     hero.noWeapon = false;
+    hero.hurt = 0;
     const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.color || ""}:${kid.weaponKey || "broom"}`).sort().join("|");
     if (paradeOn && scene.paradeKey === key) return;
     scene.paradeKey = key;
@@ -2246,6 +2369,8 @@ export function setStageScene(next) {
   scene.hero = next.hero || "";
   scene.onDone = next.onDone;
   scene.onLockup = next.onLockup || null;
+  scene.onWarn = next.onWarn || null;
+  const warn = next.warn || null;
   const lockup = next.lockup || null;
   const color = next.color || "#3fa34d";
   const waiting = next.waiting || [];
@@ -2258,6 +2383,28 @@ export function setStageScene(next) {
   if (color !== scene.color) {
     scene.color = color;
     heroSprites = buildHero(color);
+  }
+  if (warn) {
+    const warnKey = `${warn.seq || ""}:${warn.parent || ""}:${warn.hearts ?? ""}`;
+    scene.warn = warn;
+    scene.lockup = null;
+    if (warnKey === lastWarn && (warnBusy || warner)) return;
+    lastWarn = warnKey;
+    runToken += 1;
+    projectiles.length = 0;
+    mon = null;
+    reconcile();
+    return;
+  }
+  if (scene.warn || warnBusy || warner) {
+    if (!warnBusy) {
+      scene.warn = null;
+      scene.onWarn = null;
+      lastWarn = "";
+      warner = null;
+      spellBolt = null;
+      hero.hurt = 0;
+    }
   }
   if (lockup) {
     const lockKey = `${lockup}:${next.lockKey || ""}`;
@@ -2517,6 +2664,11 @@ function update(dt) {
   hero.ang += (target - hero.ang) * Math.min(1, dt * 28);
   hero.smear = Math.max(0, hero.smear - dt);
   hero.alert = Math.max(0, hero.alert - dt);
+  hero.hurt = Math.max(0, hero.hurt - dt);
+  if (warner) {
+    warner.x += ((warner.tx ?? warner.x) - warner.x) * Math.min(1, dt * 5);
+  }
+  if (spellBolt) spellBolt.t += dt * 2.4;
   if (paradeOn) {
     parade.forEach((walker) => {
       walker.x += (walker.tx - walker.x) * Math.min(1, dt * 5);
@@ -2663,8 +2815,38 @@ function draw() {
     rect(ctx, x + 7, y - 9, 1, 3, "#e04a4a");
     px(ctx, x + 7, y - 5, "#e04a4a");
   }
+  if (hero.hurt > 0 && ((hero.hurt * 10) | 0) % 2 === 0) {
+    ctx.fillStyle = "rgba(224, 74, 74, 0.55)";
+    ctx.fillRect(x + 1, y, 14, stand);
+  }
   if (cage) drawCage();
   drawCops();
+  }
+  if (warner) {
+    const wx = Math.round(warner.x);
+    const wy = Math.round(G - ((warner.stand || 16) - 1));
+    const moving = Math.abs((warner.tx ?? wx) - warner.x) > 0.4;
+    const fr = moving && ((time * 8) | 0) % 2;
+    rect(ctx, wx + 3, G, 8, 1, "#3e8c2c");
+    ctx.drawImage(fr ? warner.look.b : warner.look.a, wx, wy);
+    if (warner.cast) {
+      const hx = wx + 4;
+      const hy = wy + 4;
+      disc(ctx, hx, hy, 2, "#c77dff");
+      disc(ctx, hx + 1, hy - 1, 1, "#fff3a8");
+      if (R() < 0.35) {
+        particles.push({ x: hx + rnd(-1, 2), y: hy + rnd(-2, 1), vx: rnd(-8, 8), vy: rnd(-20, -6), g: 40, life: 0.25, c: R() < 0.5 ? "#c77dff" : "#fff3a8" });
+      }
+    }
+  }
+  if (spellBolt) {
+    const t = Math.min(1, spellBolt.t);
+    const sx = spellBolt.x + (spellBolt.tx - spellBolt.x) * t;
+    const sy = spellBolt.y + (spellBolt.ty - spellBolt.y) * t - Math.sin(t * Math.PI) * 10;
+    disc(ctx, sx, sy, 3, "#c77dff");
+    disc(ctx, sx - 1, sy - 1, 2, "#fff3a8");
+    disc(ctx, sx + 1, sy, 1, "#ffffff");
+    if (R() < 0.45) particles.push({ x: sx, y: sy, vx: rnd(-12, 12), vy: rnd(-12, 12), g: 0, life: 0.2, c: "#c77dff" });
   }
   if (mon?.alive) drawMonster(mon);
   projectiles.forEach(drawProj);

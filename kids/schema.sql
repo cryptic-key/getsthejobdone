@@ -52,6 +52,8 @@ alter table public.kids add constraint kids_hearts_check check (hearts >= 0 and 
 alter table public.kids add column if not exists ground_progress integer not null default 0;
 alter table public.kids drop constraint if exists kids_ground_progress_check;
 alter table public.kids add constraint kids_ground_progress_check check (ground_progress >= 0);
+alter table public.kids add column if not exists warn_parent text;
+alter table public.kids add column if not exists warn_seq bigint not null default 0;
 
 create table if not exists private.kid_pins (
   kid_id uuid primary key references public.kids (id) on delete cascade,
@@ -590,7 +592,8 @@ begin
   update public.kids
   set hearts = 3,
       ground_progress = 0,
-      grounded_until = null
+      grounded_until = null,
+      warn_parent = null
   where id = p_kid;
   insert into public.activity (household_id, kid_id, body)
   values (hid, p_kid, kname || ' is free. Three hearts are back.');
@@ -981,7 +984,9 @@ begin
       'minutes', k.minutes,
       'grounded_until', k.grounded_until,
       'hearts', k.hearts,
-      'ground_progress', k.ground_progress
+      'ground_progress', k.ground_progress,
+      'warn_parent', k.warn_parent,
+      'warn_seq', k.warn_seq
     ),
     'chores', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -2566,38 +2571,73 @@ declare
   next_hearts integer;
   until_at timestamptz;
   note text := nullif(btrim(coalesce(p_reason, '')), '');
+  pname text;
+  next_seq bigint;
 begin
   select * into child from public.kids where id = p_kid and household_id = hid;
   if child.id is null then
     raise exception 'kid not found';
   end if;
+  select name into pname from public.parents where user_id = auth.uid() and household_id = hid;
+  pname := coalesce(nullif(btrim(pname), ''), 'A parent');
   next_hearts := greatest(0, child.hearts - 1);
+  next_seq := coalesce(child.warn_seq, 0) + 1;
   if next_hearts = 0 then
     until_at := ((timezone('America/Toronto', now())::date + 1) + time '08:00') at time zone 'America/Toronto';
     update public.kids
     set hearts = 0,
         ground_progress = 0,
-        grounded_until = coalesce(grounded_until, until_at)
+        grounded_until = coalesce(grounded_until, until_at),
+        warn_parent = pname,
+        warn_seq = next_seq
     where id = child.id;
     insert into public.activity (household_id, kid_id, body)
     values (
       hid,
       child.id,
-      child.name || ' lost the last heart. The Chore Patrol locked the hero up'
+      pname || ' warned ' || child.name || '. Last heart gone. The Chore Patrol locked the hero up'
         || coalesce(' for ' || note, '') || '.'
     );
-    return jsonb_build_object('hearts', 0, 'locked', true, 'grounded_until', coalesce(child.grounded_until, until_at));
+    return jsonb_build_object(
+      'hearts', 0,
+      'locked', true,
+      'grounded_until', coalesce(child.grounded_until, until_at),
+      'parent', pname,
+      'warn_seq', next_seq
+    );
   end if;
-  update public.kids set hearts = next_hearts where id = child.id;
+  update public.kids
+  set hearts = next_hearts,
+      warn_parent = pname,
+      warn_seq = next_seq
+  where id = child.id;
   insert into public.activity (household_id, kid_id, body)
   values (
     hid,
     child.id,
-    child.name || ' got a warning. ' || next_hearts || ' heart'
+    pname || ' warned ' || child.name || '. ' || next_hearts || ' heart'
       || case when next_hearts = 1 then '' else 's' end || ' left'
       || coalesce(': ' || note, '') || '.'
   );
-  return jsonb_build_object('hearts', next_hearts, 'locked', false);
+  return jsonb_build_object('hearts', next_hearts, 'locked', false, 'parent', pname, 'warn_seq', next_seq);
+end;
+$$;
+
+create or replace function private.kid_ack_warn(p_token text, p_seq bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  update public.kids
+  set warn_parent = null
+  where id = kid and warn_seq = p_seq;
 end;
 $$;
 
@@ -2620,20 +2660,28 @@ create or replace function public.warn_kid(p_kid uuid, p_reason text default '')
 returns jsonb language sql security invoker set search_path = ''
 as $$ select private.warn_kid(p_kid, p_reason) $$;
 
+create or replace function public.kid_ack_warn(p_token text, p_seq bigint)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.kid_ack_warn(p_token, p_seq); end $$;
+
 create or replace function public.save_cage_goal(p_points integer)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.save_cage_goal(p_points); end $$;
 
 revoke all on function private.free_kid(uuid) from public, anon, authenticated;
 revoke all on function private.warn_kid(uuid, text) from public, anon, authenticated;
+revoke all on function private.kid_ack_warn(text, bigint) from public, anon, authenticated;
 revoke all on function private.save_cage_goal(integer) from public, anon, authenticated;
 revoke all on function public.warn_kid(uuid, text) from public, anon, authenticated;
+revoke all on function public.kid_ack_warn(text, bigint) from public, anon, authenticated;
 revoke all on function public.save_cage_goal(integer) from public, anon, authenticated;
 
 grant execute on function private.free_kid(uuid) to authenticated;
 grant execute on function private.warn_kid(uuid, text) to authenticated;
+grant execute on function private.kid_ack_warn(text, bigint) to anon, authenticated;
 grant execute on function private.save_cage_goal(integer) to authenticated;
 grant execute on function public.warn_kid(uuid, text) to authenticated;
+grant execute on function public.kid_ack_warn(text, bigint) to anon, authenticated;
 grant execute on function public.save_cage_goal(integer) to authenticated;
 
 notify pgrst, 'reload schema';
