@@ -164,6 +164,8 @@ function mapKid(row) {
     minutes: row.minutes,
     groundedUntil: row.grounded_until,
     progressResetAt: row.progress_reset_at || null,
+    hearts: Math.max(0, Math.min(3, Number(row.hearts ?? 3))),
+    groundProgress: Math.max(0, Number(row.ground_progress) || 0),
   };
 }
 
@@ -173,13 +175,20 @@ function afterReset(chore, child) {
   return new Date(chore.approved_at) > new Date(child.progressResetAt);
 }
 
+function heartMarks(count) {
+  const n = Math.max(0, Math.min(3, Number(count) || 0));
+  return `<span class="hearts" aria-label="${n} heart${n === 1 ? "" : "s"} left">${[0, 1, 2]
+    .map((i) => `<i class="${i < n ? "on" : "off"}" aria-hidden="true"></i>`)
+    .join("")}</span>`;
+}
+
 async function loadParent() {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData.user;
   if (!user) return false;
   const { data: me, error } = await supabase
     .from("parents")
-    .select("id,name,email,household_id,households(name,code,points_per_dollar,points_per_30)")
+    .select("id,name,email,household_id,households(name,code,points_per_dollar,points_per_30,unground_points)")
     .eq("user_id", user.id)
     .maybeSingle();
   if (error) throw error;
@@ -188,7 +197,7 @@ async function loadParent() {
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins] = await Promise.all([
     supabase.from("parents").select("id,name,email").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
@@ -207,6 +216,7 @@ async function loadParent() {
       code: me.households.code,
       pointsPerDollar: me.households.points_per_dollar,
       pointsPer30: me.households.points_per_30,
+      ungroundPoints: Number(me.households.unground_points) || 0,
     },
     parents: parents.data.map((person) => ({ ...person, hasPin: readyPins.has(person.id) })),
     kids: kids.data.map(mapKid),
@@ -253,6 +263,7 @@ async function loadKid() {
       code: snap.family.code,
       pointsPerDollar: snap.family.points_per_dollar,
       pointsPer30: snap.family.points_per_30,
+      ungroundPoints: Number(snap.family.unground_points) || 0,
     },
     parents: [],
     kids: [mapKid(snap.kid)],
@@ -300,12 +311,12 @@ async function run(work, message, next) {
     await work();
     if (db.session?.role === "kid") await loadKid();
     else if (db.session?.role === "parent") await loadParent();
-    notice = message || "";
+    notice = typeof message === "function" ? message() || "" : message || "";
     if (next) route = { name: next };
     else route = { ...route, error: "" };
     draft = {};
     render();
-    if (db.session?.role === "kid" && message && !/marked done/i.test(message)) celebrate();
+    if (db.session?.role === "kid" && notice && !/marked done/i.test(notice)) celebrate();
   } catch (error) {
     route = { ...route, error: nice(error) };
     render();
@@ -489,6 +500,9 @@ function actor(chore) {
   };
 }
 
+const CAGE_SEEN = "chart-cage-seen";
+const CAGE_HELD = "chart-cage-held";
+
 function paintStage() {
   const host = document.querySelector(".stage");
   if (!host || host.hidden) return;
@@ -502,6 +516,7 @@ function paintStage() {
       plays: fleeing.map((chore) => ({ ...actor(chore), flee: true, approved: true })),
       onDone: onFightDone,
       gear: null,
+      hearts: child?.hearts ?? 3,
     });
     return;
   }
@@ -515,19 +530,40 @@ function paintStage() {
         weaponKey: person.weapon,
         weapon: heldWeapon(person.weapon),
       })),
+      hearts: 3,
     });
     return;
   }
   const name = host.dataset.color || "leaf";
+  const child = db.session?.role === "kid" ? kid() : null;
+  const heroKey = child ? kidHero(db.hero?.hero) : "";
+  const locked = child && grounded(child);
+  const lockKey = locked ? String(child.groundedUntil || child.id) : "";
+  let lockup = null;
+  if (locked) {
+    lockup = sessionStorage.getItem(CAGE_SEEN) === lockKey ? "held" : "arrive";
+    sessionStorage.setItem(CAGE_HELD, lockKey);
+  } else if (sessionStorage.getItem(CAGE_HELD)) {
+    lockup = "free";
+  }
   const playing = new Set(playChores.map((chore) => chore.id));
-  const heroKey = db.session?.role === "kid" ? kidHero(db.hero?.hero) : "";
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
     hero: heroKey,
-    waiting: battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
-    plays: playChores.map(actor),
+    waiting: locked ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
+    plays: locked ? [] : playChores.map(actor),
     onDone: onFightDone,
     gear: heroGear(),
+    hearts: child?.hearts ?? 3,
+    lockup,
+    lockKey,
+    onLockup: (mode) => {
+      if (mode === "held") sessionStorage.setItem(CAGE_SEEN, lockKey);
+      if (mode === "free") {
+        sessionStorage.removeItem(CAGE_HELD);
+        sessionStorage.removeItem(CAGE_SEEN);
+      }
+    },
   });
 }
 
@@ -749,9 +785,9 @@ function ensurePoll() {
 
 function hudStats(child) {
   return `<div class="hud-stats">
-    <span class="stat coins"><i></i><b>${child.points}</b><small>coins</small></span>
-    <span class="stat cash"><i></i><b>${money(child.cashCents)}</b><small>cash</small></span>
-    <span class="stat time"><i></i><b>${child.minutes}</b><small>min</small></span>
+    <span class="stat coins"><i class="ico-chest" aria-hidden="true"></i><b>${child.points}</b><small>coins</small></span>
+    <span class="stat cash"><i class="ico-bill" aria-hidden="true"></i><b>${money(child.cashCents)}</b><small>cash</small></span>
+    <span class="stat time"><i class="ico-timer" aria-hidden="true"></i><b>${child.minutes}</b><small>min</small></span>
   </div>`;
 }
 
@@ -1427,17 +1463,18 @@ const views = {
                   const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted" && chore.status !== "approved");
                   const approved = db.chores.filter((chore) => chore.kidId === child.id && chore.status === "approved" && afterReset(chore, child));
                   const confirming = route.confirmReset === child.id;
-                  return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong></div>${
+                  const goal = Number(db.family.ungroundPoints) || 0;
+                  return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div>${
                     confirming
                       ? ""
-                      : `<button class="btn small clay" type="button" data-action="reset-kid" data-id="${child.id}">Reset all</button>`
+                      : `<span class="row"><button class="btn small ghost" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>Warn</button><button class="btn small clay" type="button" data-action="reset-kid" data-id="${child.id}">Reset all</button></span>`
                   }</div>${
                     confirming
                       ? `<div class="banner">Reset ${esc(child.name)}? This clears the log and starts the hero over: adventurer, broom, no achievements, and monster counts back at zero. Coins, cash, and minutes stay. <span class="row"><button class="btn small clay" type="button" data-action="confirm-reset" data-id="${child.id}">Reset</button><button class="btn small ghost" type="button" data-action="cancel-reset">Keep</button></span></div>`
                       : ""
                   }${balances(child)}${
                     grounded(child)
-                      ? `<div class="banner">Grounded until ${esc(when(child.groundedUntil))}. Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
+                      ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
                       : ""
                   }<details class="task-log"><summary>Task log${open.length + approved.length ? ` (${open.length + approved.length})` : ""}</summary>${
                     open.length || approved.length
@@ -1480,6 +1517,12 @@ const views = {
             </div>
             <label>Note<input name="note" placeholder="Ice cream, or screen time used"></label>
             <button class="btn clay" ${db.kids.length ? "" : "disabled"}>Take off</button>
+          </form>
+          <h2 class="page-title">Cage release</h2>
+          <p class="lede">When the last heart is gone, the hero is locked up. Approved chore coins count toward this goal. Hitting the goal frees them for good and restores three hearts. Set 0 if only a parent can lift.</p>
+          <form class="two" data-action="save-cage-goal">
+            <label>Coins to free the cage<input name="points" type="number" min="0" value="${Number(db.family.ungroundPoints) || 0}" required></label>
+            <button class="btn leaf" type="submit">Save cage goal</button>
           </form>
           <form class="stack" data-action="ground">
             <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
@@ -1547,7 +1590,11 @@ const views = {
       `<div class="stack">
         ${worldScene(child.color)}
         ${kidCharts(child)}
-        ${grounded(child) ? `<div class="banner">Devices are grounded until ${esc(when(child.groundedUntil))}.</div>` : ""}
+        ${
+          grounded(child)
+            ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Earn ${(Number(db.family.ungroundPoints) || 0) > 0 ? `${child.groundProgress}/${db.family.ungroundPoints} coins` : "approved coins"} to break out and get three hearts back.</div>`
+            : ""
+        }
         ${kidDailyBoard(mine)}
         <section class="card">
           <h2 class="page-title">Special board</h2>
@@ -1692,7 +1739,18 @@ app.addEventListener("click", (event) => {
   if (action === "edit-pin") go("edit-pin", { id: btn.dataset.id });
   if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
   if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
-  if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Grounding lifted here. Turn it off in Screen Time too.");
+  if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Cage open. Three hearts are back. Turn it off in Screen Time too.");
+  if (action === "warn-kid") {
+    let warnNote = "Warning saved. One heart is gone.";
+    run(
+      async () => {
+        const result = await rpc("warn_kid", { p_kid: btn.dataset.id, p_reason: "" });
+        if (result?.locked) warnNote = "Last heart gone. The Chore Patrol locked the hero in the cage.";
+      },
+      () => warnNote,
+      "chart"
+    );
+  }
   if (action === "set-hero") run(() => rpc("kid_set_hero", { p_token: sessionStorage.getItem(KID_TOKEN), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
   if (action === "set-color") run(() => rpc("kid_set_color", { p_token: sessionStorage.getItem(KID_TOKEN), p_color: btn.dataset.color }), "Color saved.", "hero");
   if (action === "set-weapon") run(() => rpc("kid_set_weapon", { p_token: sessionStorage.getItem(KID_TOKEN), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
@@ -1989,6 +2047,7 @@ app.addEventListener("submit", (event) => {
     );
   }
   if (action === "save-rates") run(() => rpc("save_rates", { p_per_dollar: Number(data.pointsPerDollar), p_per_30: Number(data.pointsPer30) }), "Rates saved.");
+  if (action === "save-cage-goal") run(() => rpc("save_cage_goal", { p_points: Number(data.points) || 0 }), "Cage release goal saved.", "chart");
   if (action === "add-item") run(() => rpc("add_item", { p_name: data.name, p_cost: Number(data.cost) }), "Item added.");
 });
 

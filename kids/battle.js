@@ -1416,7 +1416,7 @@ let scroll = 18;
 let scrollTarget = 18;
 let shake = 0;
 let time = 0;
-const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0, down: false };
+const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0, down: false, noWeapon: false };
 let mon = null;
 const projectiles = [];
 const particles = [];
@@ -1431,9 +1431,22 @@ let full = "";
 let shown = 0;
 let lastFrame = 0;
 let loopOn = false;
-const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null, hero: "" };
+const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null, hero: "", lockup: null, hearts: 3, onLockup: null };
 let parade = [];
 let paradeOn = false;
+const copPal = { K, N: "#2a3f8a", S: "#f4c89c", E: K, M: "#6e3418", Y: "#f4c542", B: "#1a1c2c" };
+const copTop = [
+  "...KKKKKK...", "..KNNNYNNK..", ".KKKKKKKKKK.", "..KSSSSSSSK.", "..KSESSESSK.", "..KMMMMSSSK.", "...KSSSSK...",
+  "..KNNNNNNK..", ".KSNNYNNNNSK", ".KSNNNNNNNSK", "..KKKKKKKKK.", "..KNNNKNNNK.",
+];
+const copA = sprite([...copTop, "..KNNK.KNNK.", "..KBBK.KBBK.", "..KKK..KKK.."], copPal);
+const copB = sprite([...copTop, "...KNNKNNK..", "...KBBKBBK..", "...KKKKKK..."], copPal);
+let lockBusy = false;
+let siren = false;
+let cage = null;
+let cops = [];
+let flyWeapon = null;
+let lastLockup = "";
 
 function say(text) {
   const next = text || "";
@@ -1714,8 +1727,175 @@ async function runParade() {
     if (!(await waitFor(0.35, token))) return;
   }
 }
+function paintHearts(count) {
+  if (!host) return;
+  const row = host.querySelector(".quest-hearts");
+  if (!row) return;
+  const n = Math.max(0, Math.min(3, Number(count) || 0));
+  row.dataset.hearts = String(n);
+  row.innerHTML = [0, 1, 2].map((i) => `<i class="${i < n ? "on" : "off"}" aria-hidden="true"></i>`).join("");
+  row.setAttribute("aria-label", `${n} heart${n === 1 ? "" : "s"} left`);
+}
+
+function holdCage() {
+  mon = null;
+  projectiles.length = 0;
+  scroll = 0;
+  scrollTarget = 0;
+  hero.pose = "idle";
+  hero.oxT = 0;
+  hero.down = false;
+  hero.noWeapon = true;
+  hero.alert = 0;
+  cage = { y: 0, vy: 0, drop: false, locked: true, lift: false };
+  cops = [];
+  flyWeapon = null;
+  siren = false;
+  say("Locked in! Earn coins to break out.");
+}
+
+async function playLockup(token) {
+  if (lockBusy) return;
+  lockBusy = true;
+  mon = null;
+  projectiles.length = 0;
+  hero.down = false;
+  hero.noWeapon = false;
+  siren = true;
+  say("WEE-OOO! The Chore Patrol is on the way!");
+  scrollTarget = 0;
+  if (!(await waitFor(0.5, token))) { lockBusy = false; return; }
+  scroll = 0;
+  hero.pose = "idle";
+  cops = [{ x: W + 4, vx: -42, flip: false }, { x: W + 20, vx: -42, flip: false }];
+  if (!(await until(() => cops[0].x <= heroX() + 19, token))) { lockBusy = false; return; }
+  cops.forEach((c) => { c.vx = 0; });
+  cops[1].x = cops[0].x + 14;
+  hero.alert = 1;
+  say("Halt! You're GROUNDED!");
+  if (!(await waitFor(1.1, token))) { lockBusy = false; return; }
+  const hx = heroX() + 11;
+  const hy = heroY() + 10;
+  flyWeapon = { x: hx, y: hy, tx: cops[0].x + 1, ty: G - 6, t: 0 };
+  hero.noWeapon = true;
+  say("The Chore Patrol confiscates your weapon!");
+  if (!(await until(() => flyWeapon && flyWeapon.t >= 1, token))) { lockBusy = false; return; }
+  cage = { y: -60, vy: 0, drop: true, locked: false, lift: false };
+  if (!(await until(() => cage && !cage.drop, token))) { lockBusy = false; return; }
+  if (!reduce) shake = 0.3;
+  burst(heroX() + 7, G, ["#b4b4c4", "#8890a8", "#ffffff"], 18, 60);
+  if (!(await waitFor(0.35, token))) { lockBusy = false; return; }
+  cage.locked = true;
+  burst(heroX() + 10, G - 5, ["#f4c542", "#ffffff"], 8, 30);
+  say("Locked in! Earn coins to break out.");
+  if (!(await waitFor(1, token))) { lockBusy = false; return; }
+  cops.forEach((c) => { c.vx = 40; c.flip = true; });
+  if (!(await until(() => cops.every((c) => c.x > W + 4), token))) { lockBusy = false; return; }
+  cops = [];
+  flyWeapon = null;
+  siren = false;
+  lockBusy = false;
+  scene.onLockup?.("held");
+}
+
+async function playRelease(token) {
+  if (lockBusy) return;
+  lockBusy = true;
+  if (!cage) holdCage();
+  say("Chores done! The lock pops open!");
+  cage.locked = false;
+  particles.push({ x: heroX() + 10, y: G - 5, vx: 30, vy: -70, g: 220, life: 0.9, c: "#f4c542", s: 3 });
+  if (!(await waitFor(0.6, token))) { lockBusy = false; return; }
+  cage.lift = true;
+  if (!(await until(() => !cage || cage.y < -70, token))) { lockBusy = false; return; }
+  cage = null;
+  hero.noWeapon = false;
+  hero.pose = "victory";
+  hero.vy = -80;
+  burst(heroX() + 7, G - 8, ["#f4c542", "#fff3a8", "#ffffff"], 16, 60);
+  say("FREE! Back to the quest!");
+  if (!(await waitFor(0.55, token))) { lockBusy = false; return; }
+  hero.vy = -80;
+  if (!(await waitFor(1, token))) { lockBusy = false; return; }
+  hero.pose = "walk";
+  scrollTarget = 18;
+  lockBusy = false;
+  scene.onLockup?.("free");
+}
+
+function drawCage() {
+  if (!cage) return;
+  const hx = Math.round(heroX());
+  const x0 = hx - 3;
+  const top = G - 21 + Math.round(cage.y);
+  for (let x = x0; x <= x0 + 19; x += 3) {
+    rect(ctx, x, top, 1, 22, "#c8d0e0");
+    rect(ctx, x + 1, top, 1, 22, "#6e7688");
+  }
+  rect(ctx, x0 - 1, top - 3, 22, 4, K);
+  rect(ctx, x0, top - 2, 20, 2, "#55606e");
+  rect(ctx, x0 - 1, top + 20, 22, 3, K);
+  rect(ctx, x0, top + 21, 20, 1, "#55606e");
+  if (cage.locked) {
+    const lx = x0 + 8;
+    const ly = top + 15;
+    rect(ctx, lx, ly - 2, 1, 2, "#8890a8");
+    rect(ctx, lx + 3, ly - 2, 1, 2, "#8890a8");
+    rect(ctx, lx, ly - 3, 4, 1, "#8890a8");
+    rect(ctx, lx - 1, ly, 6, 5, K);
+    rect(ctx, lx, ly + 1, 4, 3, "#f4c542");
+    px(ctx, lx + 2, ly + 2, K);
+  }
+}
+
+function drawCops() {
+  for (const c of cops) {
+    const moving = c.vx !== 0;
+    const fr = moving && (time * 8 | 0) % 2 ? copB : copA;
+    const x = Math.round(c.x);
+    const y = G - 15;
+    rect(ctx, x + 2, G, 8, 1, "#3e8c2c");
+    if (c.flip) {
+      ctx.save();
+      ctx.translate(x + 12, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(fr, 0, 0);
+      ctx.restore();
+    } else {
+      ctx.drawImage(fr, x, y);
+    }
+    if (siren) {
+      const on = (time * 8 | 0) % 2;
+      px(ctx, x + 5, y - 1, on ? "#ff4a4a" : "#4a7aff");
+      px(ctx, x + 6, y - 1, on ? "#4a7aff" : "#ff4a4a");
+    }
+  }
+  if (flyWeapon) {
+    const f = flyWeapon;
+    const t = Math.min(1, f.t);
+    const c0 = cops[0];
+    const tx = c0 ? c0.x + (c0.flip ? 11 : 1) : f.tx;
+    const fx = t < 1 ? f.x + (tx - f.x) * t : tx;
+    const fy = t < 1 ? f.y + (f.ty - f.y) * t - Math.sin(t * Math.PI) * 14 : G - 6;
+    if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, fx, fy, t < 1 ? -55 + t * 720 : -150);
+    else drawBroom(fx, fy, t < 1 ? -55 + t * 720 : -150);
+  }
+}
+
 function reconcile() {
   const token = runToken;
+  if (scene.lockup === "arrive") {
+    playLockup(token);
+    return;
+  }
+  if (scene.lockup === "free") {
+    playRelease(token);
+    return;
+  }
+  if (scene.lockup === "held") {
+    if (!cage || !cage.locked) holdCage();
+    return;
+  }
   const play = scene.plays[0];
   if (play) {
     if (play.flee) playFlee(play, token);
@@ -1738,7 +1918,7 @@ export function stageElement() {
   if (host) return host;
   host = document.createElement("div");
   host.className = "stage";
-  host.innerHTML = `<canvas class="quest-canvas" width="128" height="72" aria-label="Forest battle"></canvas><div class="quest-dialog" aria-live="polite"></div>`;
+  host.innerHTML = `<canvas class="quest-canvas" width="128" height="72" aria-label="Forest battle"></canvas><div class="quest-panel"><div class="quest-hearts" aria-label="3 hearts left"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="quest-dialog" aria-live="polite"></div></div>`;
   const canvasEl = host.querySelector("canvas");
   ctx = canvasEl.getContext("2d");
   ctx.imageSmoothingEnabled = false;
@@ -1754,9 +1934,19 @@ export function stageElement() {
 
 export function setStageScene(next) {
   stageElement();
+  if (Object.prototype.hasOwnProperty.call(next, "hearts")) paintHearts(next.hearts);
   if (Array.isArray(next.parade)) {
     scene.gear = null;
     scene.hero = "";
+    scene.lockup = null;
+    scene.onLockup = null;
+    lastLockup = "";
+    cage = null;
+    cops = [];
+    flyWeapon = null;
+    siren = false;
+    lockBusy = false;
+    hero.noWeapon = false;
     const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.color || ""}:${kid.weaponKey || "broom"}`).sort().join("|");
     if (paradeOn && scene.paradeKey === key) return;
     scene.paradeKey = key;
@@ -1802,6 +1992,9 @@ export function setStageScene(next) {
   }
   scene.gear = next.gear || null;
   scene.hero = next.hero || "";
+  scene.onDone = next.onDone;
+  scene.onLockup = next.onLockup || null;
+  const lockup = next.lockup || null;
   const color = next.color || "#3fa34d";
   const waiting = next.waiting || [];
   const plays = next.plays || [];
@@ -1810,10 +2003,33 @@ export function setStageScene(next) {
   const frontKey = front ? `${front.id}:${front.sprite}:${front.title}` : "";
   scene.waiting = waiting;
   scene.plays = plays;
-  scene.onDone = next.onDone;
   if (color !== scene.color) {
     scene.color = color;
     heroSprites = buildHero(color);
+  }
+  if (lockup) {
+    const lockKey = `${lockup}:${next.lockKey || ""}`;
+    scene.lockup = lockup;
+    if (lockKey === lastLockup && (lockBusy || (lockup === "held" && cage?.locked) || (lockup === "arrive" && cage))) return;
+    lastLockup = lockKey;
+    runToken += 1;
+    projectiles.length = 0;
+    if (lockup === "held") {
+      holdCage();
+      return;
+    }
+    reconcile();
+    return;
+  }
+  if (scene.lockup || cage || cops.length || hero.noWeapon) {
+    scene.lockup = null;
+    lastLockup = "";
+    cage = null;
+    cops = [];
+    flyWeapon = null;
+    siren = false;
+    lockBusy = false;
+    hero.noWeapon = false;
   }
   const sameLead = lead === lastLead;
   const sameFront = frontKey === lastFront;
@@ -2056,6 +2272,22 @@ function update(dt) {
     });
   }
   shake = Math.max(0, shake - dt);
+  for (const c of cops) c.x += c.vx * dt;
+  if (flyWeapon) flyWeapon.t += dt * 1.6;
+  if (cage) {
+    if (cage.drop) {
+      cage.vy += 420 * dt;
+      cage.y += cage.vy * dt;
+      if (cage.y >= 0) {
+        cage.y = 0;
+        cage.drop = false;
+      }
+    }
+    if (cage.lift) cage.y -= 90 * dt;
+  }
+  if (cage?.locked && !lockBusy && R() < dt * 0.9) {
+    particles.push({ x: heroX() + (R() < 0.5 ? 6 : 9), y: heroY() + 6, vx: 0, vy: 10, g: 80, life: 0.5, c: "#7fd0ff" });
+  }
   if (mon) {
     mon.t += dt;
     if (mon.approach) mon.x -= scroll * dt;
@@ -2168,8 +2400,10 @@ function draw() {
     ctx.restore();
   } else {
     ctx.drawImage(fr ? sprites.b : sprites.a, x, y);
-    if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + hand, hero.ang);
-    else drawBroom(x + 11, y + hand, hero.ang);
+    if (!hero.noWeapon) {
+      if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + hand, hero.ang);
+      else drawBroom(x + 11, y + hand, hero.ang);
+    }
   }
   if (hero.alert > 0) {
     rect(ctx, x + 4, y - 11, 7, 9, K);
@@ -2177,6 +2411,8 @@ function draw() {
     rect(ctx, x + 7, y - 9, 1, 3, "#e04a4a");
     px(ctx, x + 7, y - 5, "#e04a4a");
   }
+  if (cage) drawCage();
+  drawCops();
   }
   if (mon?.alive) drawMonster(mon);
   projectiles.forEach(drawProj);
@@ -2184,6 +2420,11 @@ function draw() {
   coins.forEach((c) => { if (c.t >= 0) drawCoin(c.x, c.y, time + c.x * 0.05); });
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
   drawLayer(fore, worldX * 1.3, H - 12);
+  if (siren) {
+    const on = (time * 6 | 0) % 2;
+    rect(ctx, 0, 0, W, 1, on ? "#ff4a4a" : "#4a7aff");
+    rect(ctx, 0, H - 1, W, 1, on ? "#4a7aff" : "#ff4a4a");
+  }
   ctx.restore();
 }
 function frame(now) {

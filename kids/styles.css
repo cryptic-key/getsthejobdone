@@ -604,13 +604,44 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
-.quest-dialog {
+.quest-panel {
   position: absolute;
   left: 3%;
   top: 4%;
   width: 72%;
-  min-height: 2.6em;
+  max-height: 52%;
+  display: grid;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 2;
+}
+.quest-hearts {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.quest-hearts i,
+.hearts i {
+  width: 14px;
+  height: 12px;
+  display: block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+.quest-hearts i.on,
+.hearts i.on {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M7 11 C2.5 7.6 0.5 5.5 0.5 3.2 C0.5 1.4 2 0.3 3.6 0.3 C4.8 0.3 5.9 0.9 7 2 C8.1 0.9 9.2 0.3 10.4 0.3 C12 0.3 13.5 1.4 13.5 3.2 C13.5 5.5 11.5 7.6 7 11 Z' fill='%23e04a4a' stroke='%231a1c2c' stroke-width='1'/></svg>");
+}
+.quest-hearts i.off,
+.hearts i.off {
+  opacity: 0.7;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'><path d='M7 11 C2.5 7.6 0.5 5.5 0.5 3.2 C0.5 1.4 2 0.3 3.6 0.3 C4.8 0.3 5.9 0.9 7 2 C8.1 0.9 9.2 0.3 10.4 0.3 C12 0.3 13.5 1.4 13.5 3.2 C13.5 5.5 11.5 7.6 7 11 Z' fill='%234a2030' stroke='%231a1c2c' stroke-width='1'/></svg>");
+}
+.hearts { display: inline-flex; gap: 3px; margin-left: 8px; vertical-align: middle; }
+.quest-dialog {
   box-sizing: border-box;
+  min-height: 2.6em;
   padding: 7px 8px;
   background: rgba(16, 18, 28, 0.88);
   color: #f4f0e4;
@@ -619,9 +650,7 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
   line-height: 1.45;
   white-space: normal;
   overflow-wrap: anywhere;
-  max-height: 48%;
   border: 2px solid #f4f0e4;
-  pointer-events: none;
 }
 .sprite-library { display: flex; flex-wrap: wrap; gap: 14px; }
 .sprite-card { margin: 0; display: grid; justify-items: center; gap: 6px; min-width: 92px; }
@@ -659,16 +688,24 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
   padding: 8px 4px;
 }
 .stat i {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+  width: 28px;
+  height: 24px;
   display: block;
-  border: 2px solid var(--ink);
   animation: bob 1.8s ease-in-out infinite;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
-.stat.coins i { background: #f6c945; }
-.stat.cash i { background: var(--leaf); }
-.stat.time i { background: var(--sky); animation-delay: .3s; }
+.stat.coins i {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24'><rect x='4' y='10' width='20' height='11' rx='2' fill='%23c9892a' stroke='%2324312c' stroke-width='2'/><rect x='7' y='6' width='14' height='6' rx='1.5' fill='%23f6c945' stroke='%2324312c' stroke-width='2'/><rect x='11' y='13' width='6' height='5' rx='1' fill='%23fff3a8' stroke='%2324312c' stroke-width='1.5'/><circle cx='14' cy='8.5' r='1.4' fill='%2324312c'/></svg>");
+}
+.stat.cash i {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24'><rect x='2' y='5' width='24' height='14' rx='2' fill='%23dff0e4' stroke='%2324312c' stroke-width='2'/><rect x='4' y='7' width='20' height='10' rx='1' fill='%23b7dcc4'/><circle cx='14' cy='12' r='3.2' fill='%232f7d5a' stroke='%2324312c' stroke-width='1.4'/><text x='14' y='13.6' text-anchor='middle' font-size='6' font-family='Arial' font-weight='700' fill='%23fffdf8'>$</text></svg>");
+}
+.stat.time i {
+  animation-delay: .3s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24'><circle cx='14' cy='13' r='8' fill='%23d9eef4' stroke='%2324312c' stroke-width='2'/><circle cx='14' cy='13' r='5.5' fill='%23fffdf8' stroke='%233c7f92' stroke-width='1.4'/><path d='M14 9.2 V13 L17 15' fill='none' stroke='%2324312c' stroke-width='1.6' stroke-linecap='round'/><rect x='11' y='3' width='6' height='3' rx='1' fill='%233c7f92' stroke='%2324312c' stroke-width='1.4'/></svg>");
+}
 .stat b { font-size: 1.15rem; line-height: 1; }
 .stat small { color: var(--muted); font-weight: 600; font-size: 0.72rem; }
 

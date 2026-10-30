@@ -14,8 +14,14 @@ create table if not exists public.households (
   code text not null unique,
   points_per_dollar integer not null default 10 check (points_per_dollar > 0),
   points_per_30 integer not null default 4 check (points_per_30 > 0),
+  unground_points integer not null default 10 check (unground_points >= 0),
   created_at timestamptz not null default now()
 );
+
+alter table public.households add column if not exists unground_points integer not null default 10;
+alter table public.households drop constraint if exists households_unground_points_check;
+alter table public.households
+  add constraint households_unground_points_check check (unground_points >= 0);
 
 create table if not exists public.parents (
   id uuid primary key default gen_random_uuid(),
@@ -35,8 +41,17 @@ create table if not exists public.kids (
   cash_cents integer not null default 0 check (cash_cents >= 0),
   minutes integer not null default 0 check (minutes >= 0),
   grounded_until timestamptz,
+  hearts integer not null default 3 check (hearts >= 0 and hearts <= 3),
+  ground_progress integer not null default 0 check (ground_progress >= 0),
   created_at timestamptz not null default now()
 );
+
+alter table public.kids add column if not exists hearts integer not null default 3;
+alter table public.kids drop constraint if exists kids_hearts_check;
+alter table public.kids add constraint kids_hearts_check check (hearts >= 0 and hearts <= 3);
+alter table public.kids add column if not exists ground_progress integer not null default 0;
+alter table public.kids drop constraint if exists kids_ground_progress_check;
+alter table public.kids add constraint kids_ground_progress_check check (ground_progress >= 0);
 
 create table if not exists private.kid_pins (
   kid_id uuid primary key references public.kids (id) on delete cascade,
@@ -558,6 +573,30 @@ begin
 end;
 $$;
 
+create or replace function private.free_kid(p_kid uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid;
+  kname text;
+begin
+  select household_id, name into hid, kname from public.kids where id = p_kid;
+  if hid is null then
+    raise exception 'kid not found';
+  end if;
+  update public.kids
+  set hearts = 3,
+      ground_progress = 0,
+      grounded_until = null
+  where id = p_kid;
+  insert into public.activity (household_id, kid_id, body)
+  values (hid, p_kid, kname || ' is free. Three hearts are back.');
+end;
+$$;
+
 create or replace function private.approve_chore(p_chore uuid)
 returns void
 language plpgsql
@@ -568,6 +607,8 @@ declare
   hid uuid := private.require_household();
   chore public.chores%rowtype;
   child public.kids%rowtype;
+  goal integer;
+  progress integer;
 begin
   select * into chore
   from public.chores
@@ -587,6 +628,17 @@ begin
   where id = child.id;
   insert into public.activity (household_id, kid_id, body)
   values (hid, child.id, child.name || ' was paid for ' || chore.title || '.');
+
+  if private.is_grounded(child.grounded_until) and chore.points > 0 then
+    select unground_points into goal from public.households where id = hid;
+    update public.kids
+    set ground_progress = ground_progress + chore.points
+    where id = child.id
+    returning ground_progress into progress;
+    if coalesce(goal, 0) > 0 and progress >= goal then
+      perform private.free_kid(child.id);
+    end if;
+  end if;
 end;
 $$;
 
@@ -711,6 +763,8 @@ begin
   end if;
   update public.kids
   set grounded_until = p_until,
+      hearts = 0,
+      ground_progress = 0,
       minutes = case when coalesce(p_clear, false) then 0 else minutes end
   where id = child.id;
   insert into public.activity (household_id, kid_id, body)
@@ -732,9 +786,7 @@ begin
   if kname is null then
     raise exception 'kid not found';
   end if;
-  update public.kids set grounded_until = null where id = p_kid;
-  insert into public.activity (household_id, kid_id, body)
-  values (hid, p_kid, kname || ' is no longer grounded.');
+  perform private.free_kid(p_kid);
 end;
 $$;
 
@@ -917,7 +969,8 @@ begin
       'name', h.name,
       'code', h.code,
       'points_per_dollar', h.points_per_dollar,
-      'points_per_30', h.points_per_30
+      'points_per_30', h.points_per_30,
+      'unground_points', h.unground_points
     ),
     'kid', jsonb_build_object(
       'id', k.id,
@@ -926,7 +979,9 @@ begin
       'points', k.points,
       'cash_cents', k.cash_cents,
       'minutes', k.minutes,
-      'grounded_until', k.grounded_until
+      'grounded_until', k.grounded_until,
+      'hearts', k.hearts,
+      'ground_progress', k.ground_progress
     ),
     'chores', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -2497,4 +2552,87 @@ grant execute on function public.remove_chore_section(uuid) to authenticated;
 grant execute on function public.reorder_chore_sections(uuid[]) to authenticated;
 grant execute on function public.reorder_chore_templates(uuid[], uuid, text) to authenticated;
 grant execute on function public.add_daily_chore(text, integer, text, uuid) to authenticated;
+
+create or replace function private.warn_kid(p_kid uuid, p_reason text default '')
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  child public.kids%rowtype;
+  next_hearts integer;
+  until_at timestamptz;
+  note text := nullif(btrim(coalesce(p_reason, '')), '');
+begin
+  select * into child from public.kids where id = p_kid and household_id = hid;
+  if child.id is null then
+    raise exception 'kid not found';
+  end if;
+  next_hearts := greatest(0, child.hearts - 1);
+  if next_hearts = 0 then
+    until_at := ((timezone('America/Toronto', now())::date + 1) + time '08:00') at time zone 'America/Toronto';
+    update public.kids
+    set hearts = 0,
+        ground_progress = 0,
+        grounded_until = coalesce(grounded_until, until_at)
+    where id = child.id;
+    insert into public.activity (household_id, kid_id, body)
+    values (
+      hid,
+      child.id,
+      child.name || ' lost the last heart. The Chore Patrol locked the hero up'
+        || coalesce(' for ' || note, '') || '.'
+    );
+    return jsonb_build_object('hearts', 0, 'locked', true, 'grounded_until', coalesce(child.grounded_until, until_at));
+  end if;
+  update public.kids set hearts = next_hearts where id = child.id;
+  insert into public.activity (household_id, kid_id, body)
+  values (
+    hid,
+    child.id,
+    child.name || ' got a warning. ' || next_hearts || ' heart'
+      || case when next_hearts = 1 then '' else 's' end || ' left'
+      || coalesce(': ' || note, '') || '.'
+  );
+  return jsonb_build_object('hearts', next_hearts, 'locked', false);
+end;
+$$;
+
+create or replace function private.save_cage_goal(p_points integer)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+begin
+  update public.households
+  set unground_points = greatest(coalesce(p_points, 0), 0)
+  where id = hid;
+end;
+$$;
+
+create or replace function public.warn_kid(p_kid uuid, p_reason text default '')
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.warn_kid(p_kid, p_reason) $$;
+
+create or replace function public.save_cage_goal(p_points integer)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.save_cage_goal(p_points); end $$;
+
+revoke all on function private.free_kid(uuid) from public, anon, authenticated;
+revoke all on function private.warn_kid(uuid, text) from public, anon, authenticated;
+revoke all on function private.save_cage_goal(integer) from public, anon, authenticated;
+revoke all on function public.warn_kid(uuid, text) from public, anon, authenticated;
+revoke all on function public.save_cage_goal(integer) from public, anon, authenticated;
+
+grant execute on function private.free_kid(uuid) to authenticated;
+grant execute on function private.warn_kid(uuid, text) to authenticated;
+grant execute on function private.save_cage_goal(integer) to authenticated;
+grant execute on function public.warn_kid(uuid, text) to authenticated;
+grant execute on function public.save_cage_goal(integer) to authenticated;
+
 notify pgrst, 'reload schema';
