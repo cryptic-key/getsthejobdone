@@ -70,7 +70,7 @@ create table if not exists public.chores (
   template_id uuid,
   chore_day date,
   approved_at timestamptz,
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading')),
   created_at timestamptz not null default now()
 );
 
@@ -80,7 +80,7 @@ create table if not exists public.chore_templates (
   title text not null,
   points integer not null default 1 check (points >= 0),
   kind text not null default 'daily' check (kind in ('daily', 'special')),
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading')),
   created_at timestamptz not null default now()
 );
 
@@ -119,16 +119,14 @@ begin
       add constraint chores_template_id_fkey
       foreign key (template_id) references public.chore_templates (id) on delete set null;
   end if;
-  if not exists (select 1 from pg_constraint where conname = 'chores_sprite_check') then
-    alter table public.chores
-      add constraint chores_sprite_check
-      check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes'));
-  end if;
-  if not exists (select 1 from pg_constraint where conname = 'chore_templates_sprite_check') then
-    alter table public.chore_templates
-      add constraint chore_templates_sprite_check
-      check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes'));
-  end if;
+  alter table public.chores drop constraint if exists chores_sprite_check;
+  alter table public.chores
+    add constraint chores_sprite_check
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading'));
+  alter table public.chore_templates drop constraint if exists chore_templates_sprite_check;
+  alter table public.chore_templates
+    add constraint chore_templates_sprite_check
+    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading'));
 end $$;
 
 create or replace function private.normalize_sprite(p_sprite text)
@@ -138,7 +136,7 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes') then p_sprite
+    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading') then p_sprite
     else 'dust'
   end
 $$;
@@ -499,6 +497,10 @@ begin
     private.normalize_sprite(case
       when btrim(p_title) ~* 'bed|sheet|pillow|blanket' then 'bed'
       when btrim(p_title) ~* 'shoe|boot' then 'shoes'
+      when btrim(p_title) ~* 'teeth|tooth|brush|paste' then 'teeth'
+      when btrim(p_title) ~* 'laundry|sock|clothes|fold' then 'laundry'
+      when btrim(p_title) ~* 'toy|lego|blocks?' then 'toys'
+      when btrim(p_title) ~* 'read|book|page|story' then 'reading'
       when btrim(p_title) ~* 'pack|bag|homework|school' then 'pack'
       when btrim(p_title) ~* 'dish|sink|plate|cup|kitchen' then 'dishes'
       else 'dust'

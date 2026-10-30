@@ -6,6 +6,10 @@ export const SPRITES = [
   { id: "shoes", name: "Shoe Chomper" },
   { id: "pack", name: "Backpack Beast" },
   { id: "dishes", name: "Suds Slime" },
+  { id: "teeth", name: "Paste Pest" },
+  { id: "laundry", name: "Laundry Lump" },
+  { id: "toys", name: "Block Golem" },
+  { id: "reading", name: "Page Flapper" },
 ];
 
 const SPRITE_IDS = new Set(SPRITES.map((sprite) => sprite.id));
@@ -18,6 +22,10 @@ export function guessSprite(title) {
   const text = String(title || "").toLowerCase();
   if (/bed|sheet|pillow|blanket/.test(text)) return "bed";
   if (/shoe|boot/.test(text)) return "shoes";
+  if (/teeth|tooth|brush|paste/.test(text)) return "teeth";
+  if (/laundry|sock|clothes|fold/.test(text)) return "laundry";
+  if (/toy|lego|blocks?/.test(text)) return "toys";
+  if (/read|book|page|story/.test(text)) return "reading";
   if (/pack|bag|homework|school/.test(text)) return "pack";
   if (/dish|sink|plate|cup|kitchen/.test(text)) return "dishes";
   return "dust";
@@ -206,6 +214,52 @@ const slimeA = sprite([sl.p0, sl.p1, sl.p2, sl.n, sl.a, sl.b, sl.e1, sl.e2, sl.f
 const slimeB = sprite([sl.p0, sl.p1, sl.p2, sl.a, sl.b, sl.e1, sl.e2, sl.f, sl.f, sl.m, sl.l, sl.s, sl.z], slimePal);
 const slimeC = sprite([sl.p0, sl.p1, sl.p2, sl.n, sl.a, sl.b, sl.e1, sl.e2, sl.f, sl.mo, sl.mi, sl.s, sl.z], slimePal);
 
+const pastePal = { K, W: "#f4f7fb", m: "#7fd3c4", o: "#ffffff", k: K, n: "#d7fff4" };
+const pasteRows = [
+  "...KKKKKKK....",
+  "..KWWWWWWWK...",
+  "..KmmmmmmmmK..",
+  "..KWWWWWWWWK..",
+  "..KmmmmmmmmK..",
+  ".KWWWWWWWWWWK.",
+  ".KWWooWWoWWWK.",
+  ".KWWkkWWkWWWK.",
+  ".KWWWWWWWWWWK.",
+  "..KKKKKKKKKK..",
+];
+const pasteA = sprite([...pasteRows, ".KmmmmmmmmK...", ".KKKKKKKKKKK.."], pastePal);
+const pasteB = sprite([...pasteRows, "nKmmmmmmmmK...", "nKKKKKKKKKKK.."], pastePal);
+const lumpPal = { K, r: "#d64545", b: "#3b74d9", y: "#f4c542", g: "#5cc96a" };
+const lump = sprite([
+  "..KrrrrrrrrK....",
+  ".KrrbbbbrrrrK...",
+  "KyyyyyrrrrbbbbK.",
+  "KrrrrrbbbbbbyyK.",
+  ".KgggggrrrrrbK..",
+  "..KKKKKKKKKKKK..",
+], lumpPal);
+const bookPal = { K, p: "#f7f1e2", i: "#c45a3a", w: "#ffffff", k: K };
+const bookA = sprite([
+  "..KKKK....KKKK..",
+  ".KppppK..KppppK.",
+  "KpppppK..KpppppK",
+  "KpppppKKKKpppppK",
+  "KwwppppppppppwwK",
+  "KkwppppppppppkwK",
+  "KppppppppppppppK",
+  "KKKKKKKKKKKKKKKK",
+], bookPal);
+const bookB = sprite([
+  "..KK......KKKK..",
+  ".KpppK..KppppK..",
+  "KppppKKKKppppK..",
+  ".KwwppppppwwK...",
+  ".KkwppppppkwK...",
+  "..KppppppppK....",
+  "..KKKKKKKKKKKK..",
+  "...KKKKKKKKKK...",
+], bookPal);
+
 const MON = {
   dust: {
     name: "Dust Bunny",
@@ -310,6 +364,90 @@ const MON = {
         if (!(await api.wait(0.2))) return;
       }
       m.openT = 0;
+    },
+  },
+  teeth: {
+    name: "Paste Pest",
+    w: 14,
+    h: 12,
+    hit: ["#7fd3c4", "#ffffff", "#d7fff4"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 5)) * 2) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.4 ? pasteB : pasteA, x, y); },
+    async attack(m, api) {
+      m.openT = 1;
+      if (!(await api.wait(0.2))) return;
+      for (let i = 0; i < 2; i += 1) {
+        api.projectiles.push({ k: "paste", x: m.x, y: G - 4, vx: -58, vy: 0, g: 0, ph: i, base: G - 6 - i * 3 });
+        if (!(await api.wait(0.18))) return;
+      }
+      m.openT = 0;
+    },
+  },
+  laundry: {
+    name: "Laundry Lump",
+    w: 16,
+    h: 12,
+    hit: ["#d64545", "#3b74d9", "#f4c542"],
+    yoff: (m) => (m.idle ? -(((m.t * 3) | 0) % 2) : 0),
+    draw(g, x, y, m) {
+      g.drawImage(lump, x, y + 6);
+      const look = Math.round(Math.sin(m.t * 4));
+      [1, 8].forEach((ox) => {
+        rect(g, x + ox, y, 6, 6, K);
+        rect(g, x + ox + 1, y + 1, 4, 4, "#ffffff");
+        px(g, x + ox + 2 + look, y + 2, K);
+        px(g, x + ox + 2 + look, y + 3, K);
+      });
+    },
+    async attack(m, api) {
+      for (let i = 0; i < 2; i += 1) {
+        api.projectiles.push({ k: "sock", x: m.x + 4, y: G - 10, vx: -rnd(60, 80), vy: -rnd(35, 55), g: 120, spin: i });
+        if (!(await api.wait(0.22))) return;
+      }
+    },
+  },
+  toys: {
+    name: "Block Golem",
+    w: 14,
+    h: 16,
+    hit: ["#f4c542", "#d64545", "#3b74d9"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y, m) {
+      const lift = Math.round((m.open || 0) * 3);
+      rect(g, x + 2, y - lift, 10, 5, K);
+      rect(g, x + 3, y + 1 - lift, 8, 3, "#f4c542");
+      rect(g, x + 1, y + 5, 12, 5, K);
+      rect(g, x + 2, y + 6, 10, 3, "#d64545");
+      px(g, x + 4, y + 7, "#ffffff");
+      px(g, x + 8, y + 7, "#ffffff");
+      px(g, x + 4, y + 8, K);
+      px(g, x + 8, y + 8, K);
+      rect(g, x, y + 10, 14, 6, K);
+      rect(g, x + 1, y + 11, 12, 4, "#3b74d9");
+    },
+    async attack(m, api) {
+      m.openT = 1;
+      if (!(await api.wait(0.2))) return;
+      for (let i = 0; i < 2; i += 1) {
+        api.projectiles.push({ k: "block", x: m.x + 4, y: G - 14, vx: -rnd(70, 88), vy: -rnd(40, 60), g: 150, hue: i });
+        if (!(await api.wait(0.16))) return;
+      }
+      m.openT = 0;
+    },
+  },
+  reading: {
+    name: "Page Flapper",
+    w: 16,
+    h: 8,
+    hit: ["#f7f1e2", "#c45a3a", "#ffffff"],
+    yoff: (m) => -4 + Math.round(Math.sin(m.t * 4) * 2),
+    draw(g, x, y, m) { g.drawImage(((m.t * 6) | 0) % 2 ? bookB : bookA, x, y); },
+    async attack(m, api) {
+      const letters = ["A", "B", "C"];
+      for (let i = 0; i < 3; i += 1) {
+        api.projectiles.push({ k: "letter", x: m.x, y: G - 12, vx: -64, vy: 0, g: 0, ph: i * 1.4, base: G - 14 - i * 2, ch: letters[i] });
+        if (!(await api.wait(0.16))) return;
+      }
     },
   },
 };
@@ -832,6 +970,28 @@ function drawProj(p) {
     rect(ctx, x - 2, y - 1, 1, 3, "#bfefff");
     rect(ctx, x + 2, y - 1, 1, 3, "#bfefff");
     px(ctx, x - 1, y - 1, "#ffffff");
+  } else if (p.k === "paste") {
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    rect(ctx, x - 2, y, 5, 2, "#d7fff4");
+    rect(ctx, x - 1, y, 3, 2, "#7fd3c4");
+    px(ctx, x, y, "#ffffff");
+  } else if (p.k === "sock") {
+    const spin = ((time * 10 + p.spin) | 0) % 2;
+    const w = spin ? 5 : 2;
+    const h = spin ? 3 : 6;
+    rect(ctx, p.x - w / 2, p.y - h / 2, w, h, K);
+    rect(ctx, p.x - w / 2 + 1, p.y - h / 2 + 1, Math.max(1, w - 2), Math.max(1, h - 2), p.spin ? "#d64545" : "#f4f7fb");
+  } else if (p.k === "block") {
+    const s = ((time * 8 + p.hue) | 0) % 2 ? 4 : 3;
+    const color = p.hue ? "#3b74d9" : "#f4c542";
+    rect(ctx, p.x - s / 2, p.y - s / 2, s, s, K);
+    rect(ctx, p.x - s / 2 + 1, p.y - s / 2 + 1, Math.max(1, s - 2), Math.max(1, s - 2), color);
+  } else if (p.k === "letter") {
+    const glyph = { A: ["010", "101", "111", "101", "101"], B: ["110", "101", "110", "101", "110"], C: ["011", "100", "100", "100", "011"] }[p.ch] || ["111", "100", "111", "100", "111"];
+    const x = Math.round(p.x);
+    const y = Math.round(p.y) - 2;
+    glyph.forEach((row, j) => [...row].forEach((bit, i) => { if (bit === "1") px(ctx, x + i, y + j, "#f7f1e2"); }));
   }
 }
 function drawCoin(x, y, ph) {
@@ -889,7 +1049,7 @@ function update(dt) {
     p.x += p.vx * dt;
     p.vy += p.g * dt;
     p.y += p.vy * dt;
-    if (p.k === "bubble") p.y = p.base + Math.sin(time * 8 + p.ph) * 2;
+    if (p.k === "bubble" || p.k === "paste" || p.k === "letter") p.y = p.base + Math.sin(time * 8 + (p.ph || 0)) * 2;
     if (p.x <= hx) {
       block(p.x, p.y, mon ? mon.def.hit : ["#ffffff"]);
       projectiles.splice(i, 1);
