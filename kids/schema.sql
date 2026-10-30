@@ -542,6 +542,64 @@ begin
 end;
 $$;
 
+create or replace function private.spend_balance(
+  p_kid uuid,
+  p_points integer,
+  p_cash_cents integer,
+  p_minutes integer,
+  p_note text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  child public.kids%rowtype;
+  pts integer := greatest(coalesce(p_points, 0), 0);
+  cash integer := greatest(coalesce(p_cash_cents, 0), 0);
+  mins integer := greatest(coalesce(p_minutes, 0), 0);
+  detail text := nullif(btrim(coalesce(p_note, '')), '');
+  lead text;
+begin
+  select * into child from public.kids where id = p_kid and household_id = hid;
+  if child.id is null then
+    raise exception 'kid not found';
+  end if;
+  if pts = 0 and cash = 0 and mins = 0 then
+    raise exception 'enter coins, cash, or minutes';
+  end if;
+  if child.points < pts then
+    raise exception 'not enough coins';
+  end if;
+  if child.cash_cents < cash then
+    raise exception 'not enough cash';
+  end if;
+  if child.minutes < mins then
+    raise exception 'not enough minutes';
+  end if;
+  update public.kids
+  set points = points - pts,
+      cash_cents = cash_cents - cash,
+      minutes = minutes - mins
+  where id = child.id;
+  if pts > 0 and mins > 0 and cash = 0 then
+    lead := child.name || ' spent ' || pts || ' coins and cashed in ' || mins || ' minutes';
+  elsif pts > 0 and mins = 0 and cash = 0 then
+    lead := child.name || ' spent ' || pts || ' coins';
+  elsif mins > 0 and pts = 0 and cash = 0 then
+    lead := child.name || ' cashed in ' || mins || ' minutes';
+  elsif cash > 0 and pts = 0 and mins = 0 then
+    lead := child.name || ' was paid ' || trim(to_char(cash / 100.0, 'FM$999990.00'));
+  else
+    lead := child.name || ' had a balance taken off';
+  end if;
+  insert into public.activity (household_id, kid_id, body)
+  values (hid, child.id, lead || coalesce(': ' || detail, '') || '.');
+end;
+$$;
+
 create or replace function private.ground_kid(
   p_kid uuid,
   p_until timestamptz,
@@ -1097,6 +1155,10 @@ create or replace function public.grant_reward(p_kid uuid, p_points integer, p_c
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.grant_reward(p_kid, p_points, p_cash_cents, p_minutes, p_note); end $$;
 
+create or replace function public.spend_balance(p_kid uuid, p_points integer, p_cash_cents integer, p_minutes integer, p_note text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.spend_balance(p_kid, p_points, p_cash_cents, p_minutes, p_note); end $$;
+
 create or replace function public.ground_kid(p_kid uuid, p_until timestamptz, p_reason text, p_clear boolean)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.ground_kid(p_kid, p_until, p_reason, p_clear); end $$;
@@ -1196,6 +1258,7 @@ begin
     'private.add_chore(uuid, text, integer)',
     'private.approve_chore(uuid)',
     'private.grant_reward(uuid, integer, integer, integer, text)',
+    'private.spend_balance(uuid, integer, integer, integer, text)',
     'private.ground_kid(uuid, timestamptz, text, boolean)',
     'private.lift_grounding(uuid)',
     'private.save_rates(integer, integer)',
@@ -1218,6 +1281,7 @@ begin
     'public.add_chore(uuid, text, integer)',
     'public.approve_chore(uuid)',
     'public.grant_reward(uuid, integer, integer, integer, text)',
+    'public.spend_balance(uuid, integer, integer, integer, text)',
     'public.ground_kid(uuid, timestamptz, text, boolean)',
     'public.lift_grounding(uuid)',
     'public.save_rates(integer, integer)',
@@ -1261,6 +1325,7 @@ grant execute on function private.remove_parent(uuid) to authenticated;
 grant execute on function private.add_chore(uuid, text, integer) to authenticated;
 grant execute on function private.approve_chore(uuid) to authenticated;
 grant execute on function private.grant_reward(uuid, integer, integer, integer, text) to authenticated;
+grant execute on function private.spend_balance(uuid, integer, integer, integer, text) to authenticated;
 grant execute on function private.ground_kid(uuid, timestamptz, text, boolean) to authenticated;
 grant execute on function private.lift_grounding(uuid) to authenticated;
 grant execute on function private.save_rates(integer, integer) to authenticated;
@@ -1284,6 +1349,7 @@ grant execute on function public.remove_parent(uuid) to authenticated;
 grant execute on function public.add_chore(uuid, text, integer) to authenticated;
 grant execute on function public.approve_chore(uuid) to authenticated;
 grant execute on function public.grant_reward(uuid, integer, integer, integer, text) to authenticated;
+grant execute on function public.spend_balance(uuid, integer, integer, integer, text) to authenticated;
 grant execute on function public.ground_kid(uuid, timestamptz, text, boolean) to authenticated;
 grant execute on function public.lift_grounding(uuid) to authenticated;
 grant execute on function public.save_rates(integer, integer) to authenticated;

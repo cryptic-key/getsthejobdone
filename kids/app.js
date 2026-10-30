@@ -84,6 +84,10 @@ function nice(error) {
   if (/already has an account/i.test(msg)) return "That email already has an account. They can sign in.";
   if (/^grounded$/i.test(msg)) return "Device time is locked while you are grounded.";
   if (/not enough points/i.test(msg)) return "Not enough points for that.";
+  if (/not enough coins/i.test(msg)) return "Not enough coins to take off.";
+  if (/not enough minutes/i.test(msg)) return "Not enough screen time to cash in.";
+  if (/not enough cash/i.test(msg)) return "Not enough cash to take off.";
+  if (/enter coins, cash, or minutes/i.test(msg)) return "Enter coins, cash, or minutes to take off.";
   if (/already asked/i.test(msg)) return "You already asked for that.";
   if (/sign in again/i.test(msg)) return "Sign in again.";
   return msg;
@@ -975,6 +979,18 @@ const views = {
             <label>Note<input name="note" placeholder="Good report"></label>
             <button class="btn sun" ${db.kids.length ? "" : "disabled"}>Grant reward</button>
           </form>
+          <h2 class="page-title">Spent or cashed in</h2>
+          <p class="lede">Take coins off when they get spent. Take minutes off when you cash in screen time and add it in Screen Time. Take cash off when you pay it out.</p>
+          <form class="stack" data-action="spend">
+            <div class="two">
+              <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
+              <label>Coins<input name="points" type="number" min="0" value="0"></label>
+              <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
+              <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
+            </div>
+            <label>Note<input name="note" placeholder="Ice cream, or screen time used"></label>
+            <button class="btn clay" ${db.kids.length ? "" : "disabled"}>Take off</button>
+          </form>
           <form class="stack" data-action="ground">
             <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
             <label>Until<input name="until" type="datetime-local" required></label>
@@ -997,7 +1013,7 @@ const views = {
       `<div class="stack">
         <section class="card">
           <h2 class="page-title">Packs</h2>
-          <p class="lede">Kids can cash points in right away. ${db.family.pointsPerDollar} points = $1. ${db.family.pointsPer30} points = 30 device minutes. You still add those minutes in Screen Time.</p>
+          <p class="lede">Kids can cash points in right away. ${db.family.pointsPerDollar} points = $1. ${db.family.pointsPer30} points = 30 device minutes. After you add those minutes in Screen Time, take them off on Approve.</p>
           <form class="two" data-action="save-rates">
             <label>Points per $1<input name="pointsPerDollar" type="number" min="1" value="${db.family.pointsPerDollar}"></label>
             <label>Points per 30 min<input name="pointsPer30" type="number" min="1" value="${db.family.pointsPer30}"></label>
@@ -1176,6 +1192,20 @@ app.addEventListener("submit", (event) => {
           p_note: data.note || "",
         }),
       "Reward saved. Match any new device minutes in Screen Time.",
+      "chart"
+    );
+  }
+  if (action === "spend") {
+    run(
+      () =>
+        rpc("spend_balance", {
+          p_kid: data.kidId,
+          p_points: Number(data.points) || 0,
+          p_cash_cents: Math.round((Number(data.dollars) || 0) * 100),
+          p_minutes: Number(data.minutes) || 0,
+          p_note: data.note || "",
+        }),
+      "Taken off their balance.",
       "chart"
     );
   }
