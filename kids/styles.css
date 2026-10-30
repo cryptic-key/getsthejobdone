@@ -309,8 +309,14 @@ input:focus, select:focus, button:focus-visible {
 .swatch.clay { background: #e09a86; }
 .swatch.plum { background: #b3a6c4; }
 .swatch.teal { background: #7eb8b3; }
+.swatch.rose { background: #e48ab0; }
+.swatch.cobalt { background: #7a9ce8; }
+.swatch.coral { background: #e99588; }
+.swatch.indigo { background: #8f86e0; }
+.swatch.mustard { background: #e0c45a; }
+.swatch.mint { background: #7dceb0; }
 
-.swatches { display: flex; gap: 8px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
 .swatches button {
   width: 36px;
   height: 36px;
@@ -318,6 +324,7 @@ input:focus, select:focus, button:focus-visible {
   border: 3px solid transparent;
 }
 .swatches button[aria-pressed="true"] { border-color: var(--ink); }
+.hero-swatches { margin-top: 4px; }
 
 .pin-dots { display: flex; gap: 10px; justify-content: center; margin: 8px 0 14px; }
 .pin-dots i {

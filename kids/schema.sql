@@ -30,7 +30,7 @@ create table if not exists public.kids (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households (id) on delete cascade,
   name text not null,
-  color text not null default 'leaf' check (color in ('leaf', 'sun', 'sky', 'clay', 'plum', 'teal')),
+  color text not null default 'leaf' check (color in ('leaf', 'sun', 'sky', 'clay', 'plum', 'teal', 'rose', 'cobalt', 'coral', 'indigo', 'mustard', 'mint')),
   points integer not null default 0 check (points >= 0),
   cash_cents integer not null default 0 check (cash_cents >= 0),
   minutes integer not null default 0 check (minutes >= 0),
@@ -423,7 +423,7 @@ begin
   if p_pin !~ '^[0-9]{4}$' then
     raise exception 'pin must be 4 digits';
   end if;
-  if chosen not in ('leaf', 'sun', 'sky', 'clay', 'plum', 'teal') then
+  if chosen not in ('leaf', 'sun', 'sky', 'clay', 'plum', 'teal', 'rose', 'cobalt', 'coral', 'indigo', 'mustard', 'mint') then
     chosen := 'leaf';
   end if;
   insert into public.kids (household_id, name, color)
@@ -2023,6 +2023,26 @@ begin
 end;
 $$;
 
+create or replace function private.kid_set_color(p_token text, p_color text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  chosen text := coalesce(p_color, 'leaf');
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  if chosen not in ('leaf', 'sun', 'sky', 'clay', 'plum', 'teal', 'rose', 'cobalt', 'coral', 'indigo', 'mustard', 'mint') then
+    raise exception 'pick a color';
+  end if;
+  update public.kids set color = chosen where id = kid;
+end;
+$$;
+
 create or replace function private.kid_set_weapon(p_token text, p_weapon text)
 returns void
 language plpgsql
@@ -2071,6 +2091,10 @@ create or replace function public.kid_set_hero(p_token text, p_hero text)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.kid_set_hero(p_token, p_hero); end $$;
 
+create or replace function public.kid_set_color(p_token text, p_color text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.kid_set_color(p_token, p_color); end $$;
+
 create or replace function public.kid_set_weapon(p_token text, p_weapon text)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.kid_set_weapon(p_token, p_weapon); end $$;
@@ -2087,19 +2111,23 @@ revoke all on function private.monster_kinds() from public, anon, authenticated;
 revoke all on function private.sync_kid_rewards(uuid) from public, anon, authenticated;
 revoke all on function private.kid_hero_board(text) from public, anon, authenticated;
 revoke all on function private.kid_set_hero(text, text) from public, anon, authenticated;
+revoke all on function private.kid_set_color(text, text) from public, anon, authenticated;
 revoke all on function private.kid_set_weapon(text, text) from public, anon, authenticated;
 revoke all on function private.kid_sync_rewards(text) from public, anon, authenticated;
 revoke all on function public.kid_hero_board(text) from public, anon, authenticated;
 revoke all on function public.kid_set_hero(text, text) from public, anon, authenticated;
+revoke all on function public.kid_set_color(text, text) from public, anon, authenticated;
 revoke all on function public.kid_set_weapon(text, text) from public, anon, authenticated;
 revoke all on function public.kid_sync_rewards(text) from public, anon, authenticated;
 
 grant execute on function private.kid_hero_board(text) to anon, authenticated;
 grant execute on function private.kid_set_hero(text, text) to anon, authenticated;
+grant execute on function private.kid_set_color(text, text) to anon, authenticated;
 grant execute on function private.kid_set_weapon(text, text) to anon, authenticated;
 grant execute on function private.kid_sync_rewards(text) to anon, authenticated;
 grant execute on function public.kid_hero_board(text) to anon, authenticated;
 grant execute on function public.kid_set_hero(text, text) to anon, authenticated;
+grant execute on function public.kid_set_color(text, text) to anon, authenticated;
 grant execute on function public.kid_set_weapon(text, text) to anon, authenticated;
 grant execute on function public.kid_sync_rewards(text) to anon, authenticated;
 

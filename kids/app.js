@@ -4,8 +4,21 @@ import { SPRITES, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons
 import { mergeBattleLine, splitBattleLine } from "./battle-line.js";
 import { createChoreQuest } from "./chore-quest.js";
 
-const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal"];
-const COLOR_HEX = { leaf: "#2f7d5a", sun: "#e3a31a", sky: "#3c7f92", clay: "#a24b34", plum: "#6e6284", teal: "#2f6f6a" };
+const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
+const COLOR_HEX = {
+  leaf: "#2f7d5a",
+  sun: "#e3a31a",
+  sky: "#3c7f92",
+  clay: "#a24b34",
+  plum: "#6e6284",
+  teal: "#2f6f6a",
+  rose: "#d45d8c",
+  cobalt: "#3b6fd9",
+  coral: "#e06b5c",
+  indigo: "#5a4fcf",
+  mustard: "#c9a227",
+  mint: "#3faf8c",
+};
 const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "hero", "kid-shop", "me"]);
 const KID_TOKEN = "chart-kid-token";
 const BATTLE_KEY = "chart-battle-v1";
@@ -97,6 +110,7 @@ function nice(error) {
   if (/sign in again/i.test(msg)) return "Sign in again.";
   if (/weapon locked/i.test(msg)) return "That weapon is still locked.";
   if (/pick a hero/i.test(msg)) return "Pick the adventurer or the princess.";
+  if (/pick a color/i.test(msg)) return "Pick one of the colors under your hero.";
   if (/section name required/i.test(msg)) return "Give the section a name.";
   if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
   if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
@@ -149,7 +163,14 @@ function mapKid(row) {
     cashCents: row.cash_cents,
     minutes: row.minutes,
     groundedUntil: row.grounded_until,
+    progressResetAt: row.progress_reset_at || null,
   };
+}
+
+function afterReset(chore, child) {
+  if (!child?.progressResetAt || chore.status !== "approved") return true;
+  if (!chore.approved_at) return false;
+  return new Date(chore.approved_at) > new Date(child.progressResetAt);
 }
 
 async function loadParent() {
@@ -167,7 +188,7 @@ async function loadParent() {
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins] = await Promise.all([
     supabase.from("parents").select("id,name,email").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
@@ -364,7 +385,7 @@ function roster() {
     <div class="roster">${people
       .map(
         (person) => `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
-          <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" width="40" height="34" aria-hidden="true"></canvas>
+          <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" data-color="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}" width="40" height="34" aria-hidden="true"></canvas>
           <strong>${esc(person.name)}</strong>
           ${person.kind === "parent" ? `<span class="role">Parent</span>` : ""}
         </button>`
@@ -478,6 +499,7 @@ function paintStage() {
         id: person.id,
         name: person.name,
         hero: person.hero,
+        color: COLOR_HEX[person.color] || COLOR_HEX.leaf,
         weaponKey: person.weapon,
         weapon: heldWeapon(person.weapon),
       })),
@@ -510,9 +532,13 @@ function questCatalog() {
 function heroGear() {
   if (db.session?.role !== "kid" || !db.hero) return null;
   const quest = questCatalog();
-  const heroKey = quest.heroes[db.hero.hero] ? db.hero.hero : "knight";
   const weaponKey = quest.weapons[db.hero.weapon] ? db.hero.weapon : "broom";
-  return { frames: quest.heroFrames(heroKey), weapon: quest.weaponSprite(weaponKey) };
+  return { weapon: quest.weaponSprite(weaponKey) };
+}
+
+function heroColorName() {
+  const child = kid();
+  return COLORS.includes(child?.color) ? child.color : "leaf";
 }
 
 function heroStats() {
@@ -577,9 +603,18 @@ function heroBoard() {
       <figcaption><strong>${esc(info?.name || sprite.name)}</strong><small>${count}</small></figcaption>
     </figure>`;
   }).join("");
+  const color = heroColorName();
+  const swatches = COLORS.map(
+    (name) =>
+      `<button type="button" class="swatch ${esc(name)}" data-action="set-color" data-color="${esc(name)}" aria-pressed="${color === name ? "true" : "false"}" aria-label="${esc(name)}"></button>`
+  ).join("");
   return `<section class="card stack">
       <h2 class="page-title">Choose your hero</h2>
       <div class="hero-picks">${heroes}</div>
+      <div>
+        <div class="field-label">Color</div>
+        <div class="swatches hero-swatches">${swatches}</div>
+      </div>
       <p class="hint">${stats.battles} quests finished · ${stats.streak}-day streak</p>
     </section>
     <section class="card stack">
@@ -607,7 +642,12 @@ function paintQuestArt(root) {
     art.setAttribute("aria-hidden", "true");
     slot.replaceWith(art);
   };
-  root.querySelectorAll("canvas[data-quest-hero]").forEach((slot) => swap(slot, quest.heroIcon(slot.dataset.questHero, 3)));
+  const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
+  root.querySelectorAll("canvas[data-quest-hero]").forEach((slot) => {
+    paintHeroBadge(slot, slot.dataset.questHero, null, tint);
+    slot.style.width = "42px";
+    slot.style.height = "auto";
+  });
   root.querySelectorAll("canvas[data-quest-weapon]").forEach((slot) => swap(slot, quest.weaponIcon(slot.dataset.questWeapon, 3)));
   root.querySelectorAll("canvas[data-quest-badge]").forEach((slot) => swap(slot, quest.badgeIcon(slot.dataset.questBadge, 3)));
 }
@@ -1018,7 +1058,9 @@ function render() {
   }
   paintSpriteIcons(app);
   paintQuestArt(app);
-  app.querySelectorAll("canvas[data-look]").forEach((icon) => paintHeroBadge(icon, icon.dataset.look, heldWeapon(icon.dataset.weapon)));
+  app.querySelectorAll("canvas[data-look]").forEach((icon) =>
+    paintHeroBadge(icon, icon.dataset.look, heldWeapon(icon.dataset.weapon), icon.dataset.color || COLOR_HEX.leaf)
+  );
   pinHold = false;
   const pin = app.querySelector("dialog.pin-dialog");
   if (pin) pin.showModal();
@@ -1371,7 +1413,7 @@ const views = {
             ? db.kids
                 .map((child) => {
                   const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted" && chore.status !== "approved");
-                  const approved = db.chores.filter((chore) => chore.kidId === child.id && chore.status === "approved");
+                  const approved = db.chores.filter((chore) => chore.kidId === child.id && chore.status === "approved" && afterReset(chore, child));
                   const confirming = route.confirmReset === child.id;
                   return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong></div>${
                     confirming
@@ -1640,6 +1682,7 @@ app.addEventListener("click", (event) => {
   if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Grounding lifted here. Turn it off in Screen Time too.");
   if (action === "set-hero") run(() => rpc("kid_set_hero", { p_token: sessionStorage.getItem(KID_TOKEN), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
+  if (action === "set-color") run(() => rpc("kid_set_color", { p_token: sessionStorage.getItem(KID_TOKEN), p_color: btn.dataset.color }), "Color saved.", "hero");
   if (action === "set-weapon") run(() => rpc("kid_set_weapon", { p_token: sessionStorage.getItem(KID_TOKEN), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
   if (action === "pick-sprite") {
     const form = btn.closest("form");
@@ -1701,7 +1744,13 @@ app.addEventListener("click", (event) => {
     route = { ...route, confirmReset: "" };
     render();
   }
-  if (action === "confirm-reset") run(() => rpc("reset_kid_progress", { p_kid: btn.dataset.id }), "Reset. The log, hero, and achievements start over.", "chart");
+  if (action === "confirm-reset") {
+    run(
+      () => rpc("reset_kid_progress", { p_kid: btn.dataset.id }),
+      "Reset. The task log is cleared. Hero, color stays, achievements and monster counts start over.",
+      "chart"
+    );
+  }
   if (action === "reject-chore") run(() => rpc("reject_chore", { p_chore: btn.dataset.id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
   if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
   if (action === "done") {

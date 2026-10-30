@@ -154,12 +154,6 @@ function heroFor(color) {
   if (!heroCache.has(key)) heroCache.set(key, buildHero(key));
   return heroCache.get(key);
 }
-const knightLook = {
-  h: 16,
-  hand: 10,
-  ...buildHero("#3fa34d"),
-};
-const prinPal = { K, C: "#f4c542", c: "#e04a4a", A: "#a0562a", a: "#6e3418", S: "#f4c89c", s: "#d39a6c", E: K, P: "#ff9cb4", D: "#ff8ac6", d: "#d65a9e", W: "#ffffff" };
 const prinTop = [
   ".....C.C.C....",
   "....KCCcCCK...",
@@ -175,6 +169,29 @@ const prinTop = [
   "..KKDDDDDDKK..",
   "..KDDdDDdDDK..",
 ];
+function buildPrincess(color) {
+  const dress = color || "#ff8ac6";
+  const pal = {
+    K,
+    C: "#f4c542",
+    c: "#e04a4a",
+    A: "#a0562a",
+    a: "#6e3418",
+    S: "#f4c89c",
+    s: "#d39a6c",
+    E: K,
+    P: shade(dress, 1.08),
+    D: dress,
+    d: shade(dress, 0.72),
+    W: "#ffffff",
+  };
+  return {
+    h: 16,
+    hand: 10,
+    a: sprite([...prinTop, ".KDDdDDdDDdDK.", ".KDdDDdDDdDDK.", "KWWWWWWWWWWWWK"], pal),
+    b: sprite([...prinTop, "..KDdDDdDDdDK.", ".KDDdDDdDDdDDK", "KWWWWWWWWWWWWK"], pal),
+  };
+}
 const kingPal = { K, C: "#f4c542", c: "#e04a4a", A: "#8a5a2a", S: "#f4c89c", s: "#d39a6c", E: K, G: "#dcdce6", R: "#c0392b", Y: "#f4c542", W: "#ffffff", B: "#5a3418" };
 const kingTop = [
   "...C.C.C.C....",
@@ -216,29 +233,31 @@ const queenTop = [
   "..KKPPPPPPKK..",
   "..KPPpPPpPPK..",
 ];
-const HERO_LOOKS = {
-  knight: knightLook,
-  princess: {
-    h: 16,
-    hand: 10,
-    a: sprite([...prinTop, ".KDDdDDdDDdDK.", ".KDdDDdDDdDDK.", "KWWWWWWWWWWWWK"], prinPal),
-    b: sprite([...prinTop, "..KDdDDdDDdDK.", ".KDDdDDdDDdDDK", "KWWWWWWWWWWWWK"], prinPal),
-  },
-  king: {
-    h: 20,
-    hand: 13,
-    a: sprite([...kingTop, ".KWKWKWKWKWWK.", "..KBBK..KBBK.."], kingPal),
-    b: sprite([...kingTop, ".KWWKWKWKWKWK.", "...KBBKKBBK..."], kingPal),
-  },
-  queen: {
-    h: 20,
-    hand: 13,
-    a: sprite([...queenTop, ".KPPpPPpPPpPK.", ".KPpPPpPPpPPK.", "KYYYYYYYYYYYYK"], queenPal),
-    b: sprite([...queenTop, "..KPpPPpPPpPK.", ".KPPpPPpPPpPPK", "KYYYYYYYYYYYYK"], queenPal),
-  },
-};
-function heroLook(key) {
-  return HERO_LOOKS[key] || HERO_LOOKS.knight;
+const lookCache = new Map();
+function heroLook(key, color) {
+  const kind = key || "knight";
+  const tint = color || (kind === "princess" ? "#ff8ac6" : "#3fa34d");
+  const cacheKey = `${kind}:${tint}`;
+  if (lookCache.has(cacheKey)) return lookCache.get(cacheKey);
+  let look;
+  if (kind === "princess") look = buildPrincess(tint);
+  else if (kind === "king") {
+    look = {
+      h: 20,
+      hand: 13,
+      a: sprite([...kingTop, ".KWKWKWKWKWWK.", "..KBBK..KBBK.."], kingPal),
+      b: sprite([...kingTop, ".KWWKWKWKWKWK.", "...KBBKKBBK..."], kingPal),
+    };
+  } else if (kind === "queen") {
+    look = {
+      h: 20,
+      hand: 13,
+      a: sprite([...queenTop, ".KPPpPPpPPpPK.", ".KPpPPpPPpPPK.", "KYYYYYYYYYYYYK"], queenPal),
+      b: sprite([...queenTop, "..KPpPPpPPpPK.", ".KPPpPPpPPpPPK", "KYYYYYYYYYYYYK"], queenPal),
+    };
+  } else look = { h: 16, hand: 10, ...buildHero(tint) };
+  lookCache.set(cacheKey, look);
+  return look;
 }
 
 const dustPal = { K, g: "#b4b4c4", D: "#6e6e82", W: "#ffffff", E: K, P: "#e88aa6" };
@@ -1319,8 +1338,8 @@ export function drawHeroIcon(target, color) {
   g.drawImage(src, 0, 0, target.width, target.height);
 }
 
-export function paintHeroBadge(target, heroKey, weapon) {
-  const look = heroLook(heroKey);
+export function paintHeroBadge(target, heroKey, weapon, color) {
+  const look = heroLook(heroKey, color);
   const src = look.a;
   const padTop = 18;
   const padRight = 26;
@@ -1693,7 +1712,7 @@ export function setStageScene(next) {
   if (Array.isArray(next.parade)) {
     scene.gear = null;
     scene.hero = "";
-    const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.weaponKey || "broom"}`).sort().join("|");
+    const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.color || ""}:${kid.weaponKey || "broom"}`).sort().join("|");
     if (paradeOn && scene.paradeKey === key) return;
     scene.paradeKey = key;
     scene.waiting = [];
@@ -1702,7 +1721,7 @@ export function setStageScene(next) {
     lastLead = null;
     lastFront = null;
     parade = next.parade.map((kid) => {
-      const look = heroLook(kid.hero);
+      const look = heroLook(kid.hero, kid.color);
       return {
         id: kid.id,
         name: kid.name,
@@ -2079,7 +2098,7 @@ function draw() {
       else drawBroom(x + 11, y + (walker.hand ?? 10), walker.ang);
     });
   }
-  const look = scene.hero ? heroLook(scene.hero) : null;
+  const look = scene.hero ? heroLook(scene.hero, scene.color) : null;
   const x = Math.round(heroX());
   const walking = scroll > 2 && hero.pose === "walk";
   const fr = walking && ((time * 8) | 0) % 2;
