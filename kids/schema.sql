@@ -70,6 +70,7 @@ create table if not exists public.chores (
   template_id uuid,
   chore_day date,
   approved_at timestamptz,
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes')),
   created_at timestamptz not null default now()
 );
 
@@ -79,6 +80,7 @@ create table if not exists public.chore_templates (
   title text not null,
   points integer not null default 1 check (points >= 0),
   kind text not null default 'daily' check (kind in ('daily', 'special')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes')),
   created_at timestamptz not null default now()
 );
 
@@ -86,6 +88,8 @@ alter table public.chores add column if not exists template_id uuid references p
 alter table public.chores add column if not exists chore_day date;
 alter table public.chores add column if not exists approved_at timestamptz;
 alter table public.chore_templates add column if not exists kind text not null default 'daily' check (kind in ('daily', 'special'));
+alter table public.chores add column if not exists sprite text not null default 'dust';
+alter table public.chore_templates add column if not exists sprite text not null default 'dust';
 create unique index if not exists chores_daily_once on public.chores (template_id, kid_id, chore_day);
 create unique index if not exists chores_special_once on public.chores (template_id, kid_id) where chore_day is null and template_id is not null;
 
@@ -115,7 +119,29 @@ begin
       add constraint chores_template_id_fkey
       foreign key (template_id) references public.chore_templates (id) on delete set null;
   end if;
+  if not exists (select 1 from pg_constraint where conname = 'chores_sprite_check') then
+    alter table public.chores
+      add constraint chores_sprite_check
+      check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'chore_templates_sprite_check') then
+    alter table public.chore_templates
+      add constraint chore_templates_sprite_check
+      check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes'));
+  end if;
 end $$;
+
+create or replace function private.normalize_sprite(p_sprite text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes') then p_sprite
+    else 'dust'
+  end
+$$;
 
 create table if not exists public.shop_items (
   id uuid primary key default gen_random_uuid(),
@@ -374,8 +400,8 @@ begin
   returning id into kid;
   insert into private.kid_pins (kid_id, pin_hash)
   values (kid, extensions.crypt(p_pin, extensions.gen_salt('bf')));
-  insert into public.chores (household_id, kid_id, template_id, title, points)
-  select hid, kid, t.id, t.title, t.points
+  insert into public.chores (household_id, kid_id, template_id, title, points, sprite)
+  select hid, kid, t.id, t.title, t.points, t.sprite
   from public.chore_templates t
   where t.household_id = hid and t.kind = 'special'
   on conflict (template_id, kid_id) where chore_day is null and template_id is not null do nothing;
@@ -464,8 +490,20 @@ begin
   if not exists (select 1 from public.kids where id = p_kid and household_id = hid) then
     raise exception 'kid not found';
   end if;
-  insert into public.chores (household_id, kid_id, title, points)
-  values (hid, p_kid, btrim(p_title), greatest(coalesce(p_points, 0), 0))
+  insert into public.chores (household_id, kid_id, title, points, sprite)
+  values (
+    hid,
+    p_kid,
+    btrim(p_title),
+    greatest(coalesce(p_points, 0), 0),
+    private.normalize_sprite(case
+      when btrim(p_title) ~* 'bed|sheet|pillow|blanket' then 'bed'
+      when btrim(p_title) ~* 'shoe|boot' then 'shoes'
+      when btrim(p_title) ~* 'pack|bag|homework|school' then 'pack'
+      when btrim(p_title) ~* 'dish|sink|plate|cup|kitchen' then 'dishes'
+      else 'dust'
+    end)
+  )
   returning id into cid;
   return cid;
 end;
@@ -818,6 +856,7 @@ begin
       select jsonb_agg(jsonb_build_object(
         'id', c.id, 'title', c.title, 'points', c.points,
         'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
+        'sprite', c.sprite,
         'special', (c.chore_day is null)
       ) order by c.created_at)
       from public.chores c
@@ -999,8 +1038,8 @@ as $$
 declare
   today date := (now() at time zone 'America/Toronto')::date;
 begin
-  insert into public.chores (household_id, kid_id, template_id, title, points, chore_day)
-  select k.household_id, k.id, t.id, t.title, t.points, today
+  insert into public.chores (household_id, kid_id, template_id, title, points, sprite, chore_day)
+  select k.household_id, k.id, t.id, t.title, t.points, t.sprite, today
   from public.kids k
   join public.chore_templates t on t.household_id = k.household_id and t.kind = 'daily'
   where k.household_id = p_household
@@ -1021,7 +1060,10 @@ begin
 end;
 $$;
 
-create or replace function private.add_daily_chore(p_title text, p_points integer)
+drop function if exists public.add_daily_chore(text, integer);
+drop function if exists private.add_daily_chore(text, integer);
+
+create or replace function private.add_daily_chore(p_title text, p_points integer, p_sprite text default 'dust')
 returns uuid
 language plpgsql
 security definer
@@ -1030,12 +1072,13 @@ as $$
 declare
   hid uuid := private.require_household();
   tid uuid;
+  chosen text := private.normalize_sprite(p_sprite);
 begin
   if nullif(btrim(p_title), '') is null then
     raise exception 'chore required';
   end if;
-  insert into public.chore_templates (household_id, title, points)
-  values (hid, btrim(p_title), greatest(coalesce(p_points, 0), 0))
+  insert into public.chore_templates (household_id, title, points, sprite)
+  values (hid, btrim(p_title), greatest(coalesce(p_points, 0), 0), chosen)
   returning id into tid;
   perform private.ensure_daily(hid);
   return tid;
@@ -1080,7 +1123,10 @@ begin
 end;
 $$;
 
-create or replace function private.add_special_chore(p_title text, p_points integer)
+drop function if exists public.add_special_chore(text, integer);
+drop function if exists private.add_special_chore(text, integer);
+
+create or replace function private.add_special_chore(p_title text, p_points integer, p_sprite text default 'dust')
 returns uuid
 language plpgsql
 security definer
@@ -1091,18 +1137,41 @@ declare
   tid uuid;
   title text := btrim(p_title);
   pts integer := greatest(coalesce(p_points, 0), 0);
+  chosen text := private.normalize_sprite(p_sprite);
 begin
   if title is null or title = '' then
     raise exception 'chore required';
   end if;
-  insert into public.chore_templates (household_id, title, points, kind)
-  values (hid, title, pts, 'special')
+  insert into public.chore_templates (household_id, title, points, kind, sprite)
+  values (hid, title, pts, 'special', chosen)
   returning id into tid;
-  insert into public.chores (household_id, kid_id, template_id, title, points)
-  select hid, k.id, tid, title, pts
+  insert into public.chores (household_id, kid_id, template_id, title, points, sprite)
+  select hid, k.id, tid, title, pts, chosen
   from public.kids k
   where k.household_id = hid;
   return tid;
+end;
+$$;
+
+create or replace function private.set_chore_sprite(p_id uuid, p_sprite text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  chosen text := private.normalize_sprite(p_sprite);
+begin
+  update public.chore_templates
+  set sprite = chosen
+  where id = p_id and household_id = hid;
+  if not found then
+    raise exception 'chore not found';
+  end if;
+  update public.chores
+  set sprite = chosen
+  where template_id = p_id and household_id = hid and status <> 'approved';
 end;
 $$;
 
@@ -1220,9 +1289,9 @@ create or replace function public.ensure_today()
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.ensure_today(); end $$;
 
-create or replace function public.add_daily_chore(p_title text, p_points integer)
+create or replace function public.add_daily_chore(p_title text, p_points integer, p_sprite text default 'dust')
 returns uuid language sql security invoker set search_path = ''
-as $$ select private.add_daily_chore(p_title, p_points) $$;
+as $$ select private.add_daily_chore(p_title, p_points, p_sprite) $$;
 
 create or replace function public.save_daily_chore(p_id uuid, p_points integer)
 returns void language plpgsql security invoker set search_path = ''
@@ -1232,9 +1301,13 @@ create or replace function public.remove_daily_chore(p_id uuid)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.remove_daily_chore(p_id); end $$;
 
-create or replace function public.add_special_chore(p_title text, p_points integer)
+create or replace function public.add_special_chore(p_title text, p_points integer, p_sprite text default 'dust')
 returns uuid language sql security invoker set search_path = ''
-as $$ select private.add_special_chore(p_title, p_points) $$;
+as $$ select private.add_special_chore(p_title, p_points, p_sprite) $$;
+
+create or replace function public.set_chore_sprite(p_id uuid, p_sprite text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.set_chore_sprite(p_id, p_sprite); end $$;
 
 create or replace function public.remove_special_chore(p_id uuid)
 returns void language plpgsql security invoker set search_path = ''
@@ -1298,16 +1371,19 @@ begin
     'public.kid_ask(text, uuid)',
     'private.ensure_daily(uuid)',
     'private.ensure_today()',
-    'private.add_daily_chore(text, integer)',
+    'private.normalize_sprite(text)',
+    'private.add_daily_chore(text, integer, text)',
     'private.save_daily_chore(uuid, integer)',
     'private.remove_daily_chore(uuid)',
     'public.ensure_today()',
-    'public.add_daily_chore(text, integer)',
+    'public.add_daily_chore(text, integer, text)',
     'public.save_daily_chore(uuid, integer)',
     'public.remove_daily_chore(uuid)',
-    'private.add_special_chore(text, integer)',
+    'private.add_special_chore(text, integer, text)',
+    'private.set_chore_sprite(uuid, text)',
     'private.remove_special_chore(uuid)',
-    'public.add_special_chore(text, integer)',
+    'public.add_special_chore(text, integer, text)',
+    'public.set_chore_sprite(uuid, text)',
     'public.remove_special_chore(uuid)'
   ]
   loop
@@ -1366,14 +1442,18 @@ grant execute on function public.kid_buy_time(text) to anon, authenticated;
 grant execute on function public.kid_ask(text, uuid) to anon, authenticated;
 grant execute on function private.ensure_daily(uuid) to authenticated;
 grant execute on function private.ensure_today() to authenticated;
-grant execute on function private.add_daily_chore(text, integer) to authenticated;
+grant execute on function private.add_daily_chore(text, integer, text) to authenticated;
 grant execute on function private.save_daily_chore(uuid, integer) to authenticated;
 grant execute on function private.remove_daily_chore(uuid) to authenticated;
 grant execute on function public.ensure_today() to authenticated;
-grant execute on function public.add_daily_chore(text, integer) to authenticated;
+grant execute on function public.add_daily_chore(text, integer, text) to authenticated;
 grant execute on function public.save_daily_chore(uuid, integer) to authenticated;
 grant execute on function public.remove_daily_chore(uuid) to authenticated;
-grant execute on function private.add_special_chore(text, integer) to authenticated;
+grant execute on function private.add_special_chore(text, integer, text) to authenticated;
+grant execute on function private.set_chore_sprite(uuid, text) to authenticated;
 grant execute on function private.remove_special_chore(uuid) to authenticated;
-grant execute on function public.add_special_chore(text, integer) to authenticated;
+grant execute on function public.add_special_chore(text, integer, text) to authenticated;
+grant execute on function public.set_chore_sprite(uuid, text) to authenticated;
 grant execute on function public.remove_special_chore(uuid) to authenticated;
+
+notify pgrst, 'reload schema';
