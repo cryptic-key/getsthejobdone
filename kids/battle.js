@@ -214,50 +214,99 @@ const slimeA = sprite([sl.p0, sl.p1, sl.p2, sl.n, sl.a, sl.b, sl.e1, sl.e2, sl.f
 const slimeB = sprite([sl.p0, sl.p1, sl.p2, sl.a, sl.b, sl.e1, sl.e2, sl.f, sl.f, sl.m, sl.l, sl.s, sl.z], slimePal);
 const slimeC = sprite([sl.p0, sl.p1, sl.p2, sl.n, sl.a, sl.b, sl.e1, sl.e2, sl.f, sl.mo, sl.mi, sl.s, sl.z], slimePal);
 
-const pastePal = { K, W: "#f4f7fb", m: "#7fd3c4", o: "#ffffff", k: K, n: "#d7fff4" };
-const pasteRows = [
-  "...KKKKKKK....",
-  "..KWWWWWWWK...",
-  "..KmmmmmmmmK..",
-  "..KWWWWWWWWK..",
-  "..KmmmmmmmmK..",
-  ".KWWWWWWWWWWK.",
-  ".KWWooWWoWWWK.",
-  ".KWWkkWWkWWWK.",
-  ".KWWWWWWWWWWK.",
-  "..KKKKKKKKKK..",
+const pastePal = { K, W: "#f4f6fb", w: "#c8d0e0", B: "#3b74d9", R: "#e04a4a", E: K };
+const pasteTop = [
+  "....KKKK....",
+  "....KBBK....",
+  "...KKBBKK...",
+  "..KBBBBBBK..",
+  "..KKKKKKKK..",
+  ".KWWWWWWWWK.",
+  ".KWWWWWWWwK.",
+  ".KRRRRRRRRK.",
+  ".KWEWWWEWwK.",
+  ".KWEWWWEWwK.",
+  ".KWWWWWWWwK.",
 ];
-const pasteA = sprite([...pasteRows, ".KmmmmmmmmK...", ".KKKKKKKKKKK.."], pastePal);
-const pasteB = sprite([...pasteRows, "nKmmmmmmmmK...", "nKKKKKKKKKKK.."], pastePal);
-const lumpPal = { K, r: "#d64545", b: "#3b74d9", y: "#f4c542", g: "#5cc96a" };
-const lump = sprite([
-  "..KrrrrrrrrK....",
-  ".KrrbbbbrrrrK...",
-  "KyyyyyrrrrbbbbK.",
-  "KrrrrrbbbbbbyyK.",
-  ".KgggggrrrrrbK..",
-  "..KKKKKKKKKKKK..",
-], lumpPal);
-const bookPal = { K, p: "#f7f1e2", i: "#c45a3a", w: "#ffffff", k: K };
-const bookA = sprite([
-  "..KKKK....KKKK..",
-  ".KppppK..KppppK.",
-  "KpppppK..KpppppK",
-  "KpppppKKKKpppppK",
-  "KwwppppppppppwwK",
-  "KkwppppppppppkwK",
-  "KppppppppppppppK",
-  "KKKKKKKKKKKKKKKK",
+const pasteBot = [
+  ".KBBBBBBBBK.",
+  ".KWWWWWWWwK.",
+  "..KWWWWWWK..",
+  "..KKKKKKKK..",
+  "..KwKwKwKK..",
+];
+const pasteA = sprite([...pasteTop, ".KWWKKKKWwK.", ".KWWWWWWWwK.", ...pasteBot], pastePal);
+const pasteB = sprite([...pasteTop, ".KWWKRRKWwK.", ".KWWKKKKWwK.", ...pasteBot], pastePal);
+const laundrySpr = sprite([
+  "........KKK.........",
+  ".......KPPPK........",
+  "...KKKKPPPPKKK......",
+  "..KRRRRKPPKBBBK.....",
+  ".KRRRRRRKKBBBBBK....",
+  ".KRRrRRRRKBBBbBBK...",
+  "KYYKRRRRRKBBBBbBBK..",
+  "KYYYKKKKKGGKKBBBBBK.",
+  "KYYYYYKGGGGGGKBBbBK.",
+  "KYyYYKGGGGgGGGGKKKK.",
+  "KYYYYKGGGGGGGKRRRRK.",
+  "KKYYKPPPKGGGKRRrRRRK",
+  "KPPPPPPPPKKKRRRRRRRK",
+  "KPPpPPPPPPPPPKRRRRRK",
+  ".KKKKKKKKKKKKKKKKKK.",
+], { K, R: "#e04a4a", r: "#a83232", B: "#3b74d9", b: "#27509e", Y: "#f4c542", y: "#c99a1e", G: "#5cc96a", g: "#3a8f4a", P: "#9b6ad6", p: "#6e47a8" });
+const sockRows = ["KKKK..", "KRRK..", "KWWK..", "KWWK..", "KWWWWK", "KWWWWK", "KKKKKK"];
+const sockSpr = ["#e04a4a", "#3b74d9", "#5cc96a"].map((color) => sprite(sockRows, { K, R: color, W: "#f4f6fb" }));
+const golemPal = { K, R: "#e04a4a", B: "#3b74d9", Y: "#f4c542", G: "#5cc96a", W: "#ffffff", E: K };
+const golemRest = [
+  "....KKKKKKKK....",
+  "KKKKKRRRRRRKKKKK",
+  "KBBBKRRWRRRKGGGK",
+  "KBWBKRWWWRRKGWGK",
+  "KBBBKRRWRRRKGGGK",
+  "KKKKKRRRRRRKKKKK",
+  "....KKKKKKKK....",
+  "....KBBKKGGK....",
+  "....KBBKKGGK....",
+  "....KBBKKGGK....",
+  "....KKKKKKKK....",
+];
+const golemHead = ["....KKKKKKKK....", "....KYYYYYYK....", "....KYEWYEWK....", "....KYYYYYYK...."];
+const golemA = sprite([...golemHead, "....KYKKKKYK....", ...golemRest], golemPal);
+const golemB = sprite([...golemHead, "....KYKRRKYK....", ...golemRest], golemPal);
+const bookPal = { K, R: "#c0392b", W: "#fff8e6", w: "#b8b0a0", E: K };
+const bookBlank = "..................";
+const bookUp = sprite([
+  "KK..............KK",
+  "KRK............KRK",
+  "KRWK..........KWRK",
+  ".KRWK........KWRK.",
+  ".KRWWK......KWWRK.",
+  "..KRWWK....KWWRK..",
+  "..KRWWWKKKKWWWRK..",
+  "...KRWWEWWEWWWRK..",
+  "...KKRWWWWWWWRKK..",
+  ".....KKRRRRRKK....",
+  ".......KKKKK......",
 ], bookPal);
-const bookB = sprite([
-  "..KK......KKKK..",
-  ".KpppK..KppppK..",
-  "KppppKKKKppppK..",
-  ".KwwppppppwwK...",
-  ".KkwppppppkwK...",
-  "..KppppppppK....",
-  "..KKKKKKKKKKKK..",
-  "...KKKKKKKKKK...",
+const bookFlat = sprite([
+  bookBlank, bookBlank, bookBlank, bookBlank,
+  "KKKKKKKK..KKKKKKKK",
+  "KRWWWWWWKKWWWWWWRK",
+  "KRWwwwWWEKWEwwwWRK",
+  "KRWWWWWWWKWWWWWWRK",
+  "KRWwwwwWWKWWwwwwRK",
+  "KKRRRRRRRKRRRRRRKK",
+  "..KKKKKKKKKKKKKK..",
+], bookPal);
+const bookDown = sprite([
+  bookBlank, bookBlank, bookBlank, bookBlank,
+  "......KKKKKK......",
+  "....KKWWEKWEKK....",
+  "..KKWWWWWKWWWWKK..",
+  ".KRWWwwWWKWWwwWRK.",
+  "KRWWWWWWWKWWWWWWRK",
+  "KRRRKKKKKKKKKKRRRK",
+  "KKKK..........KKKK",
 ], bookPal);
 
 const MON = {
@@ -368,86 +417,85 @@ const MON = {
   },
   teeth: {
     name: "Paste Pest",
-    w: 14,
-    h: 12,
-    hit: ["#7fd3c4", "#ffffff", "#d7fff4"],
-    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 5)) * 2) : 0),
-    draw(g, x, y, m) { g.drawImage(m.open > 0.4 ? pasteB : pasteA, x, y); },
+    w: 12,
+    h: 18,
+    hit: ["#f4f6fb", "#e04a4a", "#3b74d9"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 6)) * 3) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 ? pasteB : pasteA, x, y); },
     async attack(m, api) {
       m.openT = 1;
-      if (!(await api.wait(0.2))) return;
-      for (let i = 0; i < 2; i += 1) {
-        api.projectiles.push({ k: "paste", x: m.x, y: G - 4, vx: -58, vy: 0, g: 0, ph: i, base: G - 6 - i * 3 });
-        if (!(await api.wait(0.18))) return;
+      if (!(await api.wait(0.25))) return;
+      for (let i = 0; i < 3; i += 1) {
+        api.projectiles.push({ k: "paste", x: m.x + 4, y: G - 18, vx: -rnd(66, 78), vy: -rnd(45, 60), g: 150 });
+        if (!(await api.wait(0.12))) return;
       }
       m.openT = 0;
     },
   },
   laundry: {
     name: "Laundry Lump",
-    w: 16,
-    h: 12,
-    hit: ["#d64545", "#3b74d9", "#f4c542"],
-    yoff: (m) => (m.idle ? -(((m.t * 3) | 0) % 2) : 0),
+    w: 20,
+    h: 15,
+    hit: ["#e04a4a", "#3b74d9", "#f4c542", "#9b6ad6"],
+    yoff: (m) => (m.idle ? -(((m.t * 2.5) | 0) % 2) : 0),
     draw(g, x, y, m) {
-      g.drawImage(lump, x, y + 6);
-      const look = Math.round(Math.sin(m.t * 4));
-      [1, 8].forEach((ox) => {
-        rect(g, x + ox, y, 6, 6, K);
-        rect(g, x + ox + 1, y + 1, 4, 4, "#ffffff");
-        px(g, x + ox + 2 + look, y + 2, K);
-        px(g, x + ox + 2 + look, y + 3, K);
+      g.drawImage(laundrySpr, x, y);
+      const jiggle = m.shake > 0 || m.flash > 0 ? 2.4 : 1.1;
+      [[5, 5, 0], [12, 4, 1.7]].forEach(([ex, ey, phase]) => {
+        disc(g, x + ex, y + ey, 3, K);
+        disc(g, x + ex, y + ey, 2, "#ffffff");
+        const dx = Math.max(-1, Math.min(1, Math.round(Math.sin(m.t * 11 + phase) * jiggle)));
+        const dy = Math.max(-1, Math.min(1, Math.round(Math.cos(m.t * 7.3 + phase * 2) * jiggle)));
+        rect(g, x + ex + dx - 1, y + ey + dy - 1, 2, 2, K);
       });
     },
     async attack(m, api) {
-      for (let i = 0; i < 2; i += 1) {
-        api.projectiles.push({ k: "sock", x: m.x + 4, y: G - 10, vx: -rnd(60, 80), vy: -rnd(35, 55), g: 120, spin: i });
-        if (!(await api.wait(0.22))) return;
+      m.lift = 1;
+      if (!(await api.wait(0.2))) return;
+      for (let i = 0; i < 3; i += 1) {
+        api.projectiles.push({ k: "sock", ci: i, x: m.x + 3, y: G - 14, vx: -rnd(70, 85), vy: -rnd(45, 65), g: 150 });
+        if (!(await api.wait(0.16))) return;
       }
+      m.lift = 0;
     },
   },
   toys: {
     name: "Block Golem",
-    w: 14,
+    w: 16,
     h: 16,
-    hit: ["#f4c542", "#d64545", "#3b74d9"],
+    hit: ["#e04a4a", "#3b74d9", "#f4c542", "#5cc96a"],
     yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
-    draw(g, x, y, m) {
-      const lift = Math.round((m.open || 0) * 3);
-      rect(g, x + 2, y - lift, 10, 5, K);
-      rect(g, x + 3, y + 1 - lift, 8, 3, "#f4c542");
-      rect(g, x + 1, y + 5, 12, 5, K);
-      rect(g, x + 2, y + 6, 10, 3, "#d64545");
-      px(g, x + 4, y + 7, "#ffffff");
-      px(g, x + 8, y + 7, "#ffffff");
-      px(g, x + 4, y + 8, K);
-      px(g, x + 8, y + 8, K);
-      rect(g, x, y + 10, 14, 6, K);
-      rect(g, x + 1, y + 11, 12, 4, "#3b74d9");
-    },
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 ? golemB : golemA, x, y); },
     async attack(m, api) {
       m.openT = 1;
-      if (!(await api.wait(0.2))) return;
+      m.lift = 1;
+      if (!(await api.wait(0.25))) return;
       for (let i = 0; i < 2; i += 1) {
-        api.projectiles.push({ k: "block", x: m.x + 4, y: G - 14, vx: -rnd(70, 88), vy: -rnd(40, 60), g: 150, hue: i });
-        if (!(await api.wait(0.16))) return;
+        api.projectiles.push({ k: "block", x: m.x + 2, y: G - 12, vx: -rnd(72, 84), vy: -rnd(55, 70), g: 160, c: ["#e04a4a", "#f4c542"][i] });
+        if (!(await api.wait(0.22))) return;
       }
+      m.lift = 0;
       m.openT = 0;
     },
   },
   reading: {
     name: "Page Flapper",
-    w: 16,
-    h: 8,
-    hit: ["#f7f1e2", "#c45a3a", "#ffffff"],
-    yoff: (m) => -4 + Math.round(Math.sin(m.t * 4) * 2),
-    draw(g, x, y, m) { g.drawImage(((m.t * 6) | 0) % 2 ? bookB : bookA, x, y); },
+    w: 18,
+    h: 11,
+    hit: ["#fff8e6", "#c0392b", "#b8b0a0"],
+    yoff: (m) => -11 + Math.round(Math.sin(m.t * 3.5) * 2),
+    draw(g, x, y, m) {
+      const flap = [bookUp, bookFlat, bookDown, bookFlat][((m.t * 10) | 0) % 4];
+      g.drawImage(m.open > 0.5 ? bookFlat : flap, x, y);
+    },
     async attack(m, api) {
-      const letters = ["A", "B", "C"];
-      for (let i = 0; i < 3; i += 1) {
-        api.projectiles.push({ k: "letter", x: m.x, y: G - 12, vx: -64, vy: 0, g: 0, ph: i * 1.4, base: G - 14 - i * 2, ch: letters[i] });
-        if (!(await api.wait(0.16))) return;
+      m.openT = 1;
+      if (!(await api.wait(0.25))) return;
+      for (const letter of "ABC") {
+        api.projectiles.push({ k: "letter", L: letter, x: m.x + 2, y: G - 17, vx: -58, vy: 0, g: 0, ph: R() * 6, base: G - 17 });
+        if (!(await api.wait(0.17))) return;
       }
+      m.openT = 0;
     },
   },
 };
@@ -573,6 +621,9 @@ const FONT = {
   9: "111101111001111",
   "+": "000010111010000",
   "-": "000000111000000",
+  A: "010101111101101",
+  B: "110101110101110",
+  C: "011100100100011",
 };
 
 export function drawMonsterIcon(target, type) {
@@ -867,6 +918,11 @@ function drawLayer(c, off, y = 0) {
   ctx.drawImage(c, x, y);
   ctx.drawImage(c, x + w, y);
 }
+function glyph(ch, x, y, col) {
+  const f = FONT[ch];
+  if (!f) return;
+  for (let k = 0; k < 15; k += 1) if (f[k] === "1") px(ctx, x + (k % 3), y + ((k / 3) | 0), col);
+}
 function text(s, x, y, col) {
   [...s].forEach((ch, i) => {
     const f = FONT[ch];
@@ -973,25 +1029,29 @@ function drawProj(p) {
   } else if (p.k === "paste") {
     const x = Math.round(p.x);
     const y = Math.round(p.y);
-    rect(ctx, x - 2, y, 5, 2, "#d7fff4");
-    rect(ctx, x - 1, y, 3, 2, "#7fd3c4");
-    px(ctx, x, y, "#ffffff");
+    rect(ctx, x - 2, y - 1, 5, 3, "#f4f6fb");
+    px(ctx, x - 2, y - 1, "#e04a4a");
+    px(ctx, x, y - 1, "#3b74d9");
+    px(ctx, x + 2, y + 1, "#e04a4a");
+    if (R() < 0.5) particles.push({ x: x + 3, y, vx: rnd(5, 20), vy: rnd(-5, 5), g: 60, life: 0.25, c: "#f4f6fb" });
   } else if (p.k === "sock") {
-    const spin = ((time * 10 + p.spin) | 0) % 2;
-    const w = spin ? 5 : 2;
-    const h = spin ? 3 : 6;
-    rect(ctx, p.x - w / 2, p.y - h / 2, w, h, K);
-    rect(ctx, p.x - w / 2 + 1, p.y - h / 2 + 1, Math.max(1, w - 2), Math.max(1, h - 2), p.spin ? "#d64545" : "#f4f7fb");
+    ctx.save();
+    ctx.translate(Math.round(p.x), Math.round(p.y));
+    ctx.rotate((((time * 12) | 0) % 4) * Math.PI / 2);
+    ctx.drawImage(sockSpr[p.ci || 0], -3, -3);
+    ctx.restore();
   } else if (p.k === "block") {
-    const s = ((time * 8 + p.hue) | 0) % 2 ? 4 : 3;
-    const color = p.hue ? "#3b74d9" : "#f4c542";
-    rect(ctx, p.x - s / 2, p.y - s / 2, s, s, K);
-    rect(ctx, p.x - s / 2 + 1, p.y - s / 2 + 1, Math.max(1, s - 2), Math.max(1, s - 2), color);
-  } else if (p.k === "letter") {
-    const glyph = { A: ["010", "101", "111", "101", "101"], B: ["110", "101", "110", "101", "110"], C: ["011", "100", "100", "100", "011"] }[p.ch] || ["111", "100", "111", "100", "111"];
     const x = Math.round(p.x);
-    const y = Math.round(p.y) - 2;
-    glyph.forEach((row, j) => [...row].forEach((bit, i) => { if (bit === "1") px(ctx, x + i, y + j, "#f7f1e2"); }));
+    const y = Math.round(p.y);
+    rect(ctx, x - 2, y - 2, 5, 5, K);
+    rect(ctx, x - 1, y - 1, 3, 3, p.c);
+    px(ctx, ((time * 12) | 0) % 2 ? x - 1 : x + 1, y - 1, "#ffffff");
+  } else if (p.k === "letter") {
+    const x = Math.round(p.x);
+    const y = Math.round(p.y);
+    rect(ctx, x - 3, y - 4, 7, 9, K);
+    rect(ctx, x - 2, y - 3, 5, 7, "#fff8e6");
+    glyph(p.L, x - 1, y - 2, K);
   }
 }
 function drawCoin(x, y, ph) {
@@ -1049,7 +1109,7 @@ function update(dt) {
     p.x += p.vx * dt;
     p.vy += p.g * dt;
     p.y += p.vy * dt;
-    if (p.k === "bubble" || p.k === "paste" || p.k === "letter") p.y = p.base + Math.sin(time * 8 + (p.ph || 0)) * 2;
+    if (p.k === "bubble" || p.k === "letter") p.y = p.base + Math.sin(time * 8 + (p.ph || 0)) * 2;
     if (p.x <= hx) {
       block(p.x, p.y, mon ? mon.def.hit : ["#ffffff"]);
       projectiles.splice(i, 1);
