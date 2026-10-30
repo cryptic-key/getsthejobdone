@@ -1000,8 +1000,21 @@ async function signOut() {
   go("welcome");
 }
 
+blockPinchZoom();
 installPullToRefresh();
 boot();
+
+function blockPinchZoom() {
+  const stop = (event) => event.preventDefault();
+  document.addEventListener("gesturestart", stop, { passive: false, capture: true });
+  document.addEventListener("gesturechange", stop, { passive: false, capture: true });
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches.length > 1) event.preventDefault();
+  }, { passive: false, capture: true });
+  document.addEventListener("wheel", (event) => {
+    if (event.ctrlKey) event.preventDefault();
+  }, { passive: false, capture: true });
+}
 
 function installPullToRefresh() {
   const hint = document.createElement("div");
@@ -1033,6 +1046,10 @@ function installPullToRefresh() {
   document.addEventListener(
     "touchstart",
     (event) => {
+      if (event.touches.length > 1) {
+        reset();
+        return;
+      }
       if (event.touches.length !== 1 || window.scrollY > 2 || typing()) return;
       startX = event.touches[0].clientX;
       startY = event.touches[0].clientY;
@@ -1045,6 +1062,10 @@ function installPullToRefresh() {
   document.addEventListener(
     "touchmove",
     (event) => {
+      if (event.touches.length > 1) {
+        reset();
+        return;
+      }
       if (!tracking) return;
       if (window.scrollY > 2) {
         reset();

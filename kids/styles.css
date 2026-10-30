@@ -22,7 +22,10 @@
 
 * { box-sizing: border-box; }
 
-html { overscroll-behavior-y: contain; }
+html {
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
 
 .pull-refresh {
   position: fixed;
