@@ -1270,6 +1270,30 @@ const SEASON_LOOK = {
   },
 };
 
+const SKY_LOOK = {
+  morning: {
+    sky: ["#6a98d0", "#f0a070", "#ffc090", "#ffe8c8"],
+    cloud: ["#fff2e4", "#ffd0b0"],
+    sun: { x: 24, y: 40, r: 8, core: "#ffe566", glow: "#ff9a4a" },
+  },
+  day: {
+    sky: null,
+    cloud: null,
+    sun: { x: 100, y: 14, r: 7, core: "#fff6b0", glow: "#ffe066" },
+  },
+  evening: {
+    sky: ["#3a4588", "#c86058", "#e89048", "#ffc878"],
+    cloud: ["#ffd0b8", "#e89888"],
+    sun: { x: 108, y: 42, r: 9, core: "#ffb040", glow: "#ff6a40" },
+  },
+  night: {
+    sky: ["#10141f", "#171f33", "#1f2a44", "#2a3654"],
+    cloud: ["#3a4868", "#2a354c"],
+    moon: { x: 102, y: 16, r: 7 },
+    stars: true,
+  },
+};
+
 export function currentSeason(at = new Date()) {
   const month = Number(
     new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", month: "numeric" }).format(at)
@@ -1280,9 +1304,71 @@ export function currentSeason(at = new Date()) {
   return "winter";
 }
 
-function buildScenery(season) {
-  const pal = SEASON_LOOK[season] || SEASON_LOOK.summer;
-  const rand = mulberry({ spring: 21, summer: 11, fall: 33, winter: 47 }[season] || 11);
+export function currentSkyPeriod(at = new Date()) {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Toronto",
+      hour: "numeric",
+      hourCycle: "h23",
+    })
+      .formatToParts(at)
+      .find((part) => part.type === "hour")?.value || 12
+  );
+  if (hour >= 5 && hour < 10) return "morning";
+  if (hour >= 10 && hour < 17) return "day";
+  if (hour >= 17 && hour < 20) return "evening";
+  return "night";
+}
+
+function mixHex(hex, toward, amount) {
+  const read = (value) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
+  const a = read(hex);
+  const b = read(toward);
+  return `#${a
+    .map((v, i) => Math.round(v + (b[i] - v) * amount).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function paintSun(g, sun) {
+  disc(g, sun.x, sun.y, sun.r + 3, sun.glow);
+  disc(g, sun.x, sun.y, sun.r, sun.core);
+  disc(g, sun.x - 1, sun.y - 1, Math.max(2, sun.r - 3), "#fffdf0");
+}
+
+function paintMoon(g, moon) {
+  disc(g, moon.x, moon.y, moon.r + 1, "#dce7f4");
+  disc(g, moon.x, moon.y, moon.r, "#f4f8fc");
+  disc(g, moon.x + 2, moon.y - 1, moon.r - 1, "#171f33");
+  px(g, moon.x - 2, moon.y + 1, "#d0dbe8");
+  px(g, moon.x - 1, moon.y + 3, "#c4d0de");
+}
+
+function buildScenery(season, skyPeriod = "day") {
+  const base = SEASON_LOOK[season] || SEASON_LOOK.summer;
+  const skyPal = SKY_LOOK[skyPeriod] || SKY_LOOK.day;
+  const night = skyPeriod === "night";
+  const dusk = skyPeriod === "evening" || skyPeriod === "morning";
+  const shade = night ? 0.48 : dusk ? 0.18 : 0;
+  const nightTone = "#10141f";
+  const pal = {
+    ...base,
+    sky: skyPal.sky || base.sky,
+    cloud: skyPal.cloud || base.cloud,
+    hill: shade ? mixHex(base.hill, nightTone, shade) : base.hill,
+    far: shade ? mixHex(base.far, nightTone, shade) : base.far,
+    mid: shade ? mixHex(base.mid, nightTone, shade) : base.mid,
+    dirt: shade ? mixHex(base.dirt, nightTone, shade * 0.8) : base.dirt,
+    grass: shade
+      ? base.grass.map((c) => mixHex(c, nightTone, shade * 0.7))
+      : base.grass,
+    fore: shade ? mixHex(base.fore, nightTone, shade) : base.fore,
+    tip: shade ? mixHex(base.tip, nightTone, shade * 0.5) : base.tip,
+    shadow: shade ? mixHex(base.shadow, nightTone, shade * 0.6) : base.shadow,
+  };
+  const rand = mulberry(
+    ({ spring: 21, summer: 11, fall: 33, winter: 47 }[season] || 11) +
+      ({ morning: 3, day: 0, evening: 7, night: 13 }[skyPeriod] || 0)
+  );
   const roll = (a, b) => a + rand() * (b - a);
   const pick = (list) => list[(rand() * list.length) | 0];
 
@@ -1296,6 +1382,13 @@ function buildScenery(season) {
         for (let x = y % 2; x < W; x += 2) g.fillRect(x, y, 1, 1);
       }
     }
+    if (skyPal.stars) {
+      for (let i = 0; i < 28; i += 1) {
+        px(g, roll(2, W - 2) | 0, roll(2, 34) | 0, i % 4 ? "#ffffff" : "#cfe0ff");
+      }
+    }
+    if (skyPal.sun) paintSun(g, skyPal.sun);
+    if (skyPal.moon) paintMoon(g, skyPal.moon);
   });
   const clouds = layer(256, 30, (g, w, h, wrap) => {
     [[20, 8], [90, 14], [150, 6], [210, 12]].forEach(([x, y]) => wrap((o) => {
@@ -1345,26 +1438,29 @@ function buildScenery(season) {
   const trees = layer(256, H, (g, w, h, wrap) => {
     [18, 84, 150, 206].forEach((x, i) => wrap((o) => {
       const X = x + o;
-      rect(g, X - 2, 10, 6, G - 10, "#6b4426");
-      rect(g, X + 2, 10, 2, G - 10, "#4a2e18");
-      rect(g, X - 4, G - 2, 10, 2, "#4a2e18");
+      const trunk = shade ? mixHex("#6b4426", nightTone, shade * 0.5) : "#6b4426";
+      const trunkDark = shade ? mixHex("#4a2e18", nightTone, shade * 0.5) : "#4a2e18";
+      const canopy = (color) => (shade ? mixHex(color, nightTone, shade * 0.55) : color);
+      rect(g, X - 2, 10, 6, G - 10, trunk);
+      rect(g, X + 2, 10, 2, G - 10, trunkDark);
+      rect(g, X - 4, G - 2, 10, 2, trunkDark);
       if (pal.snow) {
-        disc(g, X - 4, 8 + (i % 2) * 2, 4, pal.leaf[0]);
-        disc(g, X + 5, 6, 4, pal.leaf[1]);
-        disc(g, X, 2, 5, pal.leaf[2] || pal.leaf[0]);
-        px(g, X - 1, 10, "#6b4426");
-        px(g, X + 2, 14, "#6b4426");
-        px(g, X - 3, 18, "#4a2e18");
+        disc(g, X - 4, 8 + (i % 2) * 2, 4, canopy(pal.leaf[0]));
+        disc(g, X + 5, 6, 4, canopy(pal.leaf[1]));
+        disc(g, X, 2, 5, canopy(pal.leaf[2] || pal.leaf[0]));
+        px(g, X - 1, 10, trunk);
+        px(g, X + 2, 14, trunk);
+        px(g, X - 3, 18, trunkDark);
       } else {
-        disc(g, X - 7, 8 + (i % 2) * 3, 9, pal.leaf[0]);
-        disc(g, X + 8, 6, 10, pal.leaf[0]);
-        disc(g, X, -2, 11, pal.leaf[0]);
-        disc(g, X - 8, 6 + (i % 2) * 3, 6, pal.leaf[1]);
-        disc(g, X + 7, 3, 7, pal.leaf[1]);
-        disc(g, X - 1, -4, 7, pal.leaf[1]);
+        disc(g, X - 7, 8 + (i % 2) * 3, 9, canopy(pal.leaf[0]));
+        disc(g, X + 8, 6, 10, canopy(pal.leaf[0]));
+        disc(g, X, -2, 11, canopy(pal.leaf[0]));
+        disc(g, X - 8, 6 + (i % 2) * 3, 6, canopy(pal.leaf[1]));
+        disc(g, X + 7, 3, 7, canopy(pal.leaf[1]));
+        disc(g, X - 1, -4, 7, canopy(pal.leaf[1]));
         const accents = season === "fall" ? pal.leaf : pal.bloom;
         for (let n = 0; n < (season === "spring" ? 10 : 5); n += 1) {
-          px(g, X + (roll(-9, 8) | 0), (roll(-6, 8) | 0), pick(accents));
+          px(g, X + (roll(-9, 8) | 0), (roll(-6, 8) | 0), canopy(pick(accents)));
         }
       }
     }));
@@ -1378,7 +1474,7 @@ function buildScenery(season) {
       if (rand() < 0.12) px(g, x, G + 3, pal.grass[2]);
     }
     for (let i = 0; i < 70; i += 1) {
-      px(g, roll(0, 256), roll(G + 4, H), pal.snow ? "#b7c8d4" : "#7a4a22");
+      px(g, roll(0, 256), roll(G + 4, H), pal.snow ? mixHex("#b7c8d4", nightTone, shade) : mixHex("#7a4a22", nightTone, shade));
     }
     for (let i = 0; i < 12; i += 1) {
       const x = roll(0, 250) | 0;
@@ -1387,8 +1483,8 @@ function buildScenery(season) {
         rect(g, x, y, 3, 2, "#ffffff");
         px(g, x, y + 1, "#d7e4ee");
       } else {
-        rect(g, x, y, 3, 2, "#b08a5a");
-        px(g, x, y + 1, "#8a6a40");
+        rect(g, x, y, 3, 2, mixHex("#b08a5a", nightTone, shade));
+        px(g, x, y + 1, mixHex("#8a6a40", nightTone, shade));
       }
     }
     for (let i = 0; i < 10; i += 1) {
@@ -1415,23 +1511,42 @@ function buildScenery(season) {
       }
     }));
   });
-  return { season, sky, clouds, hills, farPines, midPines, trees, ground, fore, shadow: pal.shadow };
+  return {
+    season,
+    skyPeriod,
+    sky,
+    clouds,
+    hills,
+    farPines,
+    midPines,
+    trees,
+    ground,
+    fore,
+    shadow: pal.shadow,
+  };
 }
 
-let scenery = buildScenery(currentSeason());
-let seasonDay = "";
+let scenery = buildScenery(currentSeason(), currentSkyPeriod());
+let themeKey = "";
 
 export function applySeasonTheme(at = new Date()) {
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(at);
-  if (day === seasonDay && scenery.season) {
-    if (typeof document !== "undefined") document.body.dataset.season = scenery.season;
-    return scenery.season;
-  }
-  seasonDay = day;
   const season = currentSeason(at);
-  if (typeof document !== "undefined") document.body.dataset.season = season;
-  if (scenery.season !== season) scenery = buildScenery(season);
-  return season;
+  const sky = currentSkyPeriod(at);
+  const key = `${season}:${sky}`;
+  if (key === themeKey && scenery.season === season && scenery.skyPeriod === sky) {
+    if (typeof document !== "undefined") {
+      document.body.dataset.season = season;
+      document.body.dataset.sky = sky;
+    }
+    return { season, sky };
+  }
+  themeKey = key;
+  if (scenery.season !== season || scenery.skyPeriod !== sky) scenery = buildScenery(season, sky);
+  if (typeof document !== "undefined") {
+    document.body.dataset.season = season;
+    document.body.dataset.sky = sky;
+  }
+  return { season, sky };
 }
 
 const FONT = {

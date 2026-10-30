@@ -1082,11 +1082,11 @@ function assigneeName(chore) {
 
 let pinHold = false;
 
-const SEASON_THEME = {
-  spring: "#8fcaf0",
-  summer: "#7eb8c9",
-  fall: "#c9a878",
-  winter: "#9bb0c0",
+const SKY_THEME = {
+  morning: "#f0a070",
+  day: "#7eb8c9",
+  evening: "#c86058",
+  night: "#171f33",
 };
 
 function render() {
@@ -1095,9 +1095,9 @@ function render() {
   const view = views[route.name] || views.welcome;
   const play = PLAY_ROUTES.has(route.name);
   document.body.classList.toggle("play", play);
-  const season = applySeasonTheme();
+  const theme = applySeasonTheme();
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", play ? SEASON_THEME[season] || SEASON_THEME.summer : "#f3efe4");
+  if (meta) meta.setAttribute("content", play ? SKY_THEME[theme.sky] || SKY_THEME.day : "#f3efe4");
   const host = document.querySelector(".stage");
   if (host) document.body.appendChild(host);
   app.innerHTML = view();
@@ -2235,9 +2235,10 @@ async function signOut() {
 blockPinchZoom();
 installPullToRefresh();
 setInterval(() => {
-  const before = document.body.dataset.season || "";
+  const before = `${document.body.dataset.season || ""}:${document.body.dataset.sky || ""}`;
   const next = applySeasonTheme();
-  if (before && before !== next) render();
+  const key = `${next.season}:${next.sky}`;
+  if (before !== ":" && before !== key) render();
 }, 60_000);
 boot();
 
