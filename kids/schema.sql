@@ -6,7 +6,7 @@ create extension if not exists pgcrypto with schema extensions;
 
 create schema if not exists private;
 revoke all on schema private from public;
-grant usage on schema private to anon, authenticated;
+grant usage on schema private to anon, authenticated, service_role;
 
 create table if not exists public.households (
   id uuid primary key default gen_random_uuid(),
