@@ -1755,6 +1755,7 @@ export function setStageScene(next) {
   const sameFront = frontKey === lastFront;
   lastLead = lead;
   lastFront = frontKey;
+  if (lead && sameLead && plays[0].flee && mon?.choreId === plays[0].id && mon.alive) return;
   if (lead && sameLead && mon?.choreId === plays[0].id && mon.alive && (mon.showHp || mon.approach)) return;
   if (!lead && front && sameFront && mon?.choreId === front.id && mon.alive && !mon.approach && !mon.showHp) {
     mon.def = MON[normalizeSprite(front.sprite)];
@@ -1844,7 +1845,17 @@ function drawMonster(m) {
   const sx = (m.shake > 0 ? Math.round(Math.sin(m.shake * 80) * 2) : 0) + Math.round(m.lunge || 0);
   const sw = Math.round(d.w * 0.7);
   rect(ctx, m.x + (d.w - sw) / 2 + sx, G, sw, 1, "#3e8c2c");
-  ctx.drawImage(mc, Math.round(m.x - 16 + sx), G + 1 - 52);
+  const dx = Math.round(m.x - 16 + sx);
+  const dy = G + 1 - 52;
+  if (m.flee) {
+    ctx.save();
+    ctx.translate(dx + 56, dy);
+    ctx.scale(-1, 1);
+    ctx.drawImage(mc, 0, 0);
+    ctx.restore();
+  } else {
+    ctx.drawImage(mc, dx, dy);
+  }
   if (m.tongue > 0) {
     const tone = m.def.lashCol || ["#ff79a8", "#c8406e"];
     const bx = m.x + (m.def.lashX ?? 10);

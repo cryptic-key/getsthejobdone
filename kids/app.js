@@ -424,6 +424,19 @@ function actor(chore) {
 function paintStage() {
   const host = document.querySelector(".stage");
   if (!host || host.hidden) return;
+  if (db.session?.role === "parent" && route.name === "chart") {
+    const seen = seenFlee();
+    const fleeing = (db.chores || []).filter((chore) => chore.verdict === "flee" && !seen.has(chore.id) && !finishedIds.has(chore.id));
+    const child = fleeing[0] ? kidById(fleeing[0].kidId) : null;
+    setStageScene({
+      color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+      waiting: [],
+      plays: fleeing.map((chore) => ({ ...actor(chore), flee: true, approved: true })),
+      onDone: onFightDone,
+      gear: null,
+    });
+    return;
+  }
   if (!db.session && route.name === "welcome") {
     setStageScene({
       parade: doorPeople().map((person) => ({
@@ -583,12 +596,31 @@ function resetBattleMemory() {
   lastKidSig = "";
 }
 
+function seenFlee() {
+  try {
+    const ids = JSON.parse(sessionStorage.getItem("chart-seen-flee") || "[]");
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markFleeSeen(id) {
+  const seen = seenFlee();
+  seen.add(id);
+  sessionStorage.setItem("chart-seen-flee", JSON.stringify([...seen]));
+}
+
 function onFightDone(id) {
   finishedIds.add(id);
   const chore = (db.chores || []).find((item) => item.id === id);
   if (chore?.verdict === "flee") {
-    chore.verdict = "";
-    supabase.rpc("kid_ack_verdict", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: id });
+    if (db.session?.role === "kid") {
+      chore.verdict = "";
+      supabase.rpc("kid_ack_verdict", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: id });
+    } else {
+      markFleeSeen(id);
+    }
   }
   applyBattleLine(battleLine.filter((item) => item.id !== id));
 }
@@ -1155,6 +1187,7 @@ const views = {
       db.family.name,
       "Approve",
       `<div class="stack">
+        ${worldScene("leaf")}
         <section class="card">
           <h2 class="page-title">Waiting for approval</h2>
           <p class="lede">This is where finished chores get paid. A kid taps Done, then you tap Approve.</p>
@@ -1188,7 +1221,7 @@ const views = {
                     grounded(child)
                       ? `<div class="banner">Grounded until ${esc(when(child.groundedUntil))}. Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
                       : ""
-                  }<details class="task-log"><summary>Task log</summary>${
+                  }<details class="task-log"><summary>Task log${open.length + approved.length ? ` (${open.length + approved.length})` : ""}</summary>${
                     open.length || approved.length
                       ? `${open
                           .map(

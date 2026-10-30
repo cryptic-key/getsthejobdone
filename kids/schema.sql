@@ -2079,6 +2079,12 @@ begin
   update public.chores
   set status = 'submitted', approved_at = null
   where id = chore.id;
+  delete from public.kid_rewards where kid_id = chore.kid_id;
+  perform private.sync_kid_rewards(chore.kid_id);
+  if coalesce(private.weapon_value((select weapon from public.kids where id = chore.kid_id), private.kid_stats(chore.kid_id)), 0)
+     < coalesce((select goal from private.weapon_rules() where key = (select weapon from public.kids where id = chore.kid_id)), 1) then
+    update public.kids set weapon = 'broom' where id = chore.kid_id;
+  end if;
   select name into kname from public.kids where id = chore.kid_id;
   insert into public.activity (household_id, kid_id, body)
   values (hid, chore.kid_id, 'Approval undone for ' || coalesce(kname, 'a kid') || ' on ' || chore.title || '.');
