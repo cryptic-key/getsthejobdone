@@ -702,8 +702,8 @@ const views = {
             <label>Points<input name="points" type="number" min="0" value="5" required></label>
             <button class="btn sun" type="submit">Add once</button>
           </form>
-          ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
         </section>
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
       </div>`,
       parentNav("chores")
     );
