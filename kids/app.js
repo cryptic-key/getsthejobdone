@@ -1786,7 +1786,44 @@ app.addEventListener("click", (event) => {
 let dragState = null;
 
 function listIds(container) {
-  return [...container.querySelectorAll("[data-drag-item]")].map((node) => node.dataset.dragItem).filter(Boolean);
+  return [...container.querySelectorAll(":scope > [data-drag-item]")].map((node) => node.dataset.dragItem).filter(Boolean);
+}
+
+function dropKindOk(zone) {
+  if (!zone || !dragState) return false;
+  if (dragState.kind === "sections") return zone.dataset.dropKind === "sections";
+  if (dragState.kind === "special") return zone.dataset.dropKind === "special";
+  if (dragState.kind === "daily") return zone.dataset.dropKind === "daily";
+  return false;
+}
+
+function dragSlot() {
+  let slot = app.querySelector(".drag-slot");
+  if (slot) return slot;
+  slot = document.createElement("div");
+  slot.className = "drag-slot";
+  slot.setAttribute("aria-hidden", "true");
+  return slot;
+}
+
+function placeDragSlot(zone, event) {
+  const slot = dragSlot();
+  if (event.target.closest(".drag-slot") === slot && slot.parentElement === zone) return;
+  const over = event.target.closest("[data-drag-item]");
+  if (over && over !== dragState.node && over.parentElement === zone) {
+    const rect = over.getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    zone.insertBefore(slot, before ? over : over.nextSibling);
+    return;
+  }
+  const empty = zone.querySelector(":scope > .drop-empty");
+  if (empty) zone.insertBefore(slot, empty);
+  else zone.appendChild(slot);
+}
+
+function clearDragUi() {
+  app.querySelectorAll(".dragging, .drop-target").forEach((node) => node.classList.remove("dragging", "drop-target"));
+  app.querySelector(".drag-slot")?.remove();
 }
 
 async function persistDrop(container, movedId) {
@@ -1808,7 +1845,7 @@ async function persistDrop(container, movedId) {
     if (movedId && !ids.includes(movedId)) ids.push(movedId);
     await run(
       () => rpc("reorder_chore_templates", { p_ids: ids, p_section: section || null, p_kind: "daily" }),
-      "Order saved.",
+      "Moved.",
       "chores"
     );
   }
@@ -1820,48 +1857,50 @@ app.addEventListener("dragstart", (event) => {
   if (!row || !handle) return;
   const from = row.closest("[data-drop-kind]");
   if (!from) return;
-  dragState = { id: row.dataset.dragItem, kind: from.dataset.dropKind, from };
+  dragState = { id: row.dataset.dragItem, kind: from.dataset.dropKind, node: row, dropped: false };
   row.classList.add("dragging");
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", row.dataset.dragItem);
 });
 
 app.addEventListener("dragend", () => {
-  app.querySelectorAll(".dragging, .drop-target").forEach((node) => node.classList.remove("dragging", "drop-target"));
+  clearDragUi();
   dragState = null;
 });
 
 app.addEventListener("dragover", (event) => {
   const zone = event.target.closest("[data-drop-kind]");
-  if (!zone || !dragState) return;
-  if (dragState.kind === "sections" && zone.dataset.dropKind !== "sections") return;
-  if (dragState.kind === "special" && zone.dataset.dropKind !== "special") return;
-  if (dragState.kind === "daily" && zone.dataset.dropKind !== "daily") return;
+  if (!dropKindOk(zone)) return;
   event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  app.querySelectorAll(".drop-target").forEach((node) => {
+    if (node !== zone) node.classList.remove("drop-target");
+  });
   zone.classList.add("drop-target");
-  const over = event.target.closest("[data-drag-item]");
-  const moving = app.querySelector(`[data-drag-item="${dragState.id}"]`);
-  if (!moving || over === moving) return;
-  if (over && over.parentElement === zone) {
-    const rect = over.getBoundingClientRect();
-    const before = event.clientY < rect.top + rect.height / 2;
-    zone.insertBefore(moving, before ? over : over.nextSibling);
-  } else if (!over) {
-    zone.appendChild(moving);
-  }
+  placeDragSlot(zone, event);
 });
 
 app.addEventListener("dragleave", (event) => {
   const zone = event.target.closest("[data-drop-kind]");
-  if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove("drop-target");
+  if (!zone || zone.contains(event.relatedTarget)) return;
+  zone.classList.remove("drop-target");
+  const slot = zone.querySelector(":scope > .drag-slot");
+  if (slot && !zone.contains(event.relatedTarget)) slot.remove();
 });
 
 app.addEventListener("drop", (event) => {
   const zone = event.target.closest("[data-drop-kind]");
-  if (!zone || !dragState) return;
+  if (!dropKindOk(zone)) return;
   event.preventDefault();
-  zone.classList.remove("drop-target");
   const movedId = dragState.id;
+  const node = dragState.node;
+  dragState.dropped = true;
+  const slot = zone.querySelector(":scope > .drag-slot") || app.querySelector(".drag-slot");
+  if (slot) slot.replaceWith(node);
+  else zone.appendChild(node);
+  zone.querySelector(":scope > .drop-empty")?.remove();
+  clearDragUi();
+  node.classList.remove("dragging");
   dragState = null;
   persistDrop(zone, movedId);
 });

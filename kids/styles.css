@@ -876,8 +876,15 @@ details.library .lede { margin-top: 8px; }
 }
 .drag-handle:active { cursor: grabbing; }
 .chore.dragging,
-.schedule-row.dragging { opacity: 0.55; }
+.schedule-row.dragging { opacity: 0.45; }
 .drop-target { outline: 3px dashed var(--sun); outline-offset: 4px; border-radius: 16px; }
+.drag-slot {
+  min-height: 52px;
+  margin: 8px 0;
+  border: 3px dashed var(--sun);
+  border-radius: 14px;
+  background: rgba(246, 201, 69, 0.16);
+}
 .schedule-row,
 .chore[data-drag-item] {
   display: flex;
