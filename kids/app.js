@@ -326,16 +326,7 @@ async function run(work, message, next) {
 }
 
 function mark() {
-  return `<span class="mark" aria-hidden="true"><svg viewBox="0 0 32 32">
-    <path d="M7.5 22.5c0-3.2 2.2-6 5.2-7.1 1.1-2.4 3.5-4 6.3-4 3.8 0 6.8 3 6.8 6.8 0 .7-.1 1.4-.3 2.1 2.1 1.2 3.5 3.4 3.5 6 0 .4-.3.7-.7.7H8.2c-.4 0-.7-.3-.7-.7 0-1.3.4-2.5 1.1-3.5-.7-.9-1.1-2-1.1-3.3Z"/>
-    <circle cx="16.5" cy="16.2" r="1.35"/>
-    <circle cx="21.2" cy="16.2" r="1.35"/>
-    <path d="M17.8 18.4c.5.7 1.4 1.1 2.3 1.1s1.8-.4 2.3-1.1"/>
-    <path d="M4.2 27.2 18.8 6.4"/>
-    <path d="M17.2 5.2c1.6 1.1 2.9 2.6 3.6 4.4"/>
-    <path d="M19.6 4.4c1.3 1.5 2.2 3.3 2.6 5.2"/>
-    <path d="M3.4 25.6c1.1 1.5 2.8 2.4 4.6 2.6"/>
-  </svg></span>`;
+  return `<img class="mark" src="icon.svg" width="48" height="48" alt="" decoding="async">`;
 }
 
 const BRAND_TITLE = "Family Adventure Tasks";
