@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-warn";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-warn";
-import { createChoreQuest } from "./chore-quest.js?v=71bc-warn";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-approve";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-approve";
+import { createChoreQuest } from "./chore-quest.js?v=71bc-approve";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -138,7 +138,7 @@ async function boot() {
     const { data } = await supabase.auth.getSession();
     if (data.session) {
       const ok = await loadParent();
-      route = { name: ok ? "family" : "parent-auth", mode: "signin" };
+      route = { name: ok ? "chart" : "parent-auth", mode: "signin" };
       if (!ok) notice = "Sign in with a parent account on this family.";
     } else if (sessionStorage.getItem(KID_TOKEN)) {
       const ok = await loadKid();
@@ -1122,11 +1122,11 @@ function shell(title, sub, body, nav) {
 function parentNav(current) {
   const waiting = (db.chores || []).filter((chore) => chore.status === "submitted").length;
   return `<nav class="nav">${[
+    ["chart", waiting ? `Approve (${waiting})` : "Approve"],
+    ["chores", "Tasks"],
+    ["shop", "Shop"],
     ["family", "Family"],
     ["parent-hero", "My Hero"],
-    ["chores", "Tasks"],
-    ["chart", waiting ? `Approve (${waiting})` : "Approve"],
-    ["shop", "Shop"],
   ]
     .map(
       ([id, label]) =>
@@ -1768,7 +1768,7 @@ const views = {
                   return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div>${
                     confirming
                       ? ""
-                      : `<span class="row"><button class="btn small ghost" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>Warn</button><button class="btn small clay" type="button" data-action="reset-kid" data-id="${child.id}">Reset all</button></span>`
+                      : `<span class="row"><button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button><button class="btn small clay" type="button" data-action="reset-kid" data-id="${child.id}">Reset all</button></span>`
                   }</div>${
                     confirming
                       ? `<div class="banner">Reset ${esc(child.name)}? This clears coins, cash, device minutes, finished tasks, shop requests, achievements, and monster counts. The hero goes back to the adventurer with a broom. Hearts are full and the cage is lifted. Today's tasks come back as not done. <span class="row"><button class="btn small clay" type="button" data-action="confirm-reset" data-id="${child.id}">Reset</button><button class="btn small ghost" type="button" data-action="cancel-reset">Keep</button></span></div>`
@@ -2385,7 +2385,7 @@ async function parentAuth(data) {
     if (error) throw error;
     const ok = await loadParent();
     if (!ok) throw new Error("This login is not on a family yet.");
-    route = { name: "family" };
+    route = { name: "chart" };
     notice = "";
     render();
   } catch (error) {
