@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=20";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=20";
-import { createChoreQuest } from "./chore-quest.js?v=20";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=21";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=21";
+import { createChoreQuest } from "./chore-quest.js?v=21";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -62,6 +62,7 @@ let busy = false;
 let libraryOpen = false;
 let logKidFilter = "";
 let logTypeFilter = "";
+let heroExpand = { weapons: false, achievements: false };
 
 const LOG_TYPES = [
   ["approve", "Approved"],
@@ -1015,9 +1016,107 @@ function colorSwatches(selected) {
   ).join("");
 }
 
+function unlockCloseness(progress) {
+  const goal = Math.max(1, Number(progress?.goal) || 1);
+  const value = Math.max(0, Number(progress?.value) || 0);
+  return {
+    remaining: Math.max(0, goal - value),
+    ratio: value / goal,
+  };
+}
+
+function sortedHeroWeapons(quest, stats, weaponKey) {
+  return Object.entries(quest.weapons)
+    .map(([key, weapon]) => {
+      const progress = quest.weaponProgress(key, stats) || { value: 0, goal: 1 };
+      const open = quest.weaponUnlocked(key, stats);
+      const equipped = key === weaponKey;
+      const close = unlockCloseness(progress);
+      return { key, weapon, progress, open, equipped, ...close };
+    })
+    .sort((a, b) => {
+      if (a.equipped !== b.equipped) return a.equipped ? -1 : 1;
+      if (a.open !== b.open) return a.open ? -1 : 1;
+      if (!a.open && !b.open) {
+        if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+        if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+      }
+      return a.weapon.name.localeCompare(b.weapon.name);
+    });
+}
+
+function sortedHeroAchievements(quest, stats, achievementProgress) {
+  const earned = Array.isArray(db.hero?.achievements) ? db.hero.achievements : [];
+  const earnedAt = new Map(earned.map((key, index) => [key, index]));
+  return quest.achievements
+    .map((medal) => {
+      const progress = achievementProgress[medal.key] || { value: 0, goal: medal.goal, done: false };
+      const done = Boolean(progress.done);
+      const close = unlockCloseness(progress);
+      return { medal, progress, done, earnedIndex: earnedAt.has(medal.key) ? earnedAt.get(medal.key) : -1, ...close };
+    })
+    .sort((a, b) => {
+      if (a.done !== b.done) return a.done ? -1 : 1;
+      if (a.done && b.done) return b.earnedIndex - a.earnedIndex;
+      if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+      if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+      return a.medal.name.localeCompare(b.medal.name);
+    });
+}
+
+function weaponCard(entry) {
+  const { key, weapon, progress, open, equipped } = entry;
+  return `<article class="armory-card${open ? " open" : " locked"}${equipped ? " equipped" : ""}">
+    <canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas>
+    <div>
+      <strong>${esc(weapon.name)}</strong>
+      <p class="tiny muted">${esc(weapon.unlock)}</p>
+      ${open ? (equipped ? `<span class="chip">Equipped</span>` : `<button class="btn small leaf" type="button" data-action="set-weapon" data-weapon="${esc(key)}">Equip</button>`) : meter(progress.value, progress.goal)}
+    </div>
+  </article>`;
+}
+
+function achievementCard(entry) {
+  const { medal, progress } = entry;
+  return `<article class="medal${progress.done ? " done" : ""}">
+    <canvas data-quest-badge="${esc(medal.key)}" width="12" height="15" aria-hidden="true"></canvas>
+    <div>
+      <strong>${esc(medal.name)}</strong>
+      <p class="tiny muted">${esc(medal.desc)} · ${esc(medal.tier)}</p>
+      ${meter(progress.value, progress.goal)}
+    </div>
+  </article>`;
+}
+
+function heroPetsBoard(child) {
+  const owned = ownedPets();
+  if (!owned.length) return "";
+  const equipped = normalizePet(child?.pet || db.hero?.pet) || "";
+  const rows = [
+    ...owned.filter((key) => key === equipped),
+    ...owned.filter((key) => key !== equipped),
+  ].map((key) => {
+    const info = PET_CATALOG[key];
+    const active = key === equipped;
+    return `<div class="item pet-loot">
+      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${active ? "Equipped" : "Owned"}</div></div>
+      ${active
+        ? `<button class="btn small ghost" data-action="set-pet" data-pet="">Unequip</button>`
+        : `<button class="btn small leaf" data-action="set-pet" data-pet="${esc(key)}">Equip</button>`}
+    </div>`;
+  }).join("");
+  return `<section class="card stack">
+    <h2 class="page-title">Purchased Pets</h2>
+    <p class="lede">Equip one buddy for the trail. Buy more in the Market.</p>
+    <div class="pet-market">${rows}</div>
+  </section>`;
+}
+
 function heroBoard() {
   const quest = questCatalog();
   const stats = heroStats();
+  const child = kid();
   const heroKey = quest.heroes[db.hero?.hero] ? db.hero.hero : "knight";
   const weaponKey = quest.weapons[db.hero?.weapon] ? db.hero.weapon : "broom";
   const achievementProgress = quest.achievementProgress(stats);
@@ -1026,30 +1125,13 @@ function heroBoard() {
       <canvas data-quest-hero="${esc(key)}" width="14" height="16" aria-hidden="true"></canvas>
       <span>${esc(hero.name)}</span>
     </button>`).join("");
-  const weapons = Object.entries(quest.weapons).map(([key, weapon]) => {
-    const progress = quest.weaponProgress(key, stats);
-    const open = quest.weaponUnlocked(key, stats);
-    const equipped = key === weaponKey;
-    return `<article class="armory-card${open ? " open" : " locked"}${equipped ? " equipped" : ""}">
-      <canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas>
-      <div>
-        <strong>${esc(weapon.name)}</strong>
-        <p class="tiny muted">${esc(weapon.unlock)}</p>
-        ${open ? (equipped ? `<span class="chip">Equipped</span>` : `<button class="btn small leaf" type="button" data-action="set-weapon" data-weapon="${esc(key)}">Equip</button>`) : meter(progress.value, progress.goal)}
-      </div>
-    </article>`;
-  }).join("");
-  const medals = quest.achievements.map((medal) => {
-    const progress = achievementProgress[medal.key] || { value: 0, goal: medal.goal, done: false };
-    return `<article class="medal${progress.done ? " done" : ""}">
-      <canvas data-quest-badge="${esc(medal.key)}" width="12" height="15" aria-hidden="true"></canvas>
-      <div>
-        <strong>${esc(medal.name)}</strong>
-        <p class="tiny muted">${esc(medal.desc)} · ${esc(medal.tier)}</p>
-        ${meter(progress.value, progress.goal)}
-      </div>
-    </article>`;
-  }).join("");
+  const weapons = sortedHeroWeapons(quest, stats, weaponKey);
+  const medals = sortedHeroAchievements(quest, stats, achievementProgress);
+  const lastMedal = medals.find((entry) => entry.done) || null;
+  const weaponsOpen = Boolean(heroExpand.weapons);
+  const medalsOpen = Boolean(heroExpand.achievements);
+  const shownWeapons = weaponsOpen ? weapons : weapons.filter((entry) => entry.equipped).slice(0, 1);
+  const shownMedals = medalsOpen ? medals : lastMedal ? [lastMedal] : medals.slice(0, 1);
   const monsters = SPRITES.map((sprite) => {
     const count = Number(stats.chores?.[sprite.id]) || 0;
     const info = quest.monsters[sprite.id];
@@ -1059,6 +1141,8 @@ function heroBoard() {
     </figure>`;
   }).join("");
   const color = heroColorName();
+  const moreWeapons = Math.max(0, weapons.length - shownWeapons.length);
+  const moreMedals = Math.max(0, medals.length - shownMedals.length);
   return `<section class="card stack">
       <h2 class="page-title">Choose your hero</h2>
       <div class="hero-picks">${heroes}</div>
@@ -1069,14 +1153,22 @@ function heroBoard() {
       <p class="hint">${stats.battles} quests finished · ${stats.streak}-day streak</p>
     </section>
     <section class="card stack">
-      <h2 class="page-title">Weapons</h2>
-      <p class="lede">Unlocked weapons stay in color. Locked ones show how close you are.</p>
-      <div class="armory">${weapons}</div>
+      <div class="section-title">
+        <h2 class="page-title">Weapons</h2>
+        <button type="button" class="btn small ghost" data-action="toggle-hero-section" data-section="weapons" aria-expanded="${weaponsOpen ? "true" : "false"}">${weaponsOpen ? "Show less" : moreWeapons ? `Show all (${weapons.length})` : "Show all"}</button>
+      </div>
+      <p class="lede">${weaponsOpen ? "Equipped first, then owned, then closest to unlock." : "Your equipped weapon. Tap Show all to browse the armory."}</p>
+      <div class="armory">${shownWeapons.map(weaponCard).join("") || `<p class="muted">No weapon equipped yet.</p>`}</div>
     </section>
     <section class="card stack">
-      <h2 class="page-title">Achievements</h2>
-      <div class="medal-list">${medals}</div>
+      <div class="section-title">
+        <h2 class="page-title">Achievements</h2>
+        <button type="button" class="btn small ghost" data-action="toggle-hero-section" data-section="achievements" aria-expanded="${medalsOpen ? "true" : "false"}">${medalsOpen ? "Show less" : moreMedals ? `Show all (${medals.length})` : "Show all"}</button>
+      </div>
+      <p class="lede">${medalsOpen ? "Newest unlocks first, then closest to earning." : lastMedal ? "Your latest unlock. Tap Show all to see the rest." : "Progress toward your next badge."}</p>
+      <div class="medal-list">${shownMedals.map(achievementCard).join("") || `<p class="muted">No achievements yet.</p>`}</div>
     </section>
+    ${heroPetsBoard(child)}
     <section class="card stack">
       <h2 class="page-title">Monsters defeated</h2>
       <div class="monster-log">${monsters}</div>
@@ -2338,6 +2430,13 @@ app.addEventListener("click", (event) => {
     if (db.session?.role === "parent") run(() => rpc("parent_set_weapon", { p_weapon: btn.dataset.weapon }), "Weapon equipped.", "parent-hero");
     else run(() => rpc("kid_set_weapon", { p_token: kidToken(), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
   }
+  if (action === "toggle-hero-section") {
+    const section = btn.dataset.section;
+    if (section === "weapons" || section === "achievements") {
+      heroExpand[section] = !heroExpand[section];
+      render();
+    }
+  }
   if (action === "pick-sprite") {
     const form = btn.closest("form");
     const input = form?.querySelector('input[name="sprite"]');
@@ -2475,7 +2574,7 @@ app.addEventListener("click", (event) => {
     run(
       () => rpc("kid_set_pet", { p_token: kidToken(), p_pet: key || null }),
       key ? `${PET_CATALOG[key]?.name || "Pet"} equipped.` : "Pet unequipped.",
-      "kid-shop"
+      route.name === "hero" ? "hero" : "kid-shop"
     );
   }
   if (action === "fulfill") run(() => rpc("fulfill_request", { p_request: btn.dataset.id }));

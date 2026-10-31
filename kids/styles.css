@@ -477,6 +477,7 @@ input:focus, select:focus, button:focus-visible {
 }
 
 .section-title h2 { margin: 0; font-size: 1.15rem; }
+.section-title .page-title { margin: 0; }
 
 .muted { color: var(--muted); }
 .tiny { font-size: 0.88rem; }
