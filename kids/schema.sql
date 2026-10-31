@@ -2469,6 +2469,31 @@ begin
 end;
 $$;
 
+create or replace function private.save_chore_section(p_id uuid, p_title text, p_start text, p_end text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  title text := btrim(coalesce(p_title, ''));
+begin
+  if title = '' then
+    raise exception 'section name required';
+  end if;
+  update public.chore_sections
+  set
+    title = title,
+    start_minute = private.parse_clock(p_start),
+    end_minute = private.parse_clock(p_end)
+  where id = p_id and household_id = hid;
+  if not found then
+    raise exception 'section not found';
+  end if;
+end;
+$$;
+
 create or replace function private.remove_chore_section(p_id uuid)
 returns void
 language plpgsql
@@ -2555,6 +2580,10 @@ create or replace function public.add_chore_section(p_title text, p_start text, 
 returns uuid language sql security invoker set search_path = ''
 as $$ select private.add_chore_section(p_title, p_start, p_end) $$;
 
+create or replace function public.save_chore_section(p_id uuid, p_title text, p_start text, p_end text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.save_chore_section(p_id, p_title, p_start, p_end); end $$;
+
 create or replace function public.remove_chore_section(p_id uuid)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.remove_chore_section(p_id); end $$;
@@ -2568,22 +2597,26 @@ returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.reorder_chore_templates(p_ids, p_section, p_kind); end $$;
 
 revoke all on function private.add_chore_section(text, text, text) from public, anon, authenticated;
+revoke all on function private.save_chore_section(uuid, text, text, text) from public, anon, authenticated;
 revoke all on function private.remove_chore_section(uuid) from public, anon, authenticated;
 revoke all on function private.reorder_chore_sections(uuid[]) from public, anon, authenticated;
 revoke all on function private.reorder_chore_templates(uuid[], uuid, text) from public, anon, authenticated;
 revoke all on function private.add_daily_chore(text, integer, text, uuid) from public, anon, authenticated;
 revoke all on function public.add_chore_section(text, text, text) from public, anon, authenticated;
+revoke all on function public.save_chore_section(uuid, text, text, text) from public, anon, authenticated;
 revoke all on function public.remove_chore_section(uuid) from public, anon, authenticated;
 revoke all on function public.reorder_chore_sections(uuid[]) from public, anon, authenticated;
 revoke all on function public.reorder_chore_templates(uuid[], uuid, text) from public, anon, authenticated;
 revoke all on function public.add_daily_chore(text, integer, text, uuid) from public, anon, authenticated;
 
 grant execute on function private.add_chore_section(text, text, text) to authenticated;
+grant execute on function private.save_chore_section(uuid, text, text, text) to authenticated;
 grant execute on function private.remove_chore_section(uuid) to authenticated;
 grant execute on function private.reorder_chore_sections(uuid[]) to authenticated;
 grant execute on function private.reorder_chore_templates(uuid[], uuid, text) to authenticated;
 grant execute on function private.add_daily_chore(text, integer, text, uuid) to authenticated;
 grant execute on function public.add_chore_section(text, text, text) to authenticated;
+grant execute on function public.save_chore_section(uuid, text, text, text) to authenticated;
 grant execute on function public.remove_chore_section(uuid) to authenticated;
 grant execute on function public.reorder_chore_sections(uuid[]) to authenticated;
 grant execute on function public.reorder_chore_templates(uuid[], uuid, text) to authenticated;

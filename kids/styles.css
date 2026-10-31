@@ -1291,8 +1291,28 @@ details.library .lede { margin-top: 8px; }
   gap: 10px;
   align-items: center;
 }
-.schedule-row { padding: 10px 0; border-top: 2px solid var(--line); }
+.schedule-row { padding: 10px 0; border-top: 2px solid var(--line); margin: 0; }
 .schedule-row:first-child { border-top: none; }
+.schedule-row label {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.schedule-row .schedule-name { flex: 1 1 140px; min-width: 120px; }
+.schedule-row label input {
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 0;
+}
+.schedule-row .schedule-status {
+  flex: 1 1 80px;
+  align-self: end;
+  padding-bottom: 10px;
+}
 .daily-section {
   margin-top: 14px;
   padding: 12px;

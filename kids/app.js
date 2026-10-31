@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=23";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=23";
-import { createChoreQuest } from "./chore-quest.js?v=23";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=24";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=24";
+import { createChoreQuest } from "./chore-quest.js?v=24";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1978,11 +1978,15 @@ const views = {
               sections.length
                 ? sections
                     .map(
-                      (section) => `<div class="schedule-row" data-drag-item="${esc(section.id)}" data-drag-kind="section">
+                      (section) => `<form class="schedule-row" data-action="save-section" data-drag-item="${esc(section.id)}" data-drag-kind="section" data-id="${esc(section.id)}">
                         ${dragHandle()}
-                        <div><strong>${esc(section.title)}</strong><div class="tiny muted">${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)}${sectionOpen(section, now) ? " · Open now" : " · Closed now"}</div></div>
-                        <button class="btn small ghost" type="button" data-action="remove-section" data-id="${section.id}">Remove</button>
-                      </div>`
+                        <label class="schedule-name">Name<input name="title" required value="${esc(section.title)}"></label>
+                        <label>Starts<input name="start" type="time" required value="${esc(clockLabel(section.startMinute))}"></label>
+                        <label>Ends<input name="end" type="time" required value="${esc(clockLabel(section.endMinute))}"></label>
+                        <span class="tiny muted schedule-status">${sectionOpen(section, now) ? "Open now" : "Closed now"}</span>
+                        <button class="btn small leaf" type="submit">Save</button>
+                        <button class="btn small ghost" type="button" data-action="remove-section" data-id="${esc(section.id)}">Remove</button>
+                      </form>`
                     )
                     .join("")
                 : `<p class="muted">No timed sections yet. Add Morning, After school, or Bedtime below.</p>`
@@ -2771,6 +2775,14 @@ app.addEventListener("submit", (event) => {
     run(
       () => rpc("add_chore_section", { p_title: data.title, p_start: data.start, p_end: data.end }),
       "Schedule section added.",
+      "chores"
+    );
+  }
+  if (action === "save-section") {
+    const id = form.dataset.id || data.id;
+    run(
+      () => rpc("save_chore_section", { p_id: id, p_title: data.title, p_start: data.start, p_end: data.end }),
+      "Schedule section saved.",
       "chores"
     );
   }
