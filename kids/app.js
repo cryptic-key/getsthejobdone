@@ -2240,6 +2240,7 @@ app.addEventListener("click", (event) => {
     if (!dialog) return;
     dialog.dataset.templateId = btn.dataset.id || "";
     dialog.dataset.formId = btn.closest("form")?.id || "";
+    paintSpriteIcons(dialog);
     if (!dialog.open) dialog.showModal();
   }
   if (action === "close-monster") document.querySelector(".monster-dialog")?.close();
