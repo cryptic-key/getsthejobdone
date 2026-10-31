@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=19";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=19";
-import { createChoreQuest } from "./chore-quest.js?v=19";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=20";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=20";
+import { createChoreQuest } from "./chore-quest.js?v=20";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -2718,6 +2718,15 @@ app.addEventListener("submit", (event) => {
   if (action === "save-rates") run(() => rpc("save_rates", { p_per_dollar: Number(data.pointsPerDollar), p_per_30: Number(data.pointsPer30) }), "Rates saved.");
   if (action === "save-cage-goal") run(() => rpc("save_cage_goal", { p_points: Number(data.points) || 0 }), "Cage release goal saved.", "chart");
   if (action === "add-item") run(() => rpc("add_item", { p_name: data.name, p_cost: Number(data.cost) }), "Item added.");
+  if (action === "save-pet-price") {
+    const pet = form.dataset.pet || data.pet;
+    const name = PET_CATALOG[pet]?.name || "Pet";
+    run(
+      () => rpc("save_pet_price", { p_pet: pet, p_cost: Number(data.cost) || 0 }),
+      `${name} price saved.`,
+      "shop"
+    );
+  }
 });
 
 async function parentAuth(data) {
