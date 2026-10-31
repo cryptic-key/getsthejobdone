@@ -1900,6 +1900,7 @@ function drawThoughtBubble(hx, hy, spriteId, side = "right") {
 function clearReviewer() {
   reviewer = null;
   spellBolt = null;
+  clearThought();
 }
 
 function setupReviewer(item) {
@@ -1933,6 +1934,7 @@ async function presentReview(token) {
   scroll = 0;
   scrollTarget = 0;
   setupReviewer(item);
+  ensureThought(item.sprite).t = 0;
   say(`${item.kidName} is done: ${item.title}. Approve it?`);
   setReviewActions(true);
 }
@@ -2244,39 +2246,68 @@ async function runParade() {
     if (!(await waitFor(0.35, token))) return;
   }
 }
+const heartS = sprite(
+  [".KK.KK.", "KWRKRRK", "KRRRRRK", ".KRRRK.", "..KRK..", "...K..."],
+  { K, W: "#ffb0b0", R: "#e04a4a" },
+);
+const heartE = sprite(
+  [".KK.KK.", "KDDKDDK", "KDDDDDK", ".KDDDK.", "..KDK..", "...K..."],
+  { K, D: "#4a3a58" },
+);
+const heartCrack = sprite(
+  [".KK.KK.", "KWRKRRK", "KR.RRRK", ".KR.RK.", "..KRK..", "...K..."],
+  { K, W: "#fff3a8", R: "#e04a4a" },
+);
+let hudHearts = 3;
+let heartFx = null;
+
 function paintHearts(count) {
+  if (heartFx) return;
+  const n = Math.max(0, Math.min(3, Number(count) || 0));
+  hudHearts = n;
   if (!host) return;
   const row = host.querySelector(".quest-hearts");
   if (!row) return;
-  if (row.querySelector("i.crack, i.fade")) return;
-  const n = Math.max(0, Math.min(3, Number(count) || 0));
   row.dataset.hearts = String(n);
-  row.innerHTML = [0, 1, 2].map((i) => `<i class="${i < n ? "on" : "off"}" aria-hidden="true"></i>`).join("");
   row.setAttribute("aria-label", `${n} heart${n === 1 ? "" : "s"} left`);
 }
 
 function crackHeart(lostIndex) {
-  if (!host) return Promise.resolve();
-  const row = host.querySelector(".quest-hearts");
-  if (!row) return Promise.resolve();
-  const hearts = [...row.querySelectorAll("i")];
-  const target = hearts[Math.max(0, Math.min(2, lostIndex))];
-  if (!target) return Promise.resolve();
-  target.classList.remove("on", "off");
-  target.classList.add("crack");
+  const i = Math.max(0, Math.min(2, lostIndex));
+  heartFx = { i, mode: "crack", t: 0 };
   return new Promise((resolve) => {
     window.setTimeout(() => {
-      target.classList.remove("crack");
-      target.classList.add("fade");
+      heartFx = { i, mode: "fade", t: 0 };
       window.setTimeout(() => {
-        const left = Math.max(0, lostIndex);
-        row.dataset.hearts = String(left);
-        row.innerHTML = [0, 1, 2].map((i) => `<i class="${i < left ? "on" : "off"}" aria-hidden="true"></i>`).join("");
-        row.setAttribute("aria-label", `${left} heart${left === 1 ? "" : "s"} left`);
+        heartFx = null;
+        paintHearts(Math.max(0, lostIndex));
         resolve();
       }, 850);
     }, 550);
   });
+}
+
+function drawHearts() {
+  const max = 3;
+  for (let i = 0; i < max; i += 1) {
+    const x = W - 3 - (max - i) * 9;
+    const y = 3;
+    let img = i < hudHearts ? heartS : heartE;
+    let ox = 0;
+    let oy = 0;
+    if (heartFx && heartFx.i === i) {
+      if (heartFx.mode === "crack") {
+        img = heartCrack;
+        ox = ((time * 24) | 0) % 2 ? 1 : -1;
+        oy = ((time * 18) | 0) % 2 ? -1 : 0;
+      } else {
+        img = heartS;
+        oy = Math.min(8, Math.round(heartFx.t * 10));
+        if (heartFx.t > 0.35 && ((heartFx.t * 10) | 0) % 2 === 0) continue;
+      }
+    }
+    ctx.drawImage(img, x + ox, y + oy);
+  }
 }
 
 function parentLookKey(name) {
@@ -3081,6 +3112,7 @@ function update(dt) {
     }
   }
   if (thought) thought.t += dt;
+  if (heartFx) heartFx.t += dt;
   if (warner) {
     warner.x += ((warner.tx ?? warner.x) - warner.x) * Math.min(1, dt * 5);
   }
@@ -3327,6 +3359,7 @@ function draw() {
   coins.forEach((c) => { if (c.t >= 0) drawCoin(c.x, c.y, time + c.x * 0.05); });
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
   drawLayer(scenery.fore, worldX * 1.3, H - 12);
+  drawHearts();
   if (siren) {
     const on = (time * 6 | 0) % 2;
     rect(ctx, 0, 0, W, 1, on ? "#ff4a4a" : "#4a7aff");
