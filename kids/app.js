@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=25";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=25";
-import { createChoreQuest } from "./chore-quest.js?v=25";
+import { APP_VERSION } from "./version.js?v=26";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=26";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=26";
+import { createChoreQuest } from "./chore-quest.js?v=26";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1390,7 +1390,7 @@ function shell(title, sub, body, nav) {
     <header class="top${play ? " hud" : ""}">
       <button class="brand" data-action="home">
         ${child ? face(child.color) : mark()}
-        <span><h1>${esc(title)}</h1><p>${esc(sub)}</p></span>
+        <span><h1>${esc(title)}</h1><p>${esc(sub)} <span class="ver-tag">v${APP_VERSION}</span></p></span>
       </button>
       ${signedIn ? `<button class="btn ghost small" data-action="sign-out">${play ? "Exit" : "Sign out"}</button>` : ""}
     </header>
@@ -1533,11 +1533,29 @@ function clockLabel(minute) {
 }
 
 function clockValue(value) {
-  const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})/);
+  const match = String(value || "").trim().match(/(\d{1,2})\D+(\d{2})/);
   if (!match) return "";
-  const hh = Math.min(23, Math.max(0, Number(match[1]) || 0));
+  let hh = Math.min(23, Math.max(0, Number(match[1]) || 0));
   const mm = Math.min(59, Math.max(0, Number(match[2]) || 0));
+  const ampm = String(value || "").match(/\b(am|pm)\b/i)?.[1]?.toLowerCase();
+  if (ampm === "pm" && hh < 12) hh += 12;
+  if (ampm === "am" && hh === 12) hh = 0;
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function minutesFromClock(value) {
+  const normalized = clockValue(value);
+  if (!normalized) return null;
+  const [hh, mm] = normalized.split(":").map(Number);
+  return hh * 60 + mm;
+}
+
+function minutesFromInput(input) {
+  if (!input) return null;
+  if (input.type === "time" && Number.isFinite(input.valueAsNumber)) {
+    return Math.floor(input.valueAsNumber / 60000) % 1440;
+  }
+  return minutesFromClock(input.value);
 }
 
 function sectionOpen(section, nowMinute = torontoMinute()) {
@@ -1689,10 +1707,14 @@ function paintVersion() {
   if (!el) {
     el = document.createElement("div");
     el.className = "app-version";
-    el.setAttribute("aria-hidden", "true");
     document.body.appendChild(el);
   }
   el.textContent = `v${APP_VERSION}`;
+  el.removeAttribute("aria-hidden");
+  el.setAttribute("title", `App version ${APP_VERSION}`);
+  document.querySelectorAll(".ver-tag").forEach((tag) => {
+    tag.textContent = `v${APP_VERSION}`;
+  });
 }
 
 function render() {
@@ -1746,7 +1768,7 @@ const views = {
   welcome() {
     if (!schemaReady) {
       return `
-        <header class="top"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)}</p></span></div></header>
+        <header class="top"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)} <span class="ver-tag">v${APP_VERSION}</span></p></span></div></header>
         <section class="hero">
           <h2>Chores, rewards, and device time.</h2>
           <p class="lede">Parents keep the accounts. Kids open the chart with a PIN.</p>
@@ -1758,7 +1780,7 @@ const views = {
         </div>`;
     }
     return `
-      <header class="top hud"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)}</p></span></div></header>
+      <header class="top hud"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)} <span class="ver-tag">v${APP_VERSION}</span></p></span></div></header>
       ${worldScene("sun")}
       <section class="hero">
         <h2>Who's here?</h2>
@@ -2779,31 +2801,39 @@ app.addEventListener("submit", (event) => {
   if (action === "add-kid-submit") addKid(data);
   if (action === "save-pin") savePin(data);
   if (action === "save-parent-pin") saveParentPin(data);
-  if (action === "add-section") {
-    run(
-      () =>
-        rpc("add_chore_section", {
-          p_title: data.title,
-          p_start: clockValue(data.start),
-          p_end: clockValue(data.end),
-        }),
-      "Schedule section added.",
-      "chores"
-    );
-  }
-  if (action === "save-section") {
-    const id = form.dataset.id || data.id;
-    run(
-      () =>
-        rpc("save_chore_section", {
-          p_id: id,
-          p_title: data.title,
-          p_start: clockValue(data.start),
-          p_end: clockValue(data.end),
-        }),
-      "Schedule section saved.",
-      "chores"
-    );
+  if (action === "add-section" || action === "save-section") {
+    const startMinute = minutesFromInput(form.querySelector('[name="start"]'));
+    const endMinute = minutesFromInput(form.querySelector('[name="end"]'));
+    if (startMinute == null || endMinute == null) {
+      route = { ...route, error: "Use times like 07:00 and 09:00." };
+      render();
+      return;
+    }
+    if (action === "add-section") {
+      run(
+        () =>
+          rpc("add_chore_section", {
+            p_title: data.title,
+            p_start_minute: startMinute,
+            p_end_minute: endMinute,
+          }),
+        "Schedule section added.",
+        "chores"
+      );
+    } else {
+      const id = form.dataset.id || data.id;
+      run(
+        () =>
+          rpc("save_chore_section", {
+            p_id: id,
+            p_title: data.title,
+            p_start_minute: startMinute,
+            p_end_minute: endMinute,
+          }),
+        "Schedule section saved.",
+        "chores"
+      );
+    }
   }
   if (action === "add-daily") {
     const sectionId = data.sectionId || null;
