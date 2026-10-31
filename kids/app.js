@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=24";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=24";
-import { createChoreQuest } from "./chore-quest.js?v=24";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=25";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=25";
+import { createChoreQuest } from "./chore-quest.js?v=25";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1532,6 +1532,14 @@ function clockLabel(minute) {
   return `${hh}:${mm}`;
 }
 
+function clockValue(value) {
+  const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "";
+  const hh = Math.min(23, Math.max(0, Number(match[1]) || 0));
+  const mm = Math.min(59, Math.max(0, Number(match[2]) || 0));
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
 function sectionOpen(section, nowMinute = torontoMinute()) {
   if (!section) return true;
   const start = Number(section.startMinute);
@@ -1981,8 +1989,8 @@ const views = {
                       (section) => `<form class="schedule-row" data-action="save-section" data-drag-item="${esc(section.id)}" data-drag-kind="section" data-id="${esc(section.id)}">
                         ${dragHandle()}
                         <label class="schedule-name">Name<input name="title" required value="${esc(section.title)}"></label>
-                        <label>Starts<input name="start" type="time" required value="${esc(clockLabel(section.startMinute))}"></label>
-                        <label>Ends<input name="end" type="time" required value="${esc(clockLabel(section.endMinute))}"></label>
+                        <label>Starts<input name="start" type="time" step="60" required value="${esc(clockLabel(section.startMinute))}"></label>
+                        <label>Ends<input name="end" type="time" step="60" required value="${esc(clockLabel(section.endMinute))}"></label>
                         <span class="tiny muted schedule-status">${sectionOpen(section, now) ? "Open now" : "Closed now"}</span>
                         <button class="btn small leaf" type="submit">Save</button>
                         <button class="btn small ghost" type="button" data-action="remove-section" data-id="${esc(section.id)}">Remove</button>
@@ -1994,8 +2002,8 @@ const views = {
           </div>
           <form class="two" data-action="add-section" style="margin-top:12px">
             <label>Section name<input name="title" required placeholder="Morning"></label>
-            <label>Starts<input name="start" type="time" required value="07:00"></label>
-            <label>Ends<input name="end" type="time" required value="09:00"></label>
+            <label>Starts<input name="start" type="time" step="60" required value="07:00"></label>
+            <label>Ends<input name="end" type="time" step="60" required value="09:00"></label>
             <button class="btn leaf" type="submit">Add section</button>
           </form>
         </section>
@@ -2773,7 +2781,12 @@ app.addEventListener("submit", (event) => {
   if (action === "save-parent-pin") saveParentPin(data);
   if (action === "add-section") {
     run(
-      () => rpc("add_chore_section", { p_title: data.title, p_start: data.start, p_end: data.end }),
+      () =>
+        rpc("add_chore_section", {
+          p_title: data.title,
+          p_start: clockValue(data.start),
+          p_end: clockValue(data.end),
+        }),
       "Schedule section added.",
       "chores"
     );
@@ -2781,7 +2794,13 @@ app.addEventListener("submit", (event) => {
   if (action === "save-section") {
     const id = form.dataset.id || data.id;
     run(
-      () => rpc("save_chore_section", { p_id: id, p_title: data.title, p_start: data.start, p_end: data.end }),
+      () =>
+        rpc("save_chore_section", {
+          p_id: id,
+          p_title: data.title,
+          p_start: clockValue(data.start),
+          p_end: clockValue(data.end),
+        }),
       "Schedule section saved.",
       "chores"
     );

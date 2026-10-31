@@ -2433,7 +2433,9 @@ declare
   hh integer;
   mm integer;
 begin
-  if raw !~ '^[0-2]?[0-9]:[0-5][0-9]$' then
+  -- Strip fractional seconds if present, then optional whole seconds.
+  raw := split_part(raw, '.', 1);
+  if raw !~ '^[0-2]?[0-9]:[0-5][0-9](:[0-5][0-9])?$' then
     raise exception 'use a time like 07:30';
   end if;
   hh := split_part(raw, ':', 1)::integer;
