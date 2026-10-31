@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=16";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=16";
-import { createChoreQuest } from "./chore-quest.js?v=16";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=17";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=17";
+import { createChoreQuest } from "./chore-quest.js?v=17";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -277,7 +277,6 @@ async function loadParent() {
   for (const result of [parents, kids, chores, templates, sections, items, requests, activity]) {
     if (result.error) throw result.error;
   }
-  if (petPrices.error) throw petPrices.error;
   const readyPins = new Set((doorPins.data || []).map((row) => row.parent_id));
   db = {
     family: {
@@ -319,7 +318,7 @@ async function loadParent() {
     requests: requests.data.map((req) => ({ ...req, kidId: req.kid_id, itemId: req.item_id })),
     activity: activity.data.map((row) => ({ id: row.id, kidId: row.kid_id, text: row.body, at: row.created_at })),
     pets: [],
-    petPrices: Object.fromEntries((petPrices.data || []).map((row) => [row.pet_key, Number(row.cost) || DEFAULT_PET_PRICE])),
+    petPrices: Object.fromEntries(((petPrices.error ? [] : petPrices.data) || []).map((row) => [row.pet_key, Number(row.cost) || DEFAULT_PET_PRICE])),
     session: { role: "parent", id: me.id },
   };
   return true;

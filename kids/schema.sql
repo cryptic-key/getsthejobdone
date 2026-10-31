@@ -2818,6 +2818,7 @@ create table if not exists public.pet_prices (
 );
 alter table public.pet_prices enable row level security;
 revoke all on table public.pet_prices from public, anon, authenticated;
+grant select on public.pet_prices to authenticated;
 
 drop policy if exists pet_prices_select on public.pet_prices;
 create policy pet_prices_select on public.pet_prices
