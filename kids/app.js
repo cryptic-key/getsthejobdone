@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-hero";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-hero";
-import { createChoreQuest } from "./chore-quest.js?v=71bc-hero";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-layout";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-layout";
+import { createChoreQuest } from "./chore-quest.js?v=71bc-layout";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -581,10 +581,15 @@ function paintStage() {
     const chore = waiting[0];
     if (chore) {
       const child = kidById(chore.kidId);
+      const me = parent();
       const review = {
         ...actor(chore),
         kidName: child?.name || "Hero",
         hero: kidHero(child?.hero),
+        parentName: me?.name || "Parent",
+        parentHero: parentLook(me?.hero, me?.name),
+        parentColor: COLOR_HEX[me?.color] || COLOR_HEX.teal,
+        parentWeapon: heldWeapon(me?.weapon || "broom"),
       };
       setStageScene({
         color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
