@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=8";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=8";
-import { createChoreQuest } from "./chore-quest.js?v=8";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=9";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=9";
+import { createChoreQuest } from "./chore-quest.js?v=9";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -44,6 +44,7 @@ let draft = {};
 let notice = "";
 let busy = false;
 let libraryOpen = false;
+let chartOpenKidId = "";
 
 function blank() {
   return { family: null, parents: [], kids: [], chores: [], templates: [], sections: [], items: [], requests: [], activity: [], week: [], hero: null, session: null };
@@ -1772,30 +1773,45 @@ const views = {
         </section>
         ${
           db.kids.length
-            ? db.kids
+            ? `<div class="chart-kids">${db.kids
                 .map((child) => {
                   const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted" && chore.status !== "approved");
                   const approved = db.chores.filter((chore) => chore.kidId === child.id && chore.status === "approved" && afterReset(chore, child));
                   const goal = Number(db.family.ungroundPoints) || 0;
-                  return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div><span class="row"><button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button></span></div>${balances(child)}${
-                    grounded(child)
-                      ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
-                      : ""
-                  }<details class="task-log"><summary>Task log${open.length + approved.length ? ` (${open.length + approved.length})` : ""}</summary>${
-                    open.length || approved.length
-                      ? `${open
-                          .map(
-                            (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Still open</div></div></div>`
-                          )
-                          .join("")}${approved
-                          .map(
-                            (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Approved</div></div><button class="btn small ghost" type="button" data-action="undo-approval" data-id="${chore.id}">Undo</button></div>`
-                          )
-                          .join("")}`
-                      : `<p class="muted">Nothing in the log.</p>`
-                  }</details></section>`;
+                  const look = kidHero(child.hero);
+                  const weapon = child.weapon || "broom";
+                  const tint = COLOR_HEX[child.color] || COLOR_HEX.leaf;
+                  const showBalances = chartOpenKidId === child.id;
+                  return `<section class="card stack kid-column${showBalances ? " balances-open" : ""}" data-kid-id="${esc(child.id)}">
+                    <button type="button" class="kid-hero-toggle" data-action="toggle-kid-balances" data-id="${esc(child.id)}" aria-pressed="${showBalances ? "true" : "false"}" aria-label="${esc(child.name)} balances">
+                      <canvas class="hero-icon" data-look="${esc(look)}" data-weapon="${esc(weapon)}" data-color="${esc(tint)}" width="40" height="34" aria-hidden="true"></canvas>
+                    </button>
+                    <div class="kid-column-head">
+                      <div class="who"><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div>
+                      <button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button>
+                    </div>
+                    <div class="kid-column-balances">${balances(child)}</div>
+                    ${
+                      grounded(child)
+                        ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
+                        : ""
+                    }
+                    <details class="task-log"><summary>Task log${open.length + approved.length ? ` (${open.length + approved.length})` : ""}</summary>${
+                      open.length || approved.length
+                        ? `${open
+                            .map(
+                              (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Still open</div></div></div>`
+                            )
+                            .join("")}${approved
+                            .map(
+                              (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Approved</div></div><button class="btn small ghost" type="button" data-action="undo-approval" data-id="${chore.id}">Undo</button></div>`
+                            )
+                            .join("")}`
+                        : `<p class="muted">Nothing in the log.</p>`
+                    }</details>
+                  </section>`;
                 })
-                .join("")
+                .join("")}</div>`
             : `<div class="card">Add a kid on the Family page first.</div>`
         }
         ${db.templates.length ? "" : `<button class="btn leaf" data-action="goto" data-to="chores">Add tasks</button>`}
@@ -2088,6 +2104,16 @@ app.addEventListener("click", (event) => {
   if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
   if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Cage open. Three hearts are back. Turn it off in Screen Time too.");
+  if (action === "toggle-kid-balances") {
+    const id = btn.dataset.id || "";
+    chartOpenKidId = chartOpenKidId === id ? "" : id;
+    app.querySelectorAll(".kid-column").forEach((card) => {
+      const open = card.dataset.kidId === chartOpenKidId;
+      card.classList.toggle("balances-open", open);
+      const hero = card.querySelector(".kid-hero-toggle");
+      if (hero) hero.setAttribute("aria-pressed", open ? "true" : "false");
+    });
+  }
   if (action === "warn-kid") {
     let warnNote = "Warning saved. One heart is gone.";
     const kidId = btn.dataset.id;
