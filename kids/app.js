@@ -206,7 +206,7 @@ async function loadParent() {
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,hero,weapon").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
@@ -535,6 +535,7 @@ const CAGE_SEEN = "chart-cage-seen";
 const CAGE_HELD = "chart-cage-held";
 const WARN_SEEN = "chart-warn-seen";
 const PARENT_WARN_SEEN = "chart-parent-warn-seen";
+const PARENT_WARN_PENDING = "chart-parent-warn-pending";
 
 function pendingWarn(child) {
   if (!child?.warnParent || !child.warnSeq) return null;
@@ -552,15 +553,72 @@ function pendingWarn(child) {
   };
 }
 
+function readParentWarnPending() {
+  try {
+    const raw = sessionStorage.getItem(PARENT_WARN_PENDING);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.kidId || !data?.seq) return null;
+    const key = `${data.seq}:${data.kidId}`;
+    if (sessionStorage.getItem(PARENT_WARN_SEEN) === key) {
+      sessionStorage.removeItem(PARENT_WARN_PENDING);
+      return null;
+    }
+    return data;
+  } catch {
+    sessionStorage.removeItem(PARENT_WARN_PENDING);
+    return null;
+  }
+}
+
+function queueParentWarn(kidId, result) {
+  const me = parent();
+  const child = kidById(kidId);
+  const seq = Number(result?.warn_seq) || Number(child?.warnSeq) || Date.now();
+  const payload = {
+    kidId,
+    seq,
+    hearts: Number(result?.hearts ?? child?.hearts ?? 0),
+    locked: Boolean(result?.locked) || grounded({ ...child, groundedUntil: result?.grounded_until || child?.groundedUntil }),
+    parent: result?.parent || me?.name || "Parent",
+    lockKey: String(result?.grounded_until || child?.groundedUntil || kidId),
+  };
+  sessionStorage.setItem(PARENT_WARN_PENDING, JSON.stringify(payload));
+  if (child) {
+    child.warnParent = payload.parent;
+    child.warnSeq = payload.seq;
+    child.hearts = payload.hearts;
+    if (payload.locked && result?.grounded_until) child.groundedUntil = result.grounded_until;
+  }
+  return payload;
+}
+
 function pendingParentWarn() {
   const me = parent();
   if (!me?.name) return null;
+  const queued = readParentWarnPending();
+  const child = queued ? kidById(queued.kidId) : null;
+  if (queued && child) {
+    return {
+      view: "parent",
+      parent: queued.parent || me.name,
+      hero: parentLook(me.hero, me.name),
+      color: COLOR_HEX[me.color] || COLOR_HEX.teal,
+      weapon: heldWeapon(me.weapon || "broom"),
+      hearts: queued.hearts,
+      seq: queued.seq,
+      locked: queued.locked,
+      lockKey: queued.locked ? queued.lockKey : "",
+      kidId: child.id,
+      kidName: child.name,
+    };
+  }
   const kids = (db.kids || [])
-    .filter((child) => child.warnParent === me.name && child.warnSeq)
+    .filter((row) => row.warnParent === me.name && row.warnSeq)
     .sort((a, b) => (b.warnSeq || 0) - (a.warnSeq || 0));
-  const child = kids[0];
-  if (!child) return null;
-  const key = `${child.warnSeq}:${child.id}`;
+  const next = kids[0];
+  if (!next) return null;
+  const key = `${next.warnSeq}:${next.id}`;
   if (sessionStorage.getItem(PARENT_WARN_SEEN) === key) return null;
   return {
     view: "parent",
@@ -568,12 +626,12 @@ function pendingParentWarn() {
     hero: parentLook(me.hero, me.name),
     color: COLOR_HEX[me.color] || COLOR_HEX.teal,
     weapon: heldWeapon(me.weapon || "broom"),
-    hearts: child.hearts,
-    seq: child.warnSeq,
-    locked: grounded(child),
-    lockKey: grounded(child) ? String(child.groundedUntil || child.id) : "",
-    kidId: child.id,
-    kidName: child.name,
+    hearts: next.hearts,
+    seq: next.warnSeq,
+    locked: grounded(next),
+    lockKey: grounded(next) ? String(next.groundedUntil || next.id) : "",
+    kidId: next.id,
+    kidName: next.name,
   };
 }
 
@@ -613,7 +671,9 @@ function paintStage() {
         guardian,
         warn: parentWarn,
         onWarn: (info) => {
-          sessionStorage.setItem(PARENT_WARN_SEEN, `${info?.seq || parentWarn.seq}:${info?.kidId || parentWarn.kidId}`);
+          const key = `${info?.seq || parentWarn.seq}:${info?.kidId || parentWarn.kidId}`;
+          sessionStorage.setItem(PARENT_WARN_SEEN, key);
+          sessionStorage.removeItem(PARENT_WARN_PENDING);
           paintStage();
         },
         onLockup: (mode) => {
@@ -1996,9 +2056,11 @@ app.addEventListener("click", (event) => {
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Cage open. Three hearts are back. Turn it off in Screen Time too.");
   if (action === "warn-kid") {
     let warnNote = "Warning saved. One heart is gone.";
+    const kidId = btn.dataset.id;
     run(
       async () => {
-        const result = await rpc("warn_kid", { p_kid: btn.dataset.id, p_reason: "" });
+        const result = await rpc("warn_kid", { p_kid: kidId, p_reason: "" });
+        queueParentWarn(kidId, result || {});
         if (result?.locked) warnNote = "Last heart gone. The Chore Patrol locked the hero in the cage.";
       },
       () => warnNote,
