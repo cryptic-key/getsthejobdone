@@ -2069,8 +2069,11 @@ const views = {
               ? db.items
                   .map((item) => {
                     const held = db.requests.some((req) => req.itemId === item.id && req.status === "pending");
-                    return `<div class="item loot"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} coins</div></div>${
-                      held ? `<span class="chip">Asked</span>` : `<button class="btn small" data-action="ask" data-id="${item.id}" ${child.points >= item.cost ? "" : "disabled"}>Ask</button>`
+                    const coins = Math.max(0, Number(child.points) || 0);
+                    const cost = Math.max(1, Number(item.cost) || 1);
+                    const ready = coins >= cost;
+                    return `<div class="item loot${ready ? " ready" : ""}"><div class="loot-copy"><strong>${esc(item.name)}</strong><div class="tiny muted">${cost} coins</div>${meter(coins, cost)}</div>${
+                      held ? `<span class="chip">Asked</span>` : `<button class="btn small" data-action="ask" data-id="${item.id}" ${ready ? "" : "disabled"}>Ask</button>`
                     }</div>`;
                   })
                   .join("")

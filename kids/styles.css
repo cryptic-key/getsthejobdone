@@ -1108,6 +1108,31 @@ body.play .toast { margin-bottom: 14px; }
 .meter span { display: block; height: 100%; background: var(--sun); }
 .medal.done .meter span { background: var(--leaf); }
 .meter-count { display: block; margin-top: 4px; font-weight: 800; color: var(--ink); }
+.item.loot {
+  align-items: flex-start;
+  gap: 12px;
+}
+.loot-copy {
+  flex: 1;
+  min-width: 0;
+}
+.loot-copy .meter {
+  height: 14px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: #d9e8ef;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.loot-copy .meter span {
+  background: linear-gradient(180deg, #9fd8ef 0%, #4aa3c8 55%, #2f7f9e 100%);
+}
+.item.loot.ready .loot-copy .meter span {
+  background: linear-gradient(180deg, #b6ef9f 0%, #5cb86a 55%, #3a8f4a 100%);
+}
+.loot-copy .meter-count {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
 .monster-log { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 
 details.library > summary,
