@@ -2303,15 +2303,25 @@ begin
   if kname is null then
     raise exception 'kid not found';
   end if;
+  delete from public.requests where kid_id = p_kid and household_id = hid;
+  delete from public.chores where kid_id = p_kid and household_id = hid;
   delete from public.activity where kid_id = p_kid and household_id = hid;
   delete from public.kid_rewards where kid_id = p_kid;
   update public.kids
   set hero = 'knight',
       weapon = 'broom',
+      points = 0,
+      cash_cents = 0,
+      minutes = 0,
+      hearts = 3,
+      ground_progress = 0,
+      grounded_until = null,
+      warn_parent = null,
+      warn_seq = 0,
       progress_reset_at = now()
-  where id = p_kid;
+  where id = p_kid and household_id = hid;
   insert into public.activity (household_id, kid_id, body)
-  values (hid, p_kid, kname || ' was reset. Hero, achievements, and the log start over.');
+  values (hid, p_kid, kname || ' was reset. Coins, cash, minutes, the log, and the hero start over.');
 end;
 $$;
 
@@ -2497,16 +2507,17 @@ set search_path = ''
 as $$
 declare
   hid uuid := private.require_household();
-  kind text := coalesce(nullif(p_kind, ''), 'daily');
-  section uuid := p_section;
+  chore_kind text := coalesce(nullif(p_kind, ''), 'daily');
+  target_section uuid := p_section;
 begin
-  if kind not in ('daily', 'special') then
+  if chore_kind not in ('daily', 'special') then
     raise exception 'bad kind';
   end if;
-  if kind = 'special' then
-    section := null;
-  elsif section is not null and not exists (
-    select 1 from public.chore_sections where id = section and household_id = hid
+  if chore_kind = 'special' then
+    target_section := null;
+  elsif target_section is not null and not exists (
+    select 1 from public.chore_sections s
+    where s.id = target_section and s.household_id = hid
   ) then
     raise exception 'section not found';
   end if;
@@ -2518,16 +2529,16 @@ begin
     from unnest(p_ids) as x(id)
     where not exists (
       select 1 from public.chore_templates t
-      where t.id = x.id and t.household_id = hid and t.kind = kind
+      where t.id = x.id and t.household_id = hid and t.kind = chore_kind
     )
   ) then
     raise exception 'chore not found';
   end if;
   update public.chore_templates t
-  set section_id = case when kind = 'daily' then section else t.section_id end,
+  set section_id = case when chore_kind = 'daily' then target_section else t.section_id end,
       sort_order = ranked.n::integer - 1
   from unnest(p_ids) with ordinality as ranked(id, n)
-  where t.id = ranked.id and t.household_id = hid and t.kind = kind;
+  where t.id = ranked.id and t.household_id = hid and t.kind = chore_kind;
 end;
 $$;
 

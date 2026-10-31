@@ -531,7 +531,7 @@ function pendingWarn(child) {
   if (sessionStorage.getItem(WARN_SEEN) === key) return null;
   return {
     parent: child.warnParent,
-    hero: parentHero(child.warnParent),
+    hero: parentHeroFallback(child.warnParent),
     color: COLOR_HEX.teal,
     hearts: child.hearts,
     seq: child.warnSeq,
@@ -1586,7 +1586,7 @@ const views = {
                       : `<span class="row"><button class="btn small ghost" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>Warn</button><button class="btn small clay" type="button" data-action="reset-kid" data-id="${child.id}">Reset all</button></span>`
                   }</div>${
                     confirming
-                      ? `<div class="banner">Reset ${esc(child.name)}? This clears the log and starts the hero over: adventurer, broom, no achievements, and monster counts back at zero. Coins, cash, and minutes stay. <span class="row"><button class="btn small clay" type="button" data-action="confirm-reset" data-id="${child.id}">Reset</button><button class="btn small ghost" type="button" data-action="cancel-reset">Keep</button></span></div>`
+                      ? `<div class="banner">Reset ${esc(child.name)}? This clears coins, cash, device minutes, finished tasks, shop requests, achievements, and monster counts. The hero goes back to the adventurer with a broom. Hearts are full and the cage is lifted. Today's tasks come back as not done. <span class="row"><button class="btn small clay" type="button" data-action="confirm-reset" data-id="${child.id}">Reset</button><button class="btn small ghost" type="button" data-action="cancel-reset">Keep</button></span></div>`
                       : ""
                   }${balances(child)}${
                     grounded(child)
@@ -1955,7 +1955,7 @@ app.addEventListener("click", (event) => {
   if (action === "confirm-reset") {
     run(
       () => rpc("reset_kid_progress", { p_kid: btn.dataset.id }),
-      "Reset. The task log is cleared. Hero, color stays, achievements and monster counts start over.",
+      "Reset. Coins, cash, minutes, and the finished log are cleared. Today's tasks are not done again.",
       "chart"
     );
   }
