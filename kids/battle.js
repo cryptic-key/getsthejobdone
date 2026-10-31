@@ -1775,10 +1775,16 @@ function burst(x, y, cols, n = 12, sp = 50) {
     particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, g: 120, life: rnd(0.25, 0.5), c: cols[i % cols.length] });
   }
 }
+let hardHit = false;
 function block(x, y, cols) {
-  burst(x, y, ["#ffffff", ...cols], 14, 60);
-  hero.kx = -3;
-  if (!reduce) shake = 0.12;
+  burst(x, y, ["#ffffff", ...cols], hardHit ? 18 : 14, hardHit ? 70 : 60);
+  hero.kx = hardHit ? -12 : -3;
+  if (hardHit) {
+    hero.down = true;
+    hero.hurt = Math.max(hero.hurt, 1.4);
+    hero.pose = "idle";
+  }
+  if (!reduce) shake = hardHit ? 0.24 : 0.12;
 }
 function makeMon(def, item) {
   return {
@@ -2117,17 +2123,32 @@ async function playFlee(item, token) {
   if (!ready || token !== runToken || !mon) return;
   const def = mon.def;
   hero.down = false;
+  hero.hurt = 0;
   mon.flee = false;
-  say(`${def.name} wins this one!`);
+  mon.approach = false;
+  mon.idle = true;
+  mon.showHp = false;
+  say(`${def.name} attacks!`);
   hero.pose = "block";
   hero.alert = 1;
-  if (!(await waitFor(0.35, token))) return;
-  hero.kx = -12;
-  hero.down = true;
-  if (!reduce) shake = 0.22;
-  burst(heroX() + 10, G - 6, ["#ffffff", "#e04a4a", "#f4c542"], 14, 50);
+  if (!(await waitFor(0.4, token))) return;
+  mon.idle = false;
+  hardHit = true;
+  try {
+    await def.attack(mon, apiFor(token));
+  } finally {
+    hardHit = false;
+  }
+  if (token !== runToken || !mon) return;
+  if (!(await until(() => projectiles.length === 0, token))) return;
+  if (!hero.down) {
+    block(heroX() + 10, G - 6, def.hit || ["#e04a4a", "#ffffff"]);
+    hero.down = true;
+    hero.hurt = Math.max(hero.hurt, 1.4);
+  }
   say("Knocked down!");
-  if (!(await waitFor(0.45, token))) return;
+  if (!(await waitFor(0.55, token))) return;
+  if (token !== runToken || !mon) return;
   mon.approach = false;
   mon.idle = false;
   mon.flee = true;
@@ -2137,6 +2158,7 @@ async function playFlee(item, token) {
   if (!(await waitFor(0.55, token))) return;
   if (token !== runToken) return;
   hero.down = false;
+  hero.hurt = 0;
   hero.pose = "walk";
   say("Back on the trail.");
   if (!(await waitFor(0.35, token))) return;
@@ -2945,6 +2967,7 @@ export function setStageScene(next) {
     hero.noWeapon = false;
     hero.hurt = 0;
     hero.power = 0;
+    hardHit = false;
     setReviewActions(false);
     const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.color || ""}:${kid.weaponKey || "broom"}`).sort().join("|");
     if (paradeOn && scene.paradeKey === key) return;
