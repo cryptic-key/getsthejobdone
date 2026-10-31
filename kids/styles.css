@@ -875,7 +875,9 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
 .sprite-card figcaption { font-size: 0.78rem; font-weight: 800; text-align: center; }
 .sprite-card canvas, .sprite-pick canvas {
   width: 52px;
-  height: auto;
+  height: 52px;
+  object-fit: contain;
+  object-position: center;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
@@ -1158,6 +1160,45 @@ details.library .lede { margin-top: 8px; }
 .daily-tools .btn { padding: 6px 8px; font-size: 0.82rem; white-space: nowrap; }
 .daily-chore .chore-copy { flex: 1 1 120px; min-width: 120px; }
 .daily-chore .monster-choice { flex: none; }
+@media (max-width: 700px) {
+  .chore.daily-chore {
+    gap: 6px 8px;
+    padding: 8px 0;
+    align-items: center;
+  }
+  .daily-tools {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    max-width: 100%;
+  }
+  .daily-tools .btn { padding: 4px 7px; font-size: 0.75rem; }
+  .daily-chore .chore-copy {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+  .daily-chore .chore-copy strong { font-size: 0.95rem; }
+  .monster-choice {
+    min-height: 34px;
+    padding: 2px 8px 2px 2px;
+    gap: 6px;
+    font-size: 0.78rem;
+    border-width: 2px;
+  }
+  .monster-choice canvas,
+  button.monster-option canvas {
+    width: 28px;
+    height: 28px;
+  }
+  .points-field { width: 72px; }
+  .points-field input { margin-top: 2px; padding: 6px 8px; }
+  .daily-chore .btn.small { padding: 6px 9px; }
+  .sprite-card { min-width: 72px; gap: 4px; }
+  .sprite-card canvas { width: 40px; height: 40px; }
+}
 .drag-handle {
   border: none;
   background: transparent;

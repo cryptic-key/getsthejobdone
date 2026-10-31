@@ -898,6 +898,190 @@ const MON = {
       m.openT = 0;
     },
   },
+  sleep: {
+    name: "Bedtime Beast",
+    w: 24,
+    h: 16,
+    chomp: true,
+    hit: ["#4a7ad8", "#7fa8f0", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 1.5) | 0) % 2) : 0),
+    draw(g, x, y, m) {
+      jaw(g, x, y + 3, m, bedTop, bedBot, 7, 1, 16, "#3a0c14", "#ffffff");
+      g.drawImage(headboard, x + 18, y);
+    },
+    attack(m, api) {
+      return toss(m, api, [
+        { k: "pillow", y: G - 10, vx: -75, vy: -50, gap: 0.22 },
+        { s: teddyS, y: G - 10, vx: -80, vy: -40, gap: 0.2 },
+        { k: "pillow", y: G - 10, vx: -85, vy: -60 },
+      ], { lift: false });
+    },
+  },
+  dry: {
+    name: "Diaper Monster",
+    w: 16,
+    h: 12,
+    headroom: 11,
+    hpLift: 11,
+    drizzle: true,
+    hit: ["#ffffff", "#7fb4f0", "#ffb0c4"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 6)) * 2) : 0),
+    draw(g, x, y, m) {
+      const cy = y - 8 + (((m.t * 2) | 0) % 2);
+      disc(g, x + 6, cy, 3, K);
+      disc(g, x + 10, cy - 1, 3, K);
+      rect(g, x + 3, cy, 11, 3, K);
+      disc(g, x + 6, cy, 2, "#9aa4b6");
+      disc(g, x + 10, cy - 1, 2, "#9aa4b6");
+      rect(g, x + 4, cy, 9, 2, "#9aa4b6");
+      px(g, x + 9, cy - 2, "#c8d0e0");
+      g.drawImage(m.open > 0.5 ? diaB : diaA, x, y);
+    },
+    attack(m, api) {
+      return toss(m, api, [
+        { s: dropS, spin: false, y: G - 14, vx: -70, vy: -35, gap: 0.15 },
+        { s: powderS, spin: false, y: G - 8, vx: -60, vy: -20, g: 40, gap: 0.15 },
+        { s: dropS, spin: false, y: G - 14, vx: -82, vy: -50 },
+      ], { lift: false });
+    },
+  },
+  breakfast: {
+    name: "Toaster Terror",
+    w: 20,
+    h: 14,
+    headroom: 4,
+    hpLift: 4,
+    hit: ["#d8dee8", "#f0d090", "#b07840"],
+    yoff: (m) => (m.idle ? -(((m.t * 3) | 0) % 2) : 0),
+    draw(g, x, y, m) {
+      const pop = Math.round(m.open * 4);
+      for (const c of [3, 9]) {
+        rect(g, x + c, y - 2 - pop, 5, 4, K);
+        rect(g, x + c + 1, y - 1 - pop, 3, 3, "#b07840");
+        rect(g, x + c + 2, y - pop, 1, 2, "#f0d090");
+      }
+      g.drawImage(m.open > 0.5 ? toasterB : toasterA, x, y + 1);
+      rect(g, x + 18, y + 5, 1, 4, K);
+      rect(g, x + 18, y + 4 - (m.open > 0.5 ? 0 : -2), 2, 2, "#e04a4a");
+      px(g, x + 19, y + 4 - (m.open > 0.5 ? 0 : -2), K);
+    },
+    async attack(m, api) {
+      m.openT = 1;
+      if (!(await api.wait(0.2))) return;
+      for (let i = 0; i < 6; i += 1) {
+        api.particles.push({
+          x: m.x + 5 + (i % 2) * 6, y: G - 15, vx: rnd(-6, 6), vy: -rnd(12, 22),
+          g: -8, life: 0.8, c: R() < 0.5 ? "#9aa4b6" : "#c8d0e0", s: 2,
+        });
+      }
+      for (let i = 0; i < 2; i += 1) {
+        api.projectiles.push({
+          k: "spr", s: toastS, x: m.x + 5 + i * 6, y: G - 16,
+          vx: -rnd(62, 72), vy: -rnd(70, 85), g: 170, spin: true,
+        });
+        if (!(await api.wait(0.18))) return;
+      }
+      m.openT = 0;
+    },
+  },
+  dinner: {
+    name: "Sizzle Skillet",
+    w: 24,
+    h: 13,
+    sizzle: true,
+    hit: ["#6e7688", "#f4c542", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 4) | 0) % 2) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 ? panB : panA, x, y); },
+    async attack(m, api) {
+      m.openT = 1;
+      m.lift = 1;
+      if (!(await api.wait(0.22))) return;
+      for (let i = 0; i < 8; i += 1) {
+        api.particles.push({
+          x: m.x + rnd(3, 15), y: G - 8, vx: rnd(-30, 30), vy: -rnd(30, 60),
+          g: 160, life: 0.4, c: "#f4e08a",
+        });
+      }
+      for (const p of [
+        { s: sausageS, vx: -70, vy: -75 },
+        { s: peaS, vx: -80, vy: -55 },
+        { s: sausageS, vx: -78, vy: -90 },
+        { s: peaS, vx: -86, vy: -45 },
+      ]) {
+        api.projectiles.push({ k: "spr", x: m.x + 8, y: G - 10, g: 170, spin: p.s === sausageS, ...p });
+        if (!(await api.wait(0.12))) return;
+      }
+      m.lift = 0;
+      m.openT = 0;
+    },
+  },
+  lunchmade: {
+    name: "Sandwich Snapper",
+    w: 18,
+    h: 13,
+    chomp: true,
+    headroom: 6,
+    hpLift: 6,
+    hit: ["#e0a858", "#5cc96a", "#e04a4a", "#f4d742"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y, m) {
+      const o = Math.round(m.open * 4);
+      rect(g, x + 9, y - 4 - o, 1, 4, "#e8c07a");
+      disc(g, x + 9, y - 5 - o, 1, "#3a8f4a");
+      px(g, x + 9, y - 5 - o, "#e04a4a");
+      jaw(g, x, y, m, sandTop, sandBot, 6, 1, 16, "#3a0c14", "#ffffff");
+      px(g, x + 5, y + 9, "#f4d742");
+      rect(g, x + 12, y + 9, 1, 2, "#f4d742");
+    },
+    attack(m, api) {
+      return toss(m, api, [
+        { s: pickleS, y: G - 8, vx: -72, vy: -45, gap: 0.13 },
+        { s: tomatoS, y: G - 8, vx: -80, vy: -60, gap: 0.13 },
+        { s: pickleS, y: G - 8, vx: -86, vy: -35 },
+      ], { lift: false });
+    },
+  },
+  bath: {
+    name: "Bubble Bath Beast",
+    w: 20,
+    h: 15,
+    hpLift: 12,
+    headroom: 14,
+    shower: true,
+    bubbly: true,
+    hit: ["#e6f4ff", "#bfefff", "#f4d742", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y, m) {
+      const P = "#d8dee8";
+      const p = "#9aa4b6";
+      rect(g, x + 17, y - 14, 4, 22, K);
+      rect(g, x + 11, y - 14, 10, 4, K);
+      rect(g, x + 18, y - 13, 2, 21, P);
+      rect(g, x + 12, y - 13, 7, 2, P);
+      rect(g, x + 19, y - 13, 1, 21, p);
+      px(g, x + 18, y - 13, "#ffffff");
+      rect(g, x + 16, y + 4, 6, 3, K);
+      rect(g, x + 17, y + 5, 4, 1, "#f4c542");
+      rect(g, x + 8, y - 11, 7, 4, K);
+      rect(g, x + 9, y - 11, 5, 2, P);
+      rect(g, x + 9, y - 9, 5, 1, p);
+      for (const c of [9, 11, 13]) px(g, x + c, y - 8, "#55606e");
+      g.drawImage(m.open > 0.5 ? bathB : bathA, x, y);
+      g.drawImage(duckS, x + 11, y - 4 + (((m.t * 3) | 0) % 2));
+    },
+    async attack(m, api) {
+      m.openT = 1;
+      if (!(await api.wait(0.25))) return;
+      api.projectiles.push({ k: "spr", s: duckS, x: m.x + 6, y: G - 14, vx: -75, vy: -55, g: 150, spin: false });
+      if (!(await api.wait(0.2))) return;
+      for (let i = 0; i < 2; i += 1) {
+        api.projectiles.push({ k: "bubble", x: m.x + 4, y: G - 9, vx: -50, vy: 0, g: 0, ph: i * 2, base: G - 9 - i * 4 });
+        if (!(await api.wait(0.2))) return;
+      }
+      api.projectiles.push({ k: "spr", s: duckS, x: m.x + 6, y: G - 14, vx: -82, vy: -40, g: 150, spin: false });
+      m.openT = 0;
+    },
+  },
   bed: {
     name: "Sheet Ghost",
     w: 16,
@@ -1828,13 +2012,14 @@ const FONT = {
 
 export function drawMonsterIcon(target, type) {
   const def = MON[normalizeSprite(type)];
+  if (!def) return;
   const hr = def.headroom || 0;
   target.width = def.w + (hr ? 2 : 0);
   target.height = def.h + hr + 2;
   const g = target.getContext("2d");
   g.imageSmoothingEnabled = false;
   g.clearRect(0, 0, target.width, target.height);
-  def.draw(g, 0, hr + 2, { open: 0, t: 0, idle: false });
+  def.draw(g, 0, hr + 2, { open: 0, t: 0, idle: false, shake: 0, flash: 0, lunge: 0 });
 }
 
 export function drawHeroIcon(target, color) {
@@ -3464,8 +3649,14 @@ export function setStageScene(next) {
 }
 
 export function paintSpriteIcons(root) {
-  root.querySelectorAll("canvas[data-sprite]").forEach((icon) => drawMonsterIcon(icon, icon.dataset.sprite));
-  root.querySelectorAll("canvas[data-hero]").forEach((icon) => drawHeroIcon(icon, icon.dataset.hero));
+  root.querySelectorAll("canvas[data-sprite]").forEach((icon) => {
+    try { drawMonsterIcon(icon, icon.dataset.sprite); }
+    catch { /* keep other icons painting if one sprite fails */ }
+  });
+  root.querySelectorAll("canvas[data-hero]").forEach((icon) => {
+    try { drawHeroIcon(icon, icon.dataset.hero); }
+    catch { /* ignore */ }
+  });
 }
 
 let questWalkRaf = 0;
