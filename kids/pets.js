@@ -212,7 +212,9 @@ export function drawPetAt(drawCtx, key, x, groundY, opts = {}) {
   const fr = (P.fly ? ((t * 6) | 0) % 2 : moving && ((t * 8) | 0) % 2) ? P.b : P.a;
   const pxX = Math.round(x);
   const py = groundY - (P.h - 1) + (P.fly ? -10 + Math.round(Math.sin(t * 3) * 2) : 0);
-  rect(drawCtx, pxX + 2, groundY, Math.max(3, P.w - 4), 1, opts.shadow || "#3e8c2c");
+  if (opts.shadow !== false && opts.shadow !== "none") {
+    rect(drawCtx, pxX + 2, groundY, Math.max(3, P.w - 4), 1, opts.shadow || "#3e8c2c");
+  }
   drawCtx.drawImage(fr, pxX, py);
   if (P.extra) P.extra(pxX, py, drawCtx);
   return P.w;

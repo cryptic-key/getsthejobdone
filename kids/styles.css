@@ -941,12 +941,6 @@ body.play .kid-pick {
   padding: 16px 12px 14px;
 }
 body.play .kid-pick .face { width: 72px; height: 72px; animation: bob 2s ease-in-out infinite; }
-body.play .kid-pick .pick-figures {
-  position: relative;
-  display: grid;
-  justify-items: center;
-  width: min(128px, 100%);
-}
 body.play .kid-pick .hero-icon {
   width: 128px;
   max-width: 100%;
@@ -956,18 +950,7 @@ body.play .kid-pick .hero-icon {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   animation: bob 2s ease-in-out infinite;
-}
-body.play .kid-pick .pick-pet {
-  position: absolute;
-  left: -6px;
-  bottom: 2px;
-  width: 44px;
-  height: auto;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  animation: bob 2s ease-in-out infinite;
-  animation-delay: 0.35s;
-  pointer-events: none;
+  overflow: visible;
 }
 body.play .kid-pick:nth-child(2) .face { animation-delay: .2s; }
 body.play .kid-pick:nth-child(3) .face { animation-delay: .4s; }

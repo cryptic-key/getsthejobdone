@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=22";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=22";
-import { createChoreQuest } from "./chore-quest.js?v=22";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=23";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=23";
+import { createChoreQuest } from "./chore-quest.js?v=23";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -553,10 +553,7 @@ function roster() {
       .map((person) => {
         const pet = normalizePet(person.pet) || "";
         return `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
-          <span class="pick-figures">
-            <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" data-color="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}" width="40" height="34" aria-hidden="true"></canvas>
-            ${pet ? `<canvas class="pick-pet" data-pet="${esc(pet)}" width="28" height="24" aria-hidden="true"></canvas>` : ""}
-          </span>
+          <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" data-color="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}"${pet ? ` data-pet="${esc(pet)}"` : ""} width="40" height="34" aria-hidden="true"></canvas>
           <strong>${esc(person.name)}</strong>
           ${person.kind === "parent" ? `<span class="role">Parent</span>` : ""}
         </button>`;
@@ -1714,7 +1711,13 @@ function render() {
   paintQuestArt(app);
   mountQuestWalkers(app);
   app.querySelectorAll("canvas[data-look]").forEach((icon) =>
-    paintHeroBadge(icon, icon.dataset.look, heldWeapon(icon.dataset.weapon), icon.dataset.color || COLOR_HEX.leaf)
+    paintHeroBadge(
+      icon,
+      icon.dataset.look,
+      heldWeapon(icon.dataset.weapon),
+      icon.dataset.color || COLOR_HEX.leaf,
+      icon.dataset.pet || ""
+    )
   );
   paintVersion();
   pinHold = false;

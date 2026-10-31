@@ -2037,18 +2037,24 @@ export function drawHeroIcon(target, color) {
   g.drawImage(src, 0, 0, target.width, target.height);
 }
 
-export function paintHeroBadge(target, heroKey, weapon, color) {
+export function paintHeroBadge(target, heroKey, weapon, color, petKey) {
   const look = heroLook(heroKey, color);
   const src = look.a;
+  const pet = normalizePet(petKey);
+  const buddy = pet ? petSize(pet) : null;
   const padTop = 20;
-  const padSide = 28;
-  const padBottom = 4;
+  const padSide = 28 + (buddy ? buddy.w + 2 : 0);
+  const padBottom = 4 + (buddy ? Math.max(0, buddy.h - (look.h || src.height) + 2) : 0);
   const draft = document.createElement("canvas");
   draft.width = src.width + padSide * 2;
   draft.height = src.height + padTop + padBottom;
   const dg = draft.getContext("2d");
   dg.imageSmoothingEnabled = false;
   const ox = padSide;
+  const ground = padTop + (look.h || src.height) - 1;
+  if (pet && buddy) {
+    drawPetAt(dg, pet, ox - buddy.w - 1, ground, { time: 0, moving: false, shadow: false });
+  }
   dg.drawImage(src, ox, padTop);
   const image = weapon?.image;
   if (image) {
@@ -2798,9 +2804,10 @@ function shuffleWalkers(list) {
 }
 function layoutParade() {
   const ordered = shuffleWalkers(parade);
+  const gap = parade.some((walker) => walker.pet) ? 22 : 15;
   ordered.forEach((walker, index) => {
     const fromFront = ordered.length - 1 - index;
-    walker.tx = 30 - fromFront * 15;
+    walker.tx = 30 - fromFront * gap;
   });
   parade = ordered;
 }
