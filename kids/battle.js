@@ -192,7 +192,6 @@ function buildPrincess(color) {
     b: sprite([...prinTop, "..KDdDDdDDdDK.", ".KDDdDDdDDdDDK", "KWWWWWWWWWWWWK"], pal),
   };
 }
-const kingPal = { K, C: "#f4c542", c: "#e04a4a", A: "#8a5a2a", S: "#f4c89c", s: "#d39a6c", E: K, G: "#dcdce6", R: "#c0392b", Y: "#f4c542", W: "#ffffff", B: "#5a3418" };
 const kingTop = [
   "...C.C.C.C....",
   "...KCCCCCCK...",
@@ -213,7 +212,29 @@ const kingTop = [
   "..KWRRRRRRWK..",
   ".KWRRRRRRRRWK.",
 ];
-const queenPal = { K, C: "#f4c542", c: "#7fe0ff", A: "#3a2418", S: "#f4c89c", E: K, R: "#d64545", Y: "#f4c542", P: "#7a3fb0", p: "#552a80" };
+function buildKing(color) {
+  const robe = color || "#c0392b";
+  const pal = {
+    K,
+    C: "#f4c542",
+    c: "#e04a4a",
+    A: "#8a5a2a",
+    S: "#f4c89c",
+    s: "#d39a6c",
+    E: K,
+    G: "#dcdce6",
+    R: robe,
+    Y: "#f4c542",
+    W: "#ffffff",
+    B: "#5a3418",
+  };
+  return {
+    h: 20,
+    hand: 13,
+    a: sprite([...kingTop, ".KWKWKWKWKWWK.", "..KBBK..KBBK.."], pal),
+    b: sprite([...kingTop, ".KWWKWKWKWKWK.", "...KBBKKBBK..."], pal),
+  };
+}
 const queenTop = [
   "....C.C.C.....",
   "...KCcCcCK....",
@@ -233,29 +254,38 @@ const queenTop = [
   "..KKPPPPPPKK..",
   "..KPPpPPpPPK..",
 ];
+function buildQueen(color) {
+  const dress = color || "#7a3fb0";
+  const pal = {
+    K,
+    C: "#f4c542",
+    c: "#7fe0ff",
+    A: "#3a2418",
+    S: "#f4c89c",
+    E: K,
+    R: "#d64545",
+    Y: "#f4c542",
+    P: dress,
+    p: shade(dress, 0.72),
+  };
+  return {
+    h: 20,
+    hand: 13,
+    a: sprite([...queenTop, ".KPPpPPpPPpPK.", ".KPpPPpPPpPPK.", "KYYYYYYYYYYYYK"], pal),
+    b: sprite([...queenTop, "..KPpPPpPPpPK.", ".KPPpPPpPPpPPK", "KYYYYYYYYYYYYK"], pal),
+  };
+}
 const lookCache = new Map();
 function heroLook(key, color) {
   const kind = key || "knight";
-  const tint = color || (kind === "princess" ? "#ff8ac6" : "#3fa34d");
+  const tint = color || (kind === "princess" ? "#ff8ac6" : kind === "queen" ? "#7a3fb0" : kind === "king" ? "#c0392b" : "#3fa34d");
   const cacheKey = `${kind}:${tint}`;
   if (lookCache.has(cacheKey)) return lookCache.get(cacheKey);
   let look;
   if (kind === "princess") look = buildPrincess(tint);
-  else if (kind === "king") {
-    look = {
-      h: 20,
-      hand: 13,
-      a: sprite([...kingTop, ".KWKWKWKWKWWK.", "..KBBK..KBBK.."], kingPal),
-      b: sprite([...kingTop, ".KWWKWKWKWKWK.", "...KBBKKBBK..."], kingPal),
-    };
-  } else if (kind === "queen") {
-    look = {
-      h: 20,
-      hand: 13,
-      a: sprite([...queenTop, ".KPPpPPpPPpPK.", ".KPpPPpPPpPPK.", "KYYYYYYYYYYYYK"], queenPal),
-      b: sprite([...queenTop, "..KPpPPpPPpPK.", ".KPPpPPpPPpPPK", "KYYYYYYYYYYYYK"], queenPal),
-    };
-  } else look = { h: 16, hand: 10, ...buildHero(tint) };
+  else if (kind === "king") look = buildKing(tint);
+  else if (kind === "queen") look = buildQueen(tint);
+  else look = { h: 16, hand: 10, ...buildHero(tint) };
   lookCache.set(cacheKey, look);
   return look;
 }
