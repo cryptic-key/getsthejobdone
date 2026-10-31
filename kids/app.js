@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js";
-import { createChoreQuest } from "./chore-quest.js";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-hero";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-hero";
+import { createChoreQuest } from "./chore-quest.js?v=71bc-hero";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -127,31 +127,35 @@ function go(name, extra) {
 
 async function boot() {
   try {
-  const { error } = await supabase.rpc("list_kids", { p_code: "" });
-  schemaReady = !error || (error.code !== "PGRST202" && error.code !== "PGRST205" && !/schema cache/i.test(error.message || ""));
-  if (!schemaReady) {
-    route = { name: "welcome" };
+    const { error } = await supabase.rpc("list_kids", { p_code: "" });
+    schemaReady = !error || (error.code !== "PGRST202" && error.code !== "PGRST205" && !/schema cache/i.test(error.message || ""));
+    if (!schemaReady) {
+      route = { name: "welcome" };
+      render();
+      return;
+    }
+    await loadPlayers();
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      const ok = await loadParent();
+      route = { name: ok ? "family" : "parent-auth", mode: "signin" };
+      if (!ok) notice = "Sign in with a parent account on this family.";
+    } else if (sessionStorage.getItem(KID_TOKEN)) {
+      const ok = await loadKid();
+      route = { name: ok ? "today" : "welcome" };
+    } else {
+      route = { name: "welcome" };
+    }
     render();
-    return;
-  }
-  await loadPlayers();
-  const { data } = await supabase.auth.getSession();
-  if (data.session) {
-    const ok = await loadParent();
-    route = { name: ok ? "family" : "parent-auth", mode: "signin" };
-    if (!ok) notice = "Sign in with a parent account on this family.";
-  } else if (sessionStorage.getItem(KID_TOKEN)) {
-    const ok = await loadKid();
-    route = { name: ok ? "today" : "welcome" };
-  } else {
-    route = { name: "welcome" };
-  }
-  render();
   } catch (error) {
-    schemaReady = false;
     notice = nice(error);
-    route = { name: "welcome" };
-    render();
+    route = { name: route.name || "welcome" };
+    try {
+      render();
+    } catch (renderError) {
+      notice = nice(renderError);
+      app.innerHTML = `<div class="card stack"><h2 class="page-title">Something went wrong</h2><p class="error">${esc(notice)}</p><button class="btn leaf" type="button" onclick="location.reload()">Reload</button></div>`;
+    }
   }
 }
 
@@ -362,8 +366,12 @@ function parentHeroFallback(name) {
   return "knight";
 }
 
+function parentHero(name) {
+  return parentHeroFallback(name);
+}
+
 function parentLook(hero, name) {
-  return PARENT_HEROES[hero] ? hero : parentHeroFallback(name);
+  return PARENT_HEROES[hero] ? hero : parentHero(name);
 }
 
 function kidHero(hero) {
