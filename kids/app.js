@@ -4,6 +4,7 @@ import { APP_VERSION } from "./version.js";
 import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=17";
 import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=17";
 import { createChoreQuest } from "./chore-quest.js?v=17";
+import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -23,6 +24,21 @@ const COLOR_HEX = {
 const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "hero", "kid-shop", "me"]);
 const KID_TOKEN = "chart-kid-token";
 const BATTLE_KEY = "chart-battle-v1";
+
+function kidToken() {
+  return localStorage.getItem(KID_TOKEN) || sessionStorage.getItem(KID_TOKEN) || "";
+}
+
+function setKidToken(token) {
+  if (!token) return;
+  localStorage.setItem(KID_TOKEN, token);
+  sessionStorage.removeItem(KID_TOKEN);
+}
+
+function clearKidToken() {
+  localStorage.removeItem(KID_TOKEN);
+  sessionStorage.removeItem(KID_TOKEN);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const sideAuth = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -177,8 +193,24 @@ function go(name, extra) {
   render();
 }
 
+async function enableDevicePush() {
+  try {
+    await registerAdventureWorker();
+    if (db.session?.role === "parent") {
+      await ensurePushSubscription({ role: "parent", supabase });
+    } else if (db.session?.role === "kid") {
+      await ensurePushSubscription({ role: "kid", supabase, kidToken: kidToken() });
+    }
+  } catch {
+    /* notifications are optional */
+  }
+}
+
 async function boot() {
   try {
+    registerAdventureWorker();
+    const legacyKid = sessionStorage.getItem(KID_TOKEN);
+    if (legacyKid && !localStorage.getItem(KID_TOKEN)) setKidToken(legacyKid);
     const { error } = await supabase.rpc("list_kids", { p_code: "" });
     schemaReady = !error || (error.code !== "PGRST202" && error.code !== "PGRST205" && !/schema cache/i.test(error.message || ""));
     if (!schemaReady) {
@@ -192,9 +224,11 @@ async function boot() {
       const ok = await loadParent();
       route = { name: ok ? "chart" : "parent-auth", mode: "signin" };
       if (!ok) notice = "Sign in with a parent account on this family.";
-    } else if (sessionStorage.getItem(KID_TOKEN)) {
+      if (ok) enableDevicePush();
+    } else if (kidToken()) {
       const ok = await loadKid();
       route = { name: ok ? "today" : "welcome" };
+      if (ok) enableDevicePush();
     } else {
       route = { name: "welcome" };
     }
@@ -325,11 +359,11 @@ async function loadParent() {
 }
 
 async function loadKid() {
-  const token = sessionStorage.getItem(KID_TOKEN);
+  const token = kidToken();
   if (!token) return false;
   const { data, error } = await supabase.rpc("kid_snapshot", { p_token: token });
   if (error) {
-    sessionStorage.removeItem(KID_TOKEN);
+    clearKidToken();
     return false;
   }
   const snap = data;
@@ -860,7 +894,7 @@ function paintStage() {
       sessionStorage.setItem(WARN_SEEN, key);
       if (child) {
         child.warnParent = "";
-        supabase.rpc("kid_ack_warn", { p_token: sessionStorage.getItem(KID_TOKEN), p_seq: info?.seq || child.warnSeq });
+        supabase.rpc("kid_ack_warn", { p_token: kidToken(), p_seq: info?.seq || child.warnSeq });
       }
       paintStage();
     },
@@ -1150,7 +1184,7 @@ function onFightDone(id) {
   if (chore?.verdict === "flee") {
     if (db.session?.role === "kid") {
       chore.verdict = "";
-      supabase.rpc("kid_ack_verdict", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: id });
+      supabase.rpc("kid_ack_verdict", { p_token: kidToken(), p_chore: id });
     } else {
       markFleeSeen(id);
     }
@@ -2291,15 +2325,15 @@ app.addEventListener("click", (event) => {
   }
   if (action === "set-hero") {
     if (db.session?.role === "parent") run(() => rpc("parent_set_hero", { p_hero: btn.dataset.hero }), "Hero saved.", "parent-hero");
-    else run(() => rpc("kid_set_hero", { p_token: sessionStorage.getItem(KID_TOKEN), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
+    else run(() => rpc("kid_set_hero", { p_token: kidToken(), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
   }
   if (action === "set-color") {
     if (db.session?.role === "parent") run(() => rpc("parent_set_color", { p_color: btn.dataset.color }), "Color saved.", "parent-hero");
-    else run(() => rpc("kid_set_color", { p_token: sessionStorage.getItem(KID_TOKEN), p_color: btn.dataset.color }), "Color saved.", "hero");
+    else run(() => rpc("kid_set_color", { p_token: kidToken(), p_color: btn.dataset.color }), "Color saved.", "hero");
   }
   if (action === "set-weapon") {
     if (db.session?.role === "parent") run(() => rpc("parent_set_weapon", { p_weapon: btn.dataset.weapon }), "Weapon equipped.", "parent-hero");
-    else run(() => rpc("kid_set_weapon", { p_token: sessionStorage.getItem(KID_TOKEN), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
+    else run(() => rpc("kid_set_weapon", { p_token: kidToken(), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
   }
   if (action === "pick-sprite") {
     const form = btn.closest("form");
@@ -2348,8 +2382,19 @@ app.addEventListener("click", (event) => {
     if (!chore) return;
     const form = btn.closest("form");
     const points = form ? Number(new FormData(form).get("points")) : Number(chore.points) || 0;
+    const parentName = parent()?.name || "A parent";
     run(
-      () => rpc("add_special_chore", { p_title: chore.title, p_points: points, p_sprite: taskSprite(chore), p_kid: null }),
+      async () => {
+        await rpc("add_special_chore", { p_title: chore.title, p_points: points, p_sprite: taskSprite(chore), p_kid: null });
+        await sendAdventurePush(supabase, {
+          audience: "kids",
+          kid_ids: null,
+          title: "Bonus task",
+          body: `${parentName} added a bonus task`,
+          url: "./",
+          tag: "bonus-chore",
+        });
+      },
       "Sent to the special board once, for everybody.",
       "chores"
     );
@@ -2378,18 +2423,46 @@ app.addEventListener("click", (event) => {
   if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
   if (action === "done") {
     const chore = (db.chores || []).find((item) => item.id === btn.dataset.id);
+    const child = kid();
     run(
-      () => rpc("kid_mark_done", { p_token: sessionStorage.getItem(KID_TOKEN), p_chore: btn.dataset.id }),
+      async () => {
+        await rpc("kid_mark_done", { p_token: kidToken(), p_chore: btn.dataset.id });
+        await sendAdventurePush(supabase, {
+          audience: "parents",
+          kid_token: kidToken(),
+          title: "Task waiting",
+          body: `${child?.name || "A kid"} marked ${chore?.title || "a task"} done.`,
+          url: "./",
+          tag: "task-done",
+        });
+      },
       `Marked done. ${spriteName(taskSprite(chore))} is waiting until a parent approves it.`
     );
   }
-  if (action === "cash-out") run(() => rpc("kid_cash_out", { p_token: sessionStorage.getItem(KID_TOKEN) }), "$1.00 added to your cash balance.");
-  if (action === "buy-time") run(() => rpc("kid_buy_time", { p_token: sessionStorage.getItem(KID_TOKEN) }), "30 minutes added. A parent still turns that on in Screen Time.");
-  if (action === "ask") run(() => rpc("kid_ask", { p_token: sessionStorage.getItem(KID_TOKEN), p_item: btn.dataset.id }), "Asked. A parent has the points until they say yes or hand them back.");
+  if (action === "cash-out") run(() => rpc("kid_cash_out", { p_token: kidToken() }), "$1.00 added to your cash balance.");
+  if (action === "buy-time") run(() => rpc("kid_buy_time", { p_token: kidToken() }), "30 minutes added. A parent still turns that on in Screen Time.");
+  if (action === "ask") {
+    const item = (db.items || []).find((row) => row.id === btn.dataset.id);
+    const child = kid();
+    run(
+      async () => {
+        await rpc("kid_ask", { p_token: kidToken(), p_item: btn.dataset.id });
+        await sendAdventurePush(supabase, {
+          audience: "parents",
+          kid_token: kidToken(),
+          title: "Market ask",
+          body: `${child?.name || "A kid"} asked for ${item?.name || "an item"}.`,
+          url: "./",
+          tag: "market-ask",
+        });
+      },
+      "Asked. A parent has the points until they say yes or hand them back."
+    );
+  }
   if (action === "buy-pet") {
     const key = btn.dataset.pet;
     run(
-      () => rpc("kid_buy_pet", { p_token: sessionStorage.getItem(KID_TOKEN), p_pet: key }),
+      () => rpc("kid_buy_pet", { p_token: kidToken(), p_pet: key }),
       `${PET_CATALOG[key]?.name || "Pet"} joined your party!`,
       "kid-shop"
     );
@@ -2397,7 +2470,7 @@ app.addEventListener("click", (event) => {
   if (action === "set-pet") {
     const key = btn.dataset.pet || "";
     run(
-      () => rpc("kid_set_pet", { p_token: sessionStorage.getItem(KID_TOKEN), p_pet: key || null }),
+      () => rpc("kid_set_pet", { p_token: kidToken(), p_pet: key || null }),
       key ? `${PET_CATALOG[key]?.name || "Pet"} is with you on the trail.` : "Pet sent home.",
       "kid-shop"
     );
@@ -2567,8 +2640,19 @@ app.addEventListener("submit", (event) => {
   if (action === "add-special") {
     const kidId = data.kidId || null;
     const name = kidId ? db.kids.find((child) => child.id === kidId)?.name : "";
+    const parentName = parent()?.name || "A parent";
     run(
-      () => rpc("add_special_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)), p_kid: kidId }),
+      async () => {
+        await rpc("add_special_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)), p_kid: kidId });
+        await sendAdventurePush(supabase, {
+          audience: "kids",
+          kid_ids: kidId ? [kidId] : null,
+          title: "Bonus task",
+          body: `${parentName} added a bonus task`,
+          url: "./",
+          tag: "bonus-chore",
+        });
+      },
       name ? `Added once for ${name}.` : "Added once for every kid.",
       "chores"
     );
@@ -2645,6 +2729,7 @@ async function parentAuth(data) {
     route = { name: "chart" };
     notice = "";
     render();
+    enableDevicePush();
   } catch (error) {
     route = { ...route, error: nice(error) };
     render();
@@ -2733,6 +2818,7 @@ async function parentPinSignIn(parentId, pin) {
     route = { name: "chart" };
     draft = {};
     render();
+    enableDevicePush();
   } catch (error) {
     draft.pin = "";
     route.error = nice(error);
@@ -2791,18 +2877,32 @@ async function submitPin() {
     document.querySelector(".pin-card")?.classList.add("shake");
     return;
   }
-  sessionStorage.setItem(KID_TOKEN, token);
+  setKidToken(token);
   await loadKid();
   notice = "";
   route = { name: "today" };
   render();
   celebrate();
+  enableDevicePush();
 }
 
 async function signOut() {
+  const role = db.session?.role;
+  const token = kidToken();
   resetBattleMemory();
-  sessionStorage.removeItem(KID_TOKEN);
-  if (db.session?.role === "parent") await supabase.auth.signOut();
+  try {
+    if (role === "kid" && token) {
+      await clearPushSubscription({ role: "kid", supabase, kidToken: token });
+      await supabase.rpc("kid_sign_out", { p_token: token });
+    }
+    if (role === "parent") {
+      await clearPushSubscription({ role: "parent", supabase });
+      await supabase.auth.signOut();
+    }
+  } catch {
+    /* still clear local session */
+  }
+  clearKidToken();
   db = blank();
   notice = "";
   await loadPlayers();

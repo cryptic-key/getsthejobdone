@@ -917,7 +917,7 @@ begin
   end if;
   token := encode(extensions.gen_random_bytes(24), 'hex');
   insert into private.kid_sessions (kid_id, token_hash, expires_at)
-  values (p_kid, encode(extensions.digest(token, 'sha256'), 'hex'), now() + interval '12 hours');
+  values (p_kid, encode(extensions.digest(token, 'sha256'), 'hex'), now() + interval '400 days');
   return token;
 end;
 $$;
