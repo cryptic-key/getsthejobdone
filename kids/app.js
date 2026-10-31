@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=27";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=27";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=27";
-import { createChoreQuest } from "./chore-quest.js?v=27";
+import { APP_VERSION } from "./version.js?v=28";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=28";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=28";
+import { createChoreQuest } from "./chore-quest.js?v=28";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -159,6 +159,88 @@ async function rpc(name, args) {
   return data;
 }
 
+function proofUrl(path) {
+  if (!path) return "";
+  return `${SUPABASE_URL}/storage/v1/object/public/chore-proofs/${encodeURI(path)}`;
+}
+
+function proofDialogHtml() {
+  return `<dialog class="proof-dialog">
+    <form method="dialog" class="card stack proof-card">
+      <h2 class="page-title">Show your work</h2>
+      <p class="lede">Take a photo or pick one so a parent can see you finished.</p>
+      <input type="hidden" name="choreId" value="">
+      <button class="btn leaf" type="button" data-action="proof-camera">Take photo</button>
+      <button class="btn ghost" type="button" data-action="proof-library">Choose photo</button>
+      <button class="btn ghost" type="button" data-action="close-proof">Cancel</button>
+    </form>
+  </dialog>`;
+}
+
+function pickProofFile({ camera = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    if (camera) input.setAttribute("capture", "environment");
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("focus", onFocus);
+      fn(value);
+    };
+    const onFocus = () => {
+      setTimeout(() => {
+        if (!settled && !input.files?.length) finish(reject, new Error("Pick a photo to mark it done."));
+      }, 700);
+    };
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (file) finish(resolve, file);
+      else finish(reject, new Error("Pick a photo to mark it done."));
+    });
+    window.addEventListener("focus", onFocus);
+    input.click();
+  });
+}
+
+async function compressProof(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("Could not read that photo. Try another one.");
+  }
+  const max = 1280;
+  let width = bitmap.width;
+  let height = bitmap.height;
+  if (Math.max(width, height) > max) {
+    const scale = max / Math.max(width, height);
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+  if (!blob) throw new Error("Could not save that photo. Try another one.");
+  return blob;
+}
+
+async function uploadChoreProof(choreId, blob) {
+  const path = `${choreId}/${crypto.randomUUID().replace(/-/g, "")}.jpg`;
+  const { error } = await supabase.storage.from("chore-proofs").upload(path, blob, {
+    contentType: "image/jpeg",
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
 function nice(error) {
   const msg = error?.message || "Something went wrong";
   if (/wrong pin/i.test(msg)) return "That PIN does not match.";
@@ -184,6 +266,8 @@ function nice(error) {
   if (/section name required/i.test(msg)) return "Give the section a name.";
   if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
   if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
+  if (/photo required/i.test(msg)) return "Take or choose a photo to mark it done.";
+  if (/pick a photo/i.test(msg)) return "Take or choose a photo to mark it done.";
   return msg;
 }
 
@@ -300,7 +384,7 @@ async function loadParent() {
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet").order("created_at"),
-    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
+    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
@@ -334,6 +418,7 @@ async function loadParent() {
       ...chore,
       kidId: chore.kid_id,
       cashCents: chore.cash_cents,
+      proofPath: chore.proof_path || "",
       special: chore.chore_day == null,
     })),
     templates: (templates.data || []).map((row) => ({
@@ -383,6 +468,7 @@ async function loadKid() {
       ...chore,
       kidId: snap.kid.id,
       cashCents: chore.cash_cents,
+      proofPath: chore.proof_path || "",
       special: Boolean(chore.special),
       sectionId: chore.section_id || null,
       sectionTitle: chore.section_title || "",
@@ -1399,6 +1485,7 @@ function shell(title, sub, body, nav) {
     ${notice ? `<div class="banner info toast">${esc(notice)}</div>` : ""}
     ${body}
     ${play ? nav || "" : ""}
+    ${child ? proofDialogHtml() : ""}
     ${play ? "" : `<footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`}`;
 }
 
@@ -2095,7 +2182,18 @@ const views = {
               ? waiting
                   .map((chore) => {
                     const child = kidById(chore.kidId);
-                    return `<div class="chore waiting"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}</div></div><span class="row"><button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button><button class="btn small clay" data-action="reject-chore" data-id="${chore.id}">Reject</button></span></div>`;
+                    const thumb = proofUrl(chore.proofPath || chore.proof_path);
+                    return `<div class="chore waiting">
+                      <div class="waiting-copy">
+                        <div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}</div></div>
+                        <span class="row"><button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button><button class="btn small clay" data-action="reject-chore" data-id="${chore.id}">Reject</button></span>
+                      </div>
+                      ${
+                        thumb
+                          ? `<a class="proof-thumb" href="${esc(thumb)}" target="_blank" rel="noopener"><img src="${esc(thumb)}" alt="Proof photo" loading="lazy" decoding="async"></a>`
+                          : `<div class="proof-thumb empty" aria-hidden="true"></div>`
+                      }
+                    </div>`;
                   })
                   .join("")
               : `<p class="muted">Nothing is waiting. When a kid taps Done, it shows up here.</p>`
@@ -2599,11 +2697,26 @@ app.addEventListener("click", (event) => {
   if (action === "reject-chore") run(() => rpc("reject_chore", { p_chore: btn.dataset.id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
   if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
   if (action === "done") {
-    const chore = (db.chores || []).find((item) => item.id === btn.dataset.id);
+    const dialog = document.querySelector(".proof-dialog");
+    const field = dialog?.querySelector('input[name="choreId"]');
+    if (!dialog || !field) return;
+    field.value = btn.dataset.id || "";
+    if (!dialog.open) dialog.showModal();
+  }
+  if (action === "close-proof") document.querySelector(".proof-dialog")?.close();
+  if (action === "proof-camera" || action === "proof-library") {
+    const dialog = document.querySelector(".proof-dialog");
+    const choreId = dialog?.querySelector('input[name="choreId"]')?.value || "";
+    if (!choreId) return;
+    const chore = (db.chores || []).find((item) => item.id === choreId);
     const child = kid();
     run(
       async () => {
-        await rpc("kid_mark_done", { p_token: kidToken(), p_chore: btn.dataset.id });
+        const file = await pickProofFile({ camera: action === "proof-camera" });
+        const blob = await compressProof(file);
+        const path = await uploadChoreProof(choreId, blob);
+        await rpc("kid_mark_done", { p_token: kidToken(), p_chore: choreId, p_proof_path: path });
+        dialog?.close();
         await sendAdventurePush(supabase, {
           audience: "parents",
           kid_token: kidToken(),

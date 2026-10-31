@@ -104,6 +104,7 @@ create table if not exists public.chore_templates (
 alter table public.chores add column if not exists template_id uuid references public.chore_templates (id) on delete set null;
 alter table public.chores add column if not exists chore_day date;
 alter table public.chores add column if not exists approved_at timestamptz;
+alter table public.chores add column if not exists proof_path text;
 alter table public.chore_templates add column if not exists kind text not null default 'daily' check (kind in ('daily', 'special'));
 alter table public.chores add column if not exists sprite text not null default 'dust';
 alter table public.chore_templates add column if not exists sprite text not null default 'dust';
@@ -994,6 +995,7 @@ begin
         'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
         'sprite', c.sprite,
         'verdict', c.verdict,
+        'proof_path', c.proof_path,
         'special', (c.chore_day is null),
         'section_id', t.section_id,
         'section_title', s.title,
@@ -1075,7 +1077,7 @@ begin
 end;
 $$;
 
-create or replace function private.kid_mark_done(p_token text, p_chore uuid)
+create or replace function private.kid_mark_done(p_token text, p_chore uuid, p_proof_path text)
 returns void
 language plpgsql
 security definer
@@ -1086,12 +1088,25 @@ declare
   chore_title text;
   kname text;
   hid uuid;
+  proof text := nullif(btrim(coalesce(p_proof_path, '')), '');
 begin
   if kid is null then
     raise exception 'sign in again';
   end if;
+  if proof is null then
+    raise exception 'photo required';
+  end if;
+  if split_part(proof, '/', 1) is distinct from p_chore::text then
+    raise exception 'photo required';
+  end if;
+  if not exists (
+    select 1 from storage.objects o
+    where o.bucket_id = 'chore-proofs' and o.name = proof
+  ) then
+    raise exception 'photo required';
+  end if;
   update public.chores
-  set status = 'submitted', verdict = null
+  set status = 'submitted', verdict = null, proof_path = proof
   where id = p_chore and kid_id = kid and status = 'open'
   returning chores.title, chores.household_id into chore_title, hid;
   if chore_title is null then
@@ -1461,9 +1476,9 @@ create or replace function public.kid_snapshot(p_token text)
 returns jsonb language sql security invoker set search_path = ''
 as $$ select private.kid_snapshot(p_token) $$;
 
-create or replace function public.kid_mark_done(p_token text, p_chore uuid)
+create or replace function public.kid_mark_done(p_token text, p_chore uuid, p_proof_path text)
 returns void language plpgsql security invoker set search_path = ''
-as $$ begin perform private.kid_mark_done(p_token, p_chore); end $$;
+as $$ begin perform private.kid_mark_done(p_token, p_chore, p_proof_path); end $$;
 
 create or replace function public.kid_cash_out(p_token text)
 returns void language plpgsql security invoker set search_path = ''
@@ -1534,7 +1549,7 @@ begin
     'private.list_kids(text)',
     'private.kid_sign_in(uuid, text)',
     'private.kid_snapshot(text)',
-    'private.kid_mark_done(text, uuid)',
+    'private.kid_mark_done(text, uuid, text)',
     'private.kid_cash_out(text)',
     'private.kid_buy_time(text)',
     'private.kid_ask(text, uuid)',
@@ -1557,7 +1572,7 @@ begin
     'public.list_kids(text)',
     'public.kid_sign_in(uuid, text)',
     'public.kid_snapshot(text)',
-    'public.kid_mark_done(text, uuid)',
+    'public.kid_mark_done(text, uuid, text)',
     'public.kid_cash_out(text)',
     'public.kid_buy_time(text)',
     'public.kid_ask(text, uuid)',
@@ -1604,7 +1619,7 @@ grant execute on function private.deny_request(uuid) to authenticated;
 grant execute on function private.list_kids(text) to anon, authenticated;
 grant execute on function private.kid_sign_in(uuid, text) to anon, authenticated;
 grant execute on function private.kid_snapshot(text) to anon, authenticated;
-grant execute on function private.kid_mark_done(text, uuid) to anon, authenticated;
+grant execute on function private.kid_mark_done(text, uuid, text) to anon, authenticated;
 grant execute on function private.kid_cash_out(text) to anon, authenticated;
 grant execute on function private.kid_buy_time(text) to anon, authenticated;
 grant execute on function private.kid_ask(text, uuid) to anon, authenticated;
@@ -1628,7 +1643,7 @@ grant execute on function public.deny_request(uuid) to authenticated;
 grant execute on function public.list_kids(text) to anon, authenticated;
 grant execute on function public.kid_sign_in(uuid, text) to anon, authenticated;
 grant execute on function public.kid_snapshot(text) to anon, authenticated;
-grant execute on function public.kid_mark_done(text, uuid) to anon, authenticated;
+grant execute on function public.kid_mark_done(text, uuid, text) to anon, authenticated;
 grant execute on function public.kid_cash_out(text) to anon, authenticated;
 grant execute on function public.kid_buy_time(text) to anon, authenticated;
 grant execute on function public.kid_ask(text, uuid) to anon, authenticated;
@@ -2253,7 +2268,7 @@ begin
     raise exception 'nothing to reject';
   end if;
   update public.chores
-  set status = 'open', verdict = 'flee'
+  set status = 'open', verdict = 'flee', proof_path = null
   where id = chore.id;
   select name into kname from public.kids where id = chore.kid_id;
   insert into public.activity (household_id, kid_id, body)
@@ -3115,6 +3130,7 @@ begin
         'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
         'sprite', c.sprite,
         'verdict', c.verdict,
+        'proof_path', c.proof_path,
         'special', (c.chore_day is null),
         'section_id', t.section_id,
         'section_title', s.title,
@@ -3243,3 +3259,36 @@ begin
   );
 end;
 $$;
+
+-- Chore proof photos (kids upload; parents view on Approve).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'chore-proofs',
+  'chore-proofs',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists chore_proofs_insert on storage.objects;
+create policy chore_proofs_insert on storage.objects
+  for insert to anon, authenticated
+  with check (
+    bucket_id = 'chore-proofs'
+    and name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9._-]+$'
+  );
+
+drop policy if exists chore_proofs_select on storage.objects;
+create policy chore_proofs_select on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'chore-proofs');
+
+drop policy if exists chore_proofs_update on storage.objects;
+create policy chore_proofs_update on storage.objects
+  for update to anon, authenticated
+  using (bucket_id = 'chore-proofs')
+  with check (bucket_id = 'chore-proofs');

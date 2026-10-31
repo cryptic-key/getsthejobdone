@@ -379,12 +379,60 @@ input:focus, select:focus, button:focus-visible {
 .person:first-of-type, .list .item:first-child, .list .chore:first-child { border-top: 0; padding-top: 0; }
 
 .chore.waiting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
   background: var(--sun-soft);
   border: 3px solid var(--ink);
   border-radius: 16px;
   padding: 12px;
   margin-top: 10px;
 }
+
+.chore.waiting .waiting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.proof-thumb {
+  display: block;
+  width: 92px;
+  height: 92px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fffdf8;
+  flex: none;
+}
+
+.proof-thumb.empty {
+  background:
+    linear-gradient(135deg, rgba(36, 49, 44, 0.06) 25%, transparent 25%) -6px 0 / 12px 12px,
+    linear-gradient(225deg, rgba(36, 49, 44, 0.06) 25%, transparent 25%) -6px 0 / 12px 12px,
+    linear-gradient(315deg, rgba(36, 49, 44, 0.06) 25%, transparent 25%) 0 0 / 12px 12px,
+    linear-gradient(45deg, rgba(36, 49, 44, 0.06) 25%, transparent 25%) 0 0 / 12px 12px,
+    #efe6d4;
+}
+
+.proof-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.proof-dialog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  max-width: calc(100vw - 28px);
+}
+
+.proof-dialog::backdrop { background: rgba(36, 49, 44, 0.45); }
+.proof-dialog .proof-card { margin: 0; width: min(360px, calc(100vw - 28px)); }
 
 .who { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .swatch {
