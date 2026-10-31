@@ -2286,6 +2286,18 @@ function apiFor(token) {
     block,
   };
 }
+function clearBattleFx() {
+  effects.length = 0;
+  beamT = 0;
+  particles.length = 0;
+  projectiles.length = 0;
+}
+
+function bumpRun() {
+  runToken += 1;
+  clearBattleFx();
+}
+
 function goTrail() {
   mon = null;
   hero.pose = "walk";
@@ -2293,7 +2305,7 @@ function goTrail() {
   hero.oxT = 0;
   hero.power = 0;
   scrollTarget = scene.hero || scene.gear ? 18 : guardian ? 8 : 12;
-  projectiles.length = 0;
+  clearBattleFx();
   setReviewActions(false);
   if (scene.review) return;
   if (scene.hero || scene.gear) say("Walking the forest trail...");
@@ -2477,6 +2489,8 @@ async function presentReview(token) {
 async function playReviewApprove(token) {
   const item = scene.review;
   if (!item || reviewBusy) return;
+  const done = scene.onReviewApprove;
+  const choreId = item.id;
   reviewBusy = true;
   setReviewActions(false);
   const caster = stageParent();
@@ -2514,7 +2528,8 @@ async function playReviewApprove(token) {
   }
   say(`${item.kidName} heads off!`);
   hero.pose = "walk";
-  hero.oxT = 60;
+  // Review hero starts near x=78; ox must clear W+10 (138), so oxT needs > 60.
+  hero.oxT = 80;
   if (!(await until(() => heroX() > W + 10, token))) {
     reviewBusy = false;
     return;
@@ -2523,8 +2538,6 @@ async function playReviewApprove(token) {
   hero.ox = 0;
   hero.oxT = 0;
   clearReviewer();
-  const done = scene.onReviewApprove;
-  const choreId = item.id;
   scene.review = null;
   scene.onReviewApprove = null;
   scene.onReviewDecline = null;
@@ -2536,6 +2549,8 @@ async function playReviewApprove(token) {
 async function playReviewDecline(token) {
   const item = scene.review;
   if (!item || reviewBusy) return;
+  const done = scene.onReviewDecline;
+  const choreId = item.id;
   reviewBusy = true;
   setReviewActions(false);
   say(`Not yet. ${item.kidName} tries again.`);
@@ -2551,7 +2566,7 @@ async function playReviewDecline(token) {
   }
   hero.down = false;
   hero.pose = "walk";
-  hero.oxT = 60;
+  hero.oxT = 80;
   if (!(await until(() => heroX() > W + 10, token))) {
     reviewBusy = false;
     return;
@@ -2559,8 +2574,6 @@ async function playReviewDecline(token) {
   hero.ox = 0;
   hero.oxT = 0;
   clearReviewer();
-  const done = scene.onReviewDecline;
-  const choreId = item.id;
   scene.review = null;
   scene.onReviewApprove = null;
   scene.onReviewDecline = null;
@@ -3511,8 +3524,7 @@ export function setStageScene(next) {
       };
     });
     paradeOn = parade.length > 0;
-    runToken += 1;
-    projectiles.length = 0;
+    bumpRun();
     mon = null;
     if (!paradeOn) {
       goTrail();
@@ -3525,17 +3537,16 @@ export function setStageScene(next) {
     paradeOn = false;
     parade = [];
     scene.paradeKey = "";
-    runToken += 1;
+    bumpRun();
     mon = null;
-    projectiles.length = 0;
   }
   scene.gear = next.gear || null;
   scene.hero = next.hero || "";
   scene.onDone = next.onDone;
   scene.onLockup = next.onLockup || null;
   scene.onWarn = next.onWarn || null;
-  scene.onReviewApprove = next.onReviewApprove || null;
-  scene.onReviewDecline = next.onReviewDecline || null;
+  if (!reviewBusy || next.onReviewApprove) scene.onReviewApprove = next.onReviewApprove || null;
+  if (!reviewBusy || next.onReviewDecline) scene.onReviewDecline = next.onReviewDecline || null;
   scene.guardian = next.guardian || null;
   syncGuardian(scene.guardian);
   const review = next.review || null;
@@ -3564,8 +3575,7 @@ export function setStageScene(next) {
       return;
     }
     lastReview = reviewKey;
-    runToken += 1;
-    projectiles.length = 0;
+    bumpRun();
     mon = null;
     hero.ox = 0;
     hero.oxT = 0;
@@ -3573,15 +3583,14 @@ export function setStageScene(next) {
     return;
   }
   if (scene.review || reviewBusy) {
-    if (!reviewBusy) {
-      scene.review = null;
-      scene.onReviewApprove = null;
-      scene.onReviewDecline = null;
-      lastReview = "";
-      setReviewActions(false);
-      clearReviewer();
-      hero.power = 0;
-    }
+    if (reviewBusy) return;
+    scene.review = null;
+    scene.onReviewApprove = null;
+    scene.onReviewDecline = null;
+    lastReview = "";
+    setReviewActions(false);
+    clearReviewer();
+    hero.power = 0;
   }
   if (warn) {
     const warnKey = `${warn.seq || ""}:${warn.parent || ""}:${warn.hearts ?? ""}`;
@@ -3589,8 +3598,7 @@ export function setStageScene(next) {
     scene.lockup = null;
     if (warnKey === lastWarn && (warnBusy || warner)) return;
     lastWarn = warnKey;
-    runToken += 1;
-    projectiles.length = 0;
+    bumpRun();
     mon = null;
     reconcile();
     return;
@@ -3610,8 +3618,7 @@ export function setStageScene(next) {
     scene.lockup = lockup;
     if (lockKey === lastLockup && (lockBusy || (lockup === "held" && cage?.locked) || (lockup === "arrive" && cage))) return;
     lastLockup = lockKey;
-    runToken += 1;
-    projectiles.length = 0;
+    bumpRun();
     if (lockup === "held") {
       holdCage();
       return;
@@ -3643,8 +3650,7 @@ export function setStageScene(next) {
     return;
   }
   if (sameLead && sameFront) return;
-  runToken += 1;
-  projectiles.length = 0;
+  bumpRun();
   reconcile();
 }
 
@@ -4000,6 +4006,8 @@ function update(dt) {
   const target = POSE[hero.pose] ?? -55;
   hero.ang += (target - hero.ang) * Math.min(1, dt * 28);
   hero.smear = Math.max(0, hero.smear - dt);
+  beamT = Math.max(0, beamT - dt);
+  updateEffects(dt);
   hero.alert = Math.max(0, hero.alert - dt);
   hero.hurt = Math.max(0, hero.hurt - dt);
   const parentPoint = stageParent();
