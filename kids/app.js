@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=5";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=5";
-import { createChoreQuest } from "./chore-quest.js?v=5";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=6";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=6";
+import { createChoreQuest } from "./chore-quest.js?v=6";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -1800,29 +1800,39 @@ const views = {
         }
         ${db.templates.length ? "" : `<button class="btn leaf" data-action="goto" data-to="chores">Add tasks</button>`}
         <section class="card stack">
-          <h2 class="page-title">Grant or ground</h2>
-          <form class="stack" data-action="grant">
-            <div class="two">
-              <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
-              <label>Points<input name="points" type="number" min="0" value="0"></label>
-              <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
-              <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
-            </div>
-            <label>Note<input name="note" placeholder="Good report"></label>
-            <button class="btn sun" ${db.kids.length ? "" : "disabled"}>Grant reward</button>
-          </form>
-          <h2 class="page-title">Spent or cashed in</h2>
-          <p class="lede">Take coins off when they get spent. Take minutes off when you cash in screen time and add it in Screen Time. Take cash off when you pay it out.</p>
-          <form class="stack" data-action="spend">
-            <div class="two">
-              <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
-              <label>Coins<input name="points" type="number" min="0" value="0"></label>
-              <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
-              <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
-            </div>
-            <label>Note<input name="note" placeholder="Ice cream, or screen time used"></label>
-            <button class="btn clay" ${db.kids.length ? "" : "disabled"}>Take off</button>
-          </form>
+          <h2 class="page-title">Reward or deduct</h2>
+          <div class="reward-deduct-actions">
+            <button class="btn sun" type="button" data-action="open-reward" ${db.kids.length ? "" : "disabled"}>Reward</button>
+            <button class="btn clay" type="button" data-action="open-deduct" ${db.kids.length ? "" : "disabled"}>Deduct</button>
+          </div>
+          <dialog class="balance-dialog reward-dialog">
+            <form class="stack" data-action="grant">
+              <div class="section-title"><h2>Reward</h2><button type="button" class="btn small ghost" data-action="close-reward">Close</button></div>
+              <p class="lede">Add coins, cash, or minutes for a good report.</p>
+              <div class="two">
+                <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
+                <label>Points<input name="points" type="number" min="0" value="0"></label>
+                <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
+                <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
+              </div>
+              <label>Note<input name="note" placeholder="Good report"></label>
+              <span class="row"><button class="btn sun" type="submit" ${db.kids.length ? "" : "disabled"}>Grant reward</button><button class="btn ghost" type="button" data-action="close-reward">Cancel</button></span>
+            </form>
+          </dialog>
+          <dialog class="balance-dialog deduct-dialog">
+            <form class="stack" data-action="spend">
+              <div class="section-title"><h2>Deduct</h2><button type="button" class="btn small ghost" data-action="close-deduct">Close</button></div>
+              <p class="lede">Take coins off when they get spent. Take minutes off when you cash in screen time and add it in Screen Time. Take cash off when you pay it out.</p>
+              <div class="two">
+                <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
+                <label>Coins<input name="points" type="number" min="0" value="0"></label>
+                <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
+                <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
+              </div>
+              <label>Note<input name="note" placeholder="Ice cream, or screen time used"></label>
+              <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Take off</button><button class="btn ghost" type="button" data-action="close-deduct">Cancel</button></span>
+            </form>
+          </dialog>
           <h2 class="page-title">Cage release</h2>
           <p class="lede">When the last heart is gone, the hero is locked up. Approved chore coins count toward this goal. Hitting the goal frees them for good and restores three hearts. Set 0 if only a parent can lift.</p>
           <form class="two" data-action="save-cage-goal">
@@ -2155,6 +2165,16 @@ app.addEventListener("click", (event) => {
     if (dialog && !dialog.open) dialog.showModal();
   }
   if (action === "close-reset-child") document.querySelector(".reset-child-dialog")?.close();
+  if (action === "open-reward") {
+    const dialog = document.querySelector(".reward-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-reward") document.querySelector(".reward-dialog")?.close();
+  if (action === "open-deduct") {
+    const dialog = document.querySelector(".deduct-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-deduct") document.querySelector(".deduct-dialog")?.close();
   if (action === "reject-chore") run(() => rpc("reject_chore", { p_chore: btn.dataset.id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
   if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
   if (action === "done") {
@@ -2350,6 +2370,7 @@ app.addEventListener("submit", (event) => {
     );
   }
   if (action === "grant") {
+    document.querySelector(".reward-dialog")?.close();
     run(
       () =>
         rpc("grant_reward", {
@@ -2364,6 +2385,7 @@ app.addEventListener("submit", (event) => {
     );
   }
   if (action === "spend") {
+    document.querySelector(".deduct-dialog")?.close();
     run(
       () =>
         rpc("spend_balance", {

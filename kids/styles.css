@@ -1129,7 +1129,8 @@ button.monster-option canvas {
   image-rendering: crisp-edges;
 }
 .monster-dialog,
-.reset-child-dialog {
+.reset-child-dialog,
+.balance-dialog {
   width: min(720px, calc(100vw - 28px));
   max-height: min(80vh, 640px);
   overflow: auto;
@@ -1140,8 +1141,21 @@ button.monster-option canvas {
   box-shadow: 0 12px 0 rgba(36, 49, 44, 0.16);
 }
 .monster-dialog::backdrop,
-.reset-child-dialog::backdrop { background: rgba(36, 49, 44, 0.45); }
-.reset-child-dialog { width: min(420px, calc(100vw - 28px)); max-height: none; }
+.reset-child-dialog::backdrop,
+.balance-dialog::backdrop { background: rgba(36, 49, 44, 0.45); }
+.reset-child-dialog,
+.balance-dialog { width: min(420px, calc(100vw - 28px)); max-height: none; }
+.reward-deduct-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.reward-deduct-actions .btn {
+  width: 100%;
+  min-height: 52px;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
 button.monster-option {
   border: 3px solid transparent;
   background: transparent;
