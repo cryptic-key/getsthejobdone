@@ -1,6 +1,6 @@
 /* Pixel forest battles. Waiting chores idle on the trail. Approval plays the fight, hit bars, and defeat. */
 
-import { createPetFollower, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet } from "./pets.js";
+import { createPetFollower, drawPetAt, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet, petSize } from "./pets.js";
 
 export { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, drawPetIcon, normalizePet };
 
@@ -2451,6 +2451,7 @@ function parentFigure(info, x = 18) {
     stand: look.h || 16,
     hand: look.hand ?? 10,
     weapon: info.weapon || info.parentWeapon || null,
+    pet: normalizePet(info.pet) || null,
     cast: 0,
     point: 0,
     pointT: 0,
@@ -3520,7 +3521,10 @@ export function setStageScene(next) {
     hero.power = 0;
     hardHit = false;
     setReviewActions(false);
-    const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.color || ""}:${kid.weaponKey || "broom"}`).sort().join("|");
+    const key = next.parade
+      .map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.color || ""}:${kid.weaponKey || "broom"}:${normalizePet(kid.pet) || ""}`)
+      .sort()
+      .join("|");
     if (paradeOn && scene.paradeKey === key) return;
     scene.paradeKey = key;
     scene.waiting = [];
@@ -3542,6 +3546,7 @@ export function setStageScene(next) {
         h: look.h,
         hand: look.hand,
         weapon: kid.weapon || null,
+        pet: normalizePet(kid.pet) || null,
       };
     });
     paradeOn = parade.length > 0;
@@ -4178,6 +4183,11 @@ function draw() {
       const fr = walking && walker.pose === "walk" && ((time * 8 + walker.x) | 0) % 2;
       const x = Math.round(walker.x);
       const y = Math.round(G - ((walker.h || 16) - 1)) - (fr ? 1 : 0);
+      if (walker.pet) {
+        const size = petSize(walker.pet);
+        const petX = x - ((size?.w || 8) + 1);
+        drawPetAt(ctx, walker.pet, petX, G, { time, moving: walking && walker.pose === "walk", shadow: scenery.shadow });
+      }
       rect(ctx, x + 3, G, 8, 1, scenery.shadow);
       ctx.drawImage(fr ? walker.sprites.b : walker.sprites.a, x, y);
       if (walker.weapon?.image) drawGearWeapon(walker.weapon, x + 11, y + (walker.hand ?? 10), walker.ang);
@@ -4191,6 +4201,11 @@ function draw() {
     const rHand = parentFig.hand ?? 10;
     const warnCast = scene.warn?.view === "parent" && parentFig.cast;
     const pointing = (Number(parentFig.point) || 0) > 0.05;
+    const alone = !scene.hero && !scene.gear && !scene.review && !scene.warn && !scene.lockup;
+    if (alone && parentFig.pet) {
+      const size = petSize(parentFig.pet);
+      drawPetAt(ctx, parentFig.pet, rx - ((size?.w || 8) + 1), G, { time, moving: false, shadow: scenery.shadow });
+    }
     rect(ctx, rx + 3, G, 8, 1, scenery.shadow);
     ctx.drawImage(parentFig.look.a, rx, ry);
     if (!pointing) {

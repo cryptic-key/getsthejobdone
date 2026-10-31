@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=21";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=21";
-import { createChoreQuest } from "./chore-quest.js?v=21";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=22";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=22";
+import { createChoreQuest } from "./chore-quest.js?v=22";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -290,7 +290,7 @@ async function loadParent() {
   if (!user) return false;
   const { data: me, error } = await supabase
     .from("parents")
-    .select("id,name,email,color,hero,weapon,household_id,households(name,code,points_per_dollar,points_per_30,unground_points)")
+    .select("id,name,email,color,hero,weapon,pet,household_id,households(name,code,points_per_dollar,points_per_30,unground_points)")
     .eq("user_id", user.id)
     .maybeSingle();
   if (error) throw error;
@@ -298,7 +298,7 @@ async function loadParent() {
   await rpc("ensure_today");
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
-    supabase.from("parents").select("id,name,email,color,hero,weapon").order("created_at"),
+    supabase.from("parents").select("id,name,email,color,hero,weapon,pet").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
@@ -326,6 +326,7 @@ async function loadParent() {
       color: COLORS.includes(person.color) ? person.color : "teal",
       hero: parentLook(person.hero, person.name),
       weapon: person.weapon || "broom",
+      pet: normalizePet(person.pet) || "",
       hasPin: readyPins.has(person.id),
     })),
     kids: kids.data.map(mapKid),
@@ -484,7 +485,16 @@ function kidHero(hero) {
 
 function doorPeople() {
   return [
-    ...gateKids.map((child) => ({ id: child.id, name: child.name, color: child.color, kind: "kid", hasPin: true, hero: kidHero(child.hero), weapon: child.weapon || "broom" })),
+    ...gateKids.map((child) => ({
+      id: child.id,
+      name: child.name,
+      color: child.color,
+      kind: "kid",
+      hasPin: true,
+      hero: kidHero(child.hero),
+      weapon: child.weapon || "broom",
+      pet: normalizePet(child.pet) || "",
+    })),
     ...gateParents.map((person) => ({
       id: person.id,
       name: person.name,
@@ -493,6 +503,7 @@ function doorPeople() {
       hasPin: person.hasPin,
       hero: parentLook(person.hero, person.name),
       weapon: person.weapon || "broom",
+      pet: normalizePet(person.pet) || "",
     })),
   ];
 }
@@ -539,13 +550,17 @@ function roster() {
       : pinPad(`PIN for ${esc(selected.name)}`));
   return `<div class="stack">
     <div class="roster">${people
-      .map(
-        (person) => `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
-          <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" data-color="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}" width="40" height="34" aria-hidden="true"></canvas>
+      .map((person) => {
+        const pet = normalizePet(person.pet) || "";
+        return `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
+          <span class="pick-figures">
+            <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" data-color="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}" width="40" height="34" aria-hidden="true"></canvas>
+            ${pet ? `<canvas class="pick-pet" data-pet="${esc(pet)}" width="28" height="24" aria-hidden="true"></canvas>` : ""}
+          </span>
           <strong>${esc(person.name)}</strong>
           ${person.kind === "parent" ? `<span class="role">Parent</span>` : ""}
-        </button>`
-      )
+        </button>`;
+      })
       .join("")}</div>
     ${pad}
   </div>`;
@@ -556,13 +571,17 @@ async function loadPlayers() {
   gateParents = [];
   const { data, error } = await supabase.rpc("list_players");
   if (!error && data) {
-    gateKids = data.filter((row) => row.kind === "kid");
+    gateKids = data.filter((row) => row.kind === "kid").map((row) => ({
+      ...row,
+      pet: normalizePet(row.pet) || "",
+    }));
     gateParents = data.filter((row) => row.kind === "parent").map((row) => ({
       id: row.id,
       name: row.name,
       color: COLORS.includes(row.color) ? row.color : "teal",
       hero: parentLook(row.hero, row.name),
       weapon: row.weapon || "broom",
+      pet: normalizePet(row.pet) || "",
       hasPin: Boolean(row.has_pin),
     }));
     return;
@@ -753,6 +772,7 @@ function parentGuardian() {
     hero: parentLook(me?.hero, me?.name),
     color: COLOR_HEX[me?.color] || COLOR_HEX.teal,
     weapon: heldWeapon(me?.weapon || "broom"),
+    pet: normalizePet(me?.pet) || null,
   };
 }
 
@@ -855,6 +875,7 @@ function paintStage() {
         color: COLOR_HEX[person.color] || COLOR_HEX.leaf,
         weaponKey: person.weapon,
         weapon: heldWeapon(person.weapon),
+        pet: normalizePet(person.pet) || null,
       })),
       hearts: 3,
     });
@@ -1181,6 +1202,7 @@ function parentHeroBoard() {
   const me = parent();
   const heroKey = parentLook(me?.hero, me?.name);
   const weaponKey = quest.weapons[me?.weapon] ? me.weapon : "broom";
+  const equippedPet = normalizePet(me?.pet) || "";
   const color = heroColorName();
   const heroes = Object.entries(PARENT_HEROES)
     .map(
@@ -1203,6 +1225,17 @@ function parentHeroBoard() {
     </article>`;
     })
     .join("");
+  const pets = PET_KEYS.map((key) => {
+    const info = PET_CATALOG[key];
+    const active = key === equippedPet;
+    return `<div class="item pet-loot">
+      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${active ? "Equipped" : "Unlocked"}</div></div>
+      ${active
+        ? `<button class="btn small ghost" data-action="set-pet" data-pet="">Unequip</button>`
+        : `<button class="btn small leaf" data-action="set-pet" data-pet="${esc(key)}">Equip</button>`}
+    </div>`;
+  }).join("");
   return `<section class="card stack">
       <h2 class="page-title">Choose your hero</h2>
       <p class="lede">This look shows on the front door and the trail parade.</p>
@@ -1216,6 +1249,11 @@ function parentHeroBoard() {
       <h2 class="page-title">Weapons</h2>
       <p class="lede">Parents keep the whole armory unlocked.</p>
       <div class="armory">${weapons}</div>
+    </section>
+    <section class="card stack">
+      <h2 class="page-title">Pets</h2>
+      <p class="lede">Parents keep every buddy unlocked for the door parade.</p>
+      <div class="pet-market">${pets}</div>
     </section>
     ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}`;
 }
@@ -2571,11 +2609,19 @@ app.addEventListener("click", (event) => {
   }
   if (action === "set-pet") {
     const key = btn.dataset.pet || "";
-    run(
-      () => rpc("kid_set_pet", { p_token: kidToken(), p_pet: key || null }),
-      key ? `${PET_CATALOG[key]?.name || "Pet"} equipped.` : "Pet unequipped.",
-      route.name === "hero" ? "hero" : "kid-shop"
-    );
+    if (db.session?.role === "parent") {
+      run(
+        () => rpc("parent_set_pet", { p_pet: key || null }),
+        key ? `${PET_CATALOG[key]?.name || "Pet"} equipped.` : "Pet unequipped.",
+        "parent-hero"
+      );
+    } else {
+      run(
+        () => rpc("kid_set_pet", { p_token: kidToken(), p_pet: key || null }),
+        key ? `${PET_CATALOG[key]?.name || "Pet"} equipped.` : "Pet unequipped.",
+        route.name === "hero" ? "hero" : "kid-shop"
+      );
+    }
   }
   if (action === "fulfill") run(() => rpc("fulfill_request", { p_request: btn.dataset.id }));
   if (action === "deny") run(() => rpc("deny_request", { p_request: btn.dataset.id }), "Points returned.");

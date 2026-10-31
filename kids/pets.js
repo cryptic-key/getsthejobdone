@@ -200,6 +200,29 @@ export function drawPetIcon(target, key) {
   g.restore();
 }
 
+/** Draw a pet sprite on the battle stage at ground level. */
+export function drawPetAt(drawCtx, key, x, groundY, opts = {}) {
+  const P = PETS[normalizePet(key)];
+  if (!P || !drawCtx) return P?.w || 0;
+  const t = Number(opts.time) || 0;
+  const moving = Boolean(opts.moving);
+  time = t;
+  ctx = drawCtx;
+  G = groundY;
+  const fr = (P.fly ? ((t * 6) | 0) % 2 : moving && ((t * 8) | 0) % 2) ? P.b : P.a;
+  const pxX = Math.round(x);
+  const py = groundY - (P.h - 1) + (P.fly ? -10 + Math.round(Math.sin(t * 3) * 2) : 0);
+  rect(drawCtx, pxX + 2, groundY, Math.max(3, P.w - 4), 1, opts.shadow || "#3e8c2c");
+  drawCtx.drawImage(fr, pxX, py);
+  if (P.extra) P.extra(pxX, py, drawCtx);
+  return P.w;
+}
+
+export function petSize(key) {
+  const P = PETS[normalizePet(key)];
+  return P ? { w: P.w, h: P.h } : null;
+}
+
 /** Battle-stage follower. Wire into the stage loop. */
 export function createPetFollower(api) {
   return {
