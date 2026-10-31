@@ -1156,6 +1156,9 @@ button.monster-option canvas {
   font-size: 1rem;
   letter-spacing: 0.02em;
 }
+.reward-deduct-actions .ground-action {
+  grid-column: 1 / -1;
+}
 button.monster-option {
   border: 3px solid transparent;
   background: transparent;

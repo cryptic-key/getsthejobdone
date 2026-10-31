@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=6";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=6";
-import { createChoreQuest } from "./chore-quest.js?v=6";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=7";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=7";
+import { createChoreQuest } from "./chore-quest.js?v=7";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -1804,6 +1804,7 @@ const views = {
           <div class="reward-deduct-actions">
             <button class="btn sun" type="button" data-action="open-reward" ${db.kids.length ? "" : "disabled"}>Reward</button>
             <button class="btn clay" type="button" data-action="open-deduct" ${db.kids.length ? "" : "disabled"}>Deduct</button>
+            <button class="btn clay ground-action" type="button" data-action="open-ground" ${db.kids.length ? "" : "disabled"}>Ground</button>
           </div>
           <dialog class="balance-dialog reward-dialog">
             <form class="stack" data-action="grant">
@@ -1833,18 +1834,22 @@ const views = {
               <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Take off</button><button class="btn ghost" type="button" data-action="close-deduct">Cancel</button></span>
             </form>
           </dialog>
+          <dialog class="balance-dialog ground-dialog">
+            <form class="stack" data-action="ground">
+              <div class="section-title"><h2>Ground</h2><button type="button" class="btn small ghost" data-action="close-ground">Close</button></div>
+              <p class="lede">Lock a hero in the cage until a set time. Match the end time in Screen Time.</p>
+              <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
+              <label>Until<input name="until" type="datetime-local" required></label>
+              <label>Reason<input name="reason" required placeholder="What happened"></label>
+              <label class="row" style="font-weight:700"><input type="checkbox" name="clearMinutes" style="width:auto"> Clear device minutes</label>
+              <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Save grounding</button><button class="btn ghost" type="button" data-action="close-ground">Cancel</button></span>
+            </form>
+          </dialog>
           <h2 class="page-title">Cage release</h2>
           <p class="lede">When the last heart is gone, the hero is locked up. Approved chore coins count toward this goal. Hitting the goal frees them for good and restores three hearts. Set 0 if only a parent can lift.</p>
           <form class="two" data-action="save-cage-goal">
             <label>Coins to free the cage<input name="points" type="number" min="0" value="${Number(db.family.ungroundPoints) || 0}" required></label>
             <button class="btn leaf" type="submit">Save cage goal</button>
-          </form>
-          <form class="stack" data-action="ground">
-            <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
-            <label>Until<input name="until" type="datetime-local" required></label>
-            <label>Reason<input name="reason" required placeholder="What happened"></label>
-            <label class="row" style="font-weight:700"><input type="checkbox" name="clearMinutes" style="width:auto"> Clear device minutes</label>
-            <button class="btn clay" ${db.kids.length ? "" : "disabled"}>Save grounding</button>
           </form>
           ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
         </section>
@@ -2175,6 +2180,11 @@ app.addEventListener("click", (event) => {
     if (dialog && !dialog.open) dialog.showModal();
   }
   if (action === "close-deduct") document.querySelector(".deduct-dialog")?.close();
+  if (action === "open-ground") {
+    const dialog = document.querySelector(".ground-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-ground") document.querySelector(".ground-dialog")?.close();
   if (action === "reject-chore") run(() => rpc("reject_chore", { p_chore: btn.dataset.id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
   if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
   if (action === "done") {
@@ -2400,6 +2410,7 @@ app.addEventListener("submit", (event) => {
     );
   }
   if (action === "ground") {
+    document.querySelector(".ground-dialog")?.close();
     run(
       () =>
         rpc("ground_kid", {
