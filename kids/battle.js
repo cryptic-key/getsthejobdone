@@ -1802,30 +1802,99 @@ function setReviewActions(on) {
   });
 }
 
-function drawThoughtBubble(hx, hy, spriteId, side = "right") {
+function tintCanvas(src, col) {
+  const [c, g] = canvas(src.width, src.height);
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = col;
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
+function cloudMask(w, h) {
+  const [c, g] = canvas(w, h);
+  const r = Math.max(3, Math.min(5, (h >> 1) - 2));
+  const fill = "#ffffff";
+  rect(g, r, 1, w - 2 * r, h - 2, fill);
+  rect(g, 1, r, w - 2, h - 2 * r, fill);
+  const n = Math.max(2, Math.round((w - 2 * r) / 7));
+  for (let i = 0; i <= n; i += 1) {
+    const x = Math.round(r + ((w - 2 * r - 1) * i) / n);
+    disc(g, x, r, r, fill);
+    disc(g, x, h - r - 1, r, fill);
+  }
+  const m = Math.max(1, Math.round((h - 2 * r) / 6));
+  for (let i = 0; i <= m; i += 1) {
+    const y = Math.round(r + ((h - 2 * r - 1) * i) / m);
+    disc(g, r, y, r, fill);
+    disc(g, w - r - 1, y, r, fill);
+  }
+  return c;
+}
+
+function makeThought(spriteId) {
   const def = MON[normalizeSprite(spriteId)];
+  const [ic, ig] = canvas(def.w, def.h);
+  def.draw(ig, 0, 0, { open: 0, t: 0, idle: false, shake: 0, flash: 0, lunge: 0 });
+  const w = def.w + 10;
+  const h = def.h + 8;
+  const mask = cloudMask(w, h);
+  const [c, g] = canvas(w + 2, h + 2);
+  const edge = tintCanvas(mask, K);
+  for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2]]) g.drawImage(edge, dx, dy);
+  const [inner, ing] = canvas(w, h);
+  ing.drawImage(tintCanvas(mask, "#cfdcef"), 0, 0);
+  ing.globalCompositeOperation = "source-atop";
+  ing.drawImage(tintCanvas(mask, "#ffffff"), -1, -1);
+  g.drawImage(inner, 1, 1);
+  px(g, 4, 3, "#ffffff");
+  g.drawImage(ic, 1 + 5, 1 + 4);
+  return c;
+}
+
+function puff(x, y, r) {
+  disc(ctx, x, y, r, K);
+  disc(ctx, x, y, Math.max(1, r - 1), "#ffffff");
+}
+
+let thought = null;
+
+function ensureThought(spriteId) {
+  const key = normalizeSprite(spriteId);
+  if (thought?.key === key) return thought;
+  thought = { key, img: makeThought(key), t: 0 };
+  return thought;
+}
+
+function clearThought() {
+  thought = null;
+}
+
+function drawThoughtBubble(hx, hy, spriteId, side = "right") {
+  const item = ensureThought(spriteId);
+  const t = item.t;
   const left = side === "left";
-  const bx = hx + (left ? -14 : 12);
-  const by = hy - 16;
-  disc(ctx, bx, by, 11, K);
-  disc(ctx, bx, by, 10, "#fffdf8");
-  disc(ctx, hx + (left ? -5 : 9), hy - 5, 2.4, K);
-  disc(ctx, hx + (left ? -5 : 9), hy - 5, 1.6, "#fffdf8");
-  disc(ctx, hx + (left ? -2 : 7), hy - 1, 1.5, K);
-  disc(ctx, hx + (left ? -2 : 7), hy - 1, 0.9, "#fffdf8");
-  const scale = Math.min(1, 14 / Math.max(def.w, def.h, 1));
-  ctx.save();
-  ctx.translate(bx, by + 1);
-  ctx.scale(scale, scale);
-  def.draw(ctx, Math.round(-def.w / 2), Math.round(-def.h / 2), {
-    open: 0.2,
-    t: time,
-    idle: true,
-    flash: 0,
-    shake: 0,
-    lunge: 0,
-  });
-  ctx.restore();
+  if (t > 0.08) puff(hx + (left ? -7 : 15), hy - 1, 2);
+  if (t > 0.2) puff(hx + (left ? -12 : 20), hy - 4, 3);
+  if (t <= 0.34) return;
+  const im = item.img;
+  const bob = Math.round(Math.sin(time * 2.4));
+  const x = left
+    ? Math.max(2, hx - im.width - 8)
+    : Math.min(W - im.width - 2, hx + 24);
+  const y = Math.max(2, hy + 3 - im.height) + bob;
+  ctx.drawImage(im, x, y);
+  if (t < 0.5) {
+    for (let k = 0; k < 6; k += 1) {
+      const a = (k / 6) * Math.PI * 2;
+      px(
+        ctx,
+        x + im.width / 2 + Math.cos(a) * (im.width / 2 + 3),
+        y + im.height / 2 + Math.sin(a) * (im.height / 2 + 3),
+        "#ffffff",
+      );
+    }
+  }
 }
 
 function clearReviewer() {
@@ -3011,6 +3080,7 @@ function update(dt) {
       });
     }
   }
+  if (thought) thought.t += dt;
   if (warner) {
     warner.x += ((warner.tx ?? warner.x) - warner.x) * Math.min(1, dt * 5);
   }
