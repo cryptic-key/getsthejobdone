@@ -2023,7 +2023,7 @@ app.addEventListener("click", (event) => {
   if (!btn || btn.tagName === "FORM") return;
   const action = btn.dataset.action;
   if (action === "goto") go(btn.dataset.to);
-  if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "family" : "welcome");
+  if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "chart" : "welcome");
   if (action === "auth-mode") go("parent-auth", { mode: btn.dataset.mode, email: draft.email || "" });
   if (action === "kids-door") openKidGate();
   if (action === "pick-player") {
@@ -2473,7 +2473,7 @@ async function parentPinSignIn(parentId, pin) {
     const ok = await loadParent();
     if (!ok) throw new Error("This login is not on a family yet.");
     notice = "";
-    route = { name: "family" };
+    route = { name: "chart" };
     draft = {};
     render();
   } catch (error) {
