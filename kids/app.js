@@ -1,8 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=parent-outfit";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=parent-outfit";
-import { createChoreQuest } from "./chore-quest.js?v=parent-outfit";
+import { APP_VERSION } from "./version.js";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=2";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=2";
+import { createChoreQuest } from "./chore-quest.js?v=2";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -1385,6 +1386,17 @@ const SKY_THEME = {
   night: "#171f33",
 };
 
+function paintVersion() {
+  let el = document.querySelector(".app-version");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "app-version";
+    el.setAttribute("aria-hidden", "true");
+    document.body.appendChild(el);
+  }
+  el.textContent = `v${APP_VERSION}`;
+}
+
 function render() {
   pinHold = true;
   app.querySelector("dialog.pin-dialog[open]")?.close();
@@ -1410,6 +1422,7 @@ function render() {
   app.querySelectorAll("canvas[data-look]").forEach((icon) =>
     paintHeroBadge(icon, icon.dataset.look, heldWeapon(icon.dataset.weapon), icon.dataset.color || COLOR_HEX.leaf)
   );
+  paintVersion();
   pinHold = false;
   const pin = app.querySelector("dialog.pin-dialog");
   if (pin) pin.showModal();

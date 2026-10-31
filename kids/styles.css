@@ -921,6 +921,23 @@ body.play .ring-value { transition: stroke-dashoffset .9s cubic-bezier(.2, .8, .
 body.play .week-col i { transform-origin: bottom; animation: grow .7s ease both; }
 body.play .cash-card { border: 3px solid var(--ink); }
 
+.app-version {
+  position: fixed;
+  right: 10px;
+  bottom: 8px;
+  z-index: 6;
+  margin: 0;
+  padding: 0;
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: rgba(36, 49, 44, 0.4);
+  pointer-events: none;
+  user-select: none;
+}
+body.play:has(.play-nav) .app-version { bottom: 78px; }
+
 body.play .play-nav {
   position: fixed;
   left: 50%;
