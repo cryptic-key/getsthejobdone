@@ -2493,16 +2493,16 @@ set search_path = ''
 as $$
 declare
   hid uuid := private.require_household();
-  title text := btrim(coalesce(p_title, ''));
+  section_title text := btrim(coalesce(p_title, ''));
   start_m integer := ((coalesce(p_start_minute, 0) % 1440) + 1440) % 1440;
   end_m integer := ((coalesce(p_end_minute, 0) % 1440) + 1440) % 1440;
 begin
-  if title = '' then
+  if section_title = '' then
     raise exception 'section name required';
   end if;
   update public.chore_sections
   set
-    title = title,
+    title = section_title,
     start_minute = start_m,
     end_minute = end_m
   where id = p_id and household_id = hid;
