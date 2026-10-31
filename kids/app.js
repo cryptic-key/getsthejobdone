@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=15";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=15";
-import { createChoreQuest } from "./chore-quest.js?v=15";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=16";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=16";
+import { createChoreQuest } from "./chore-quest.js?v=16";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -94,7 +94,7 @@ function filteredActivity() {
 }
 
 function blank() {
-  return { family: null, parents: [], kids: [], chores: [], templates: [], sections: [], items: [], requests: [], activity: [], week: [], hero: null, session: null };
+  return { family: null, parents: [], kids: [], chores: [], templates: [], sections: [], items: [], requests: [], activity: [], week: [], hero: null, pets: [], petPrices: {}, session: null };
 }
 
 function esc(value) {
@@ -151,6 +151,9 @@ function nice(error) {
   if (/already has an account/i.test(msg)) return "That email already has an account. They can sign in.";
   if (/^grounded$/i.test(msg)) return "Device time is locked while you are grounded.";
   if (/not enough points/i.test(msg)) return "Not enough points for that.";
+  if (/already owned/i.test(msg)) return "You already have that pet.";
+  if (/pet locked/i.test(msg)) return "Buy that pet in the Market first.";
+  if (/unknown pet/i.test(msg)) return "That pet is not in the market.";
   if (/not enough coins/i.test(msg)) return "Not enough coins to take off.";
   if (/not enough minutes/i.test(msg)) return "Not enough screen time to cash in.";
   if (/not enough cash/i.test(msg)) return "Not enough cash to take off.";
@@ -224,7 +227,13 @@ function mapKid(row) {
     warnSeq: Number(row.warn_seq) || 0,
     hero: row.hero || "knight",
     weapon: row.weapon || "broom",
+    pet: normalizePet(row.pet) || "",
   };
+}
+
+function petPrice(key) {
+  const custom = Number(db.petPrices?.[key]);
+  return custom > 0 ? custom : DEFAULT_PET_PRICE;
 }
 
 function afterReset(chore, child) {
@@ -253,9 +262,9 @@ async function loadParent() {
   if (!me?.households) return false;
   await rpc("ensure_today");
   const day = torontoToday();
-  const [parents, kids, chores, templates, sections, items, requests, activity, doorPins] = await Promise.all([
+  const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
@@ -263,10 +272,12 @@ async function loadParent() {
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
     supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(200),
     supabase.rpc("door_ready"),
+    supabase.from("pet_prices").select("pet_key,cost"),
   ]);
   for (const result of [parents, kids, chores, templates, sections, items, requests, activity]) {
     if (result.error) throw result.error;
   }
+  if (petPrices.error) throw petPrices.error;
   const readyPins = new Set((doorPins.data || []).map((row) => row.parent_id));
   db = {
     family: {
@@ -307,6 +318,8 @@ async function loadParent() {
     items: items.data,
     requests: requests.data.map((req) => ({ ...req, kidId: req.kid_id, itemId: req.item_id })),
     activity: activity.data.map((row) => ({ id: row.id, kidId: row.kid_id, text: row.body, at: row.created_at })),
+    pets: [],
+    petPrices: Object.fromEntries((petPrices.data || []).map((row) => [row.pet_key, Number(row.cost) || DEFAULT_PET_PRICE])),
     session: { role: "parent", id: me.id },
   };
   return true;
@@ -356,8 +369,13 @@ async function loadKid() {
     })),
     week: snap.week || [],
     hero: await loadHeroBoard(token),
+    pets: Array.isArray(snap.pets) ? snap.pets.filter((key) => PET_CATALOG[key]) : [],
+    petPrices: snap.pet_prices && typeof snap.pet_prices === "object" ? snap.pet_prices : {},
     session: { role: "kid", id: snap.kid.id },
   };
+  if (Array.isArray(db.hero?.pets)) {
+    db.pets = db.hero.pets.filter((key) => PET_CATALOG[key]);
+  }
   return true;
 }
 
@@ -688,7 +706,7 @@ function kidStageGear(child) {
   if (!child) return null;
   const quest = questCatalog();
   const weaponKey = quest.weapons[child.weapon] ? child.weapon : "broom";
-  return { weapon: quest.weaponSprite(weaponKey) };
+  return { weapon: quest.weaponSprite(weaponKey), pet: normalizePet(child.pet) || null };
 }
 
 function parentGuardian() {
@@ -833,6 +851,7 @@ function paintStage() {
         })),
     onDone: onFightDone,
     gear: heroGear(),
+    pet: normalizePet(child?.pet || db.hero?.pet) || null,
     hearts: shownHearts,
     lockup,
     lockKey,
@@ -870,7 +889,59 @@ function heroGear() {
   if (db.session?.role !== "kid" || !db.hero) return null;
   const quest = questCatalog();
   const weaponKey = quest.weapons[db.hero.weapon] ? db.hero.weapon : "broom";
-  return { weapon: quest.weaponSprite(weaponKey) };
+  const pet = normalizePet(db.hero.pet || kid()?.pet) || null;
+  return { weapon: quest.weaponSprite(weaponKey), pet };
+}
+
+function ownedPets() {
+  const fromBoard = Array.isArray(db.hero?.pets) ? db.hero.pets : [];
+  const fromSnap = Array.isArray(db.pets) ? db.pets : [];
+  return [...new Set([...fromBoard, ...fromSnap])].filter((key) => PET_CATALOG[key]);
+}
+
+function petMarketBoard(child) {
+  const coins = Math.max(0, Number(child?.points) || 0);
+  const owned = new Set(ownedPets());
+  const equipped = normalizePet(child?.pet || db.hero?.pet) || "";
+  const rows = PET_KEYS.map((key) => {
+    const info = PET_CATALOG[key];
+    const cost = petPrice(key);
+    const have = owned.has(key);
+    const ready = coins >= cost;
+    const tag = [info.fly ? "flies" : "", info.hop ? "hops" : ""].filter(Boolean).join(" · ");
+    let action = `<button class="btn small leaf" data-action="buy-pet" data-pet="${esc(key)}" ${ready ? "" : "disabled"}>Buy</button>`;
+    if (have && equipped === key) action = `<span class="chip">With you</span>`;
+    else if (have) action = `<button class="btn small" data-action="set-pet" data-pet="${esc(key)}">Bring</button>`;
+    return `<div class="item loot pet-loot${have || ready ? " ready" : ""}">
+      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${have ? "Owned" : `${cost} coins`}${tag ? ` · ${tag}` : ""}</div>${have ? "" : meter(coins, cost)}</div>
+      ${action}
+    </div>`;
+  }).join("");
+  return `<section class="card">
+    <h2 class="page-title">Pets</h2>
+    <p class="lede">Buy a buddy that battles beside you on the trail. Parents can change the coin price later.</p>
+    ${equipped ? `<p class="hint">Out now: ${esc(PET_CATALOG[equipped]?.name || equipped)}. <button class="btn small ghost" data-action="set-pet" data-pet="">Send home</button></p>` : ""}
+    <div class="pet-market">${rows}</div>
+  </section>`;
+}
+
+function parentPetPricesBoard() {
+  const rows = PET_KEYS.map((key) => {
+    const info = PET_CATALOG[key];
+    const cost = petPrice(key);
+    return `<form class="item pet-price" data-action="save-pet-price" data-pet="${esc(key)}">
+      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">Market pet</div></div>
+      <label class="pet-cost"><span class="sr-only">Price</span><input name="cost" type="number" min="1" value="${cost}" required></label>
+      <button class="btn small ghost" type="submit">Save</button>
+    </form>`;
+  }).join("");
+  return `<section class="card">
+    <div class="section-title"><h2>Pet prices</h2></div>
+    <p class="lede">Kids buy these in the Market. Default is ${DEFAULT_PET_PRICE} coins each.</p>
+    <div class="pet-market">${rows}</div>
+  </section>`;
 }
 
 function heroColorName() {
@@ -2012,6 +2083,7 @@ const views = {
             <button class="btn leaf" type="submit">Add item</button>
           </form>
         </section>
+        ${parentPetPricesBoard()}
       </div>`,
       parentNav("shop")
     );
@@ -2080,6 +2152,7 @@ const views = {
               : `<p class="muted">No extra items yet.</p>`
           }
         </section>
+        ${petMarketBoard(child)}
       </div>`,
       kidNav("kid-shop")
     );
@@ -2314,6 +2387,22 @@ app.addEventListener("click", (event) => {
   if (action === "cash-out") run(() => rpc("kid_cash_out", { p_token: sessionStorage.getItem(KID_TOKEN) }), "$1.00 added to your cash balance.");
   if (action === "buy-time") run(() => rpc("kid_buy_time", { p_token: sessionStorage.getItem(KID_TOKEN) }), "30 minutes added. A parent still turns that on in Screen Time.");
   if (action === "ask") run(() => rpc("kid_ask", { p_token: sessionStorage.getItem(KID_TOKEN), p_item: btn.dataset.id }), "Asked. A parent has the points until they say yes or hand them back.");
+  if (action === "buy-pet") {
+    const key = btn.dataset.pet;
+    run(
+      () => rpc("kid_buy_pet", { p_token: sessionStorage.getItem(KID_TOKEN), p_pet: key }),
+      `${PET_CATALOG[key]?.name || "Pet"} joined your party!`,
+      "kid-shop"
+    );
+  }
+  if (action === "set-pet") {
+    const key = btn.dataset.pet || "";
+    run(
+      () => rpc("kid_set_pet", { p_token: sessionStorage.getItem(KID_TOKEN), p_pet: key || null }),
+      key ? `${PET_CATALOG[key]?.name || "Pet"} is with you on the trail.` : "Pet sent home.",
+      "kid-shop"
+    );
+  }
   if (action === "fulfill") run(() => rpc("fulfill_request", { p_request: btn.dataset.id }));
   if (action === "deny") run(() => rpc("deny_request", { p_request: btn.dataset.id }), "Points returned.");
   if (action === "remove-item") run(() => rpc("remove_item", { p_item: btn.dataset.id }));

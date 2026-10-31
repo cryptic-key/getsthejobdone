@@ -1834,7 +1834,7 @@ alter table public.kids add constraint kids_hero_check check (hero in ('knight',
 
 create table if not exists public.kid_rewards (
   kid_id uuid not null references public.kids (id) on delete cascade,
-  kind text not null check (kind in ('achievement', 'weapon')),
+  kind text not null check (kind in ('achievement', 'weapon', 'pet')),
   key text not null,
   earned_at timestamptz not null default now(),
   primary key (kid_id, kind, key)
@@ -2802,3 +2802,358 @@ grant execute on function public.parent_set_color(text) to authenticated;
 grant execute on function public.parent_set_weapon(text) to authenticated;
 
 notify pgrst, 'reload schema';
+-- Companion pets: owned via kid_rewards, equipped on kids.pet, prices per household (default 50).
+
+alter table public.kids add column if not exists pet text;
+
+alter table public.kid_rewards drop constraint if exists kid_rewards_kind_check;
+alter table public.kid_rewards
+  add constraint kid_rewards_kind_check check (kind in ('achievement', 'weapon', 'pet'));
+
+create table if not exists public.pet_prices (
+  household_id uuid not null references public.households (id) on delete cascade,
+  pet_key text not null,
+  cost integer not null check (cost > 0),
+  primary key (household_id, pet_key)
+);
+alter table public.pet_prices enable row level security;
+revoke all on table public.pet_prices from public, anon, authenticated;
+
+drop policy if exists pet_prices_select on public.pet_prices;
+create policy pet_prices_select on public.pet_prices
+  for select to authenticated
+  using (household_id = private.household_id());
+
+create or replace function private.pet_keys()
+returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  select array[
+    'puppy','kitten','bunny','hamster','duckling','frog','fox','turtle','penguin','owl',
+    'ghost','robot','slime','unicorn','dragon','rock','himalayan','tuxedo','crab','betta',
+    'gecko','platypus','shark','whale'
+  ]
+$$;
+
+create or replace function private.pet_cost(p_household uuid, p_pet text)
+returns integer
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  price integer;
+begin
+  if p_pet is null or not (p_pet = any (private.pet_keys())) then
+    raise exception 'unknown pet';
+  end if;
+  select cost into price
+  from public.pet_prices
+  where household_id = p_household and pet_key = p_pet;
+  return coalesce(price, 50);
+end;
+$$;
+
+create or replace function private.save_pet_price(p_pet text, p_cost integer)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  cost integer := greatest(1, coalesce(p_cost, 50));
+begin
+  if p_pet is null or not (p_pet = any (private.pet_keys())) then
+    raise exception 'unknown pet';
+  end if;
+  insert into public.pet_prices (household_id, pet_key, cost)
+  values (hid, p_pet, cost)
+  on conflict (household_id, pet_key) do update set cost = excluded.cost;
+end;
+$$;
+
+create or replace function private.kid_buy_pet(p_token text, p_pet text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  child public.kids%rowtype;
+  price integer;
+  pname text;
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  if p_pet is null or not (p_pet = any (private.pet_keys())) then
+    raise exception 'unknown pet';
+  end if;
+  select * into child from public.kids where id = kid;
+  if exists (
+    select 1 from public.kid_rewards
+    where kid_id = kid and kind = 'pet' and key = p_pet
+  ) then
+    raise exception 'already owned';
+  end if;
+  price := private.pet_cost(child.household_id, p_pet);
+  if child.points < price then
+    raise exception 'not enough points';
+  end if;
+  update public.kids
+  set points = points - price, pet = p_pet
+  where id = kid;
+  insert into public.kid_rewards (kid_id, kind, key)
+  values (kid, 'pet', p_pet)
+  on conflict do nothing;
+  pname := initcap(replace(p_pet, '_', ' '));
+  insert into public.activity (household_id, kid_id, body)
+  values (child.household_id, kid, child.name || ' adopted a ' || pname || ' for ' || price || ' coins.');
+end;
+$$;
+
+create or replace function private.kid_set_pet(p_token text, p_pet text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  if p_pet is null or btrim(p_pet) = '' then
+    update public.kids set pet = null where id = kid;
+    return;
+  end if;
+  if not (p_pet = any (private.pet_keys())) then
+    raise exception 'unknown pet';
+  end if;
+  if not exists (
+    select 1 from public.kid_rewards
+    where kid_id = kid and kind = 'pet' and key = p_pet
+  ) then
+    raise exception 'pet locked';
+  end if;
+  update public.kids set pet = p_pet where id = kid;
+end;
+$$;
+
+create or replace function public.save_pet_price(p_pet text, p_cost integer)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.save_pet_price(p_pet, p_cost); end $$;
+
+create or replace function public.kid_buy_pet(p_token text, p_pet text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.kid_buy_pet(p_token, p_pet); end $$;
+
+create or replace function public.kid_set_pet(p_token text, p_pet text)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.kid_set_pet(p_token, p_pet); end $$;
+
+revoke all on function private.pet_keys() from public, anon, authenticated;
+revoke all on function private.pet_cost(uuid, text) from public, anon, authenticated;
+revoke all on function private.save_pet_price(text, integer) from public, anon, authenticated;
+revoke all on function private.kid_buy_pet(text, text) from public, anon, authenticated;
+revoke all on function private.kid_set_pet(text, text) from public, anon, authenticated;
+revoke all on function public.save_pet_price(text, integer) from public, anon, authenticated;
+revoke all on function public.kid_buy_pet(text, text) from public, anon, authenticated;
+revoke all on function public.kid_set_pet(text, text) from public, anon, authenticated;
+
+grant execute on function private.pet_keys() to authenticated;
+grant execute on function private.pet_cost(uuid, text) to authenticated;
+grant execute on function private.save_pet_price(text, integer) to authenticated;
+grant execute on function private.kid_buy_pet(text, text) to anon, authenticated;
+grant execute on function private.kid_set_pet(text, text) to anon, authenticated;
+grant execute on function public.save_pet_price(text, integer) to authenticated;
+grant execute on function public.kid_buy_pet(text, text) to anon, authenticated;
+grant execute on function public.kid_set_pet(text, text) to anon, authenticated;
+
+-- Snapshot/board/reset pet fields are defined in apply migrations; keep schema.sql as install source.
+
+
+-- Pets: kid snapshot / hero board / reset extensions
+create or replace function private.kid_snapshot(p_token text)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  hid uuid;
+  result jsonb;
+  today date := (now() at time zone 'America/Toronto')::date;
+  now_min integer := private.toronto_minute();
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  select household_id into hid from public.kids where id = kid;
+  perform private.ensure_daily(hid);
+  select jsonb_build_object(
+    'family', jsonb_build_object(
+      'name', h.name,
+      'code', h.code,
+      'points_per_dollar', h.points_per_dollar,
+      'points_per_30', h.points_per_30,
+      'unground_points', h.unground_points
+    ),
+    'kid', jsonb_build_object(
+      'id', k.id,
+      'name', k.name,
+      'color', k.color,
+      'points', k.points,
+      'cash_cents', k.cash_cents,
+      'minutes', k.minutes,
+      'grounded_until', k.grounded_until,
+      'hearts', k.hearts,
+      'ground_progress', k.ground_progress,
+      'warn_parent', k.warn_parent,
+      'warn_seq', k.warn_seq,
+      'hero', k.hero,
+      'weapon', k.weapon,
+      'pet', k.pet
+    ),
+    'chores', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', c.id, 'title', c.title, 'points', c.points,
+        'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
+        'sprite', c.sprite,
+        'verdict', c.verdict,
+        'special', (c.chore_day is null),
+        'section_id', t.section_id,
+        'section_title', s.title,
+        'section_start', s.start_minute,
+        'section_end', s.end_minute,
+        'sort_order', coalesce(t.sort_order, 0)
+      ) order by
+        case when c.chore_day is null then 1 else 0 end,
+        coalesce(s.sort_order, -1),
+        coalesce(t.sort_order, 0),
+        c.created_at
+      )
+      from public.chores c
+      left join public.chore_templates t on t.id = c.template_id
+      left join public.chore_sections s on s.id = t.section_id
+      where c.kid_id = k.id and c.status <> 'approved'
+        and (c.chore_day is null or c.chore_day = today)
+        and (
+          c.chore_day is null
+          or c.status = 'submitted'
+          or c.verdict = 'flee'
+          or t.section_id is null
+          or private.section_is_open(s.start_minute, s.end_minute, now_min)
+        )
+    ), '[]'::jsonb),
+    'sections', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', s.id,
+        'title', s.title,
+        'start_minute', s.start_minute,
+        'end_minute', s.end_minute,
+        'open', private.section_is_open(s.start_minute, s.end_minute, now_min),
+        'sort_order', s.sort_order
+      ) order by s.sort_order, s.created_at)
+      from public.chore_sections s
+      where s.household_id = k.household_id
+    ), '[]'::jsonb),
+    'week', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'day', d::date,
+        'points', coalesce(e.points, 0),
+        'cash_cents', coalesce(e.cash_cents, 0)
+      ) order by d)
+      from generate_series(today - 6, today, interval '1 day') as d
+      left join (
+        select coalesce(c.chore_day, (c.approved_at at time zone 'America/Toronto')::date) as day,
+               sum(c.points)::int as points,
+               sum(c.cash_cents)::int as cash_cents
+        from public.chores c
+        where c.kid_id = k.id and c.status = 'approved' and c.approved_at is not null
+          and (k.progress_reset_at is null or c.approved_at > k.progress_reset_at)
+        group by 1
+      ) e on e.day = d::date
+    ), '[]'::jsonb),
+    'items', coalesce((
+      select jsonb_agg(jsonb_build_object('id', i.id, 'name', i.name, 'cost', i.cost) order by i.created_at)
+      from public.shop_items i
+      where i.household_id = k.household_id
+    ), '[]'::jsonb),
+    'requests', coalesce((
+      select jsonb_agg(jsonb_build_object('id', r.id, 'item_id', r.item_id, 'status', r.status))
+      from public.requests r
+      where r.kid_id = k.id and r.status = 'pending'
+    ), '[]'::jsonb),
+    'pets', coalesce((
+      select jsonb_agg(key order by earned_at)
+      from public.kid_rewards
+      where kid_id = k.id and kind = 'pet'
+    ), '[]'::jsonb),
+    'pet_prices', coalesce((
+      select jsonb_object_agg(pet_key, cost)
+      from public.pet_prices
+      where household_id = k.household_id
+    ), '{}'::jsonb),
+    'activity', coalesce((
+      select jsonb_agg(jsonb_build_object('id', a.id, 'body', a.body, 'created_at', a.created_at) order by a.created_at desc)
+      from (
+        select * from public.activity
+        where kid_id = k.id
+        order by created_at desc
+        limit 8
+      ) a
+    ), '[]'::jsonb)
+  ) into result
+  from public.kids k
+  join public.households h on h.id = k.household_id
+  where k.id = kid;
+  return result;
+end;
+$$;
+
+create or replace function private.kid_hero_board(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  stats jsonb;
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  stats := private.kid_stats(kid);
+  return jsonb_build_object(
+    'hero', (select hero from public.kids where id = kid),
+    'weapon', (select weapon from public.kids where id = kid),
+    'pet', (select pet from public.kids where id = kid),
+    'stats', stats,
+    'achievements', coalesce((
+      select jsonb_agg(key order by earned_at)
+      from public.kid_rewards
+      where kid_id = kid and kind = 'achievement'
+    ), '[]'::jsonb),
+    'weapons', coalesce((
+      select jsonb_agg(key order by earned_at)
+      from public.kid_rewards
+      where kid_id = kid and kind = 'weapon'
+    ), '[]'::jsonb),
+    'pets', coalesce((
+      select jsonb_agg(key order by earned_at)
+      from public.kid_rewards
+      where kid_id = kid and kind = 'pet'
+    ), '[]'::jsonb)
+  );
+end;
+$$;

@@ -1,5 +1,9 @@
 /* Pixel forest battles. Waiting chores idle on the trail. Approval plays the fight, hit bars, and defeat. */
 
+import { createPetFollower, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet } from "./pets.js";
+
+export { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, drawPetIcon, normalizePet };
+
 export const SPRITES = [
   { id: "dust", name: "Dust Bunny" },
   { id: "sleep", name: "Bedtime Beast" },
@@ -2143,7 +2147,17 @@ const scene = {
   onReviewApprove: null,
   onReviewDecline: null,
   guardian: null,
+  pet: null,
 };
+const petFollower = createPetFollower({
+  heroX: () => heroX(),
+  scroll: () => scroll,
+  time: () => time,
+  particles,
+  G,
+  busy: () => Boolean(scene.plays?.length || reviewBusy || warnBusy || lockBusy),
+  grounded: () => Boolean(cage?.locked),
+});
 let parade = [];
 let paradeOn = false;
 let warner = null;
@@ -2703,7 +2717,10 @@ async function playBattle(item, token) {
     }
     if (i === 2) {
       special(wk, hx, hy);
+      petFollower.cheer(true);
       if (!(await waitFor(0.75, token))) return;
+    } else {
+      petFollower.cheer(false);
     }
     if (!(await waitFor(wpn.beam ? 0.45 : 0.25, token))) return;
     mon.lungeT = 0;
@@ -2747,8 +2764,10 @@ async function playBattle(item, token) {
   say(`${item.title} is done. +${reward} coins`);
   hero.pose = "victory";
   hero.vy = -80;
+  petFollower.cheer(true);
   if (!(await waitFor(0.55, token))) return;
   hero.vy = -80;
+  petFollower.cheer(true);
   if (bits > 0) {
     if (!(await until(() => coins.length === 0, token))) return;
   }
@@ -3480,6 +3499,8 @@ export function setStageScene(next) {
     scene.review = null;
     scene.onReviewApprove = null;
     scene.onReviewDecline = null;
+    scene.pet = null;
+    petFollower.set(null);
     scene.guardian = null;
     lastLockup = "";
     lastWarn = "";
@@ -3542,6 +3563,8 @@ export function setStageScene(next) {
   }
   scene.gear = next.gear || null;
   scene.hero = next.hero || "";
+  scene.pet = normalizePet(next.pet || next.gear?.pet || null);
+  if (petFollower.get() !== scene.pet) petFollower.set(scene.pet);
   scene.onDone = next.onDone;
   scene.onLockup = next.onLockup || null;
   scene.onWarn = next.onWarn || null;
@@ -3661,6 +3684,10 @@ export function paintSpriteIcons(root) {
   });
   root.querySelectorAll("canvas[data-hero]").forEach((icon) => {
     try { drawHeroIcon(icon, icon.dataset.hero); }
+    catch { /* ignore */ }
+  });
+  root.querySelectorAll("canvas[data-pet]").forEach((icon) => {
+    try { drawPetIcon(icon, icon.dataset.pet); }
     catch { /* ignore */ }
   });
 }
@@ -4008,6 +4035,7 @@ function update(dt) {
   hero.smear = Math.max(0, hero.smear - dt);
   beamT = Math.max(0, beamT - dt);
   updateEffects(dt);
+  petFollower.update(dt);
   hero.alert = Math.max(0, hero.alert - dt);
   hero.hurt = Math.max(0, hero.hurt - dt);
   const parentPoint = stageParent();
@@ -4316,6 +4344,7 @@ function draw() {
     if (R() < 0.45) particles.push({ x: sx, y: sy, vx: rnd(-12, 12), vy: rnd(-12, 12), g: 0, life: 0.2, c: "#c77dff" });
   }
   if (mon?.alive) drawMonster(mon);
+  if (!(paradeOn && parade.length)) petFollower.draw(ctx);
   projectiles.forEach(drawProj);
   particles.forEach((p) => (p.spr ? ctx.drawImage(p.spr, Math.round(p.x), Math.round(p.y)) : rect(ctx, p.x, p.y, p.s || 1, p.s || 1, p.c)));
   drawEffects();

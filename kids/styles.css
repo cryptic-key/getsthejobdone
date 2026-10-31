@@ -1126,6 +1126,42 @@ body.play .toast { margin-bottom: 14px; }
 .loot-copy .meter span {
   background: linear-gradient(180deg, #9fd8ef 0%, #4aa3c8 55%, #2f7f9e 100%);
 }
+.pet-market {
+  display: grid;
+  gap: 10px;
+}
+.pet-loot,
+.pet-price {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.pet-price {
+  grid-template-columns: 48px minmax(0, 1fr) 88px auto;
+}
+.pet-thumb {
+  width: 48px;
+  height: 40px;
+  image-rendering: pixelated;
+  background: rgba(36, 49, 44, 0.06);
+  border-radius: 12px;
+}
+.pet-cost input {
+  width: 100%;
+  min-width: 0;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .item.loot.ready .loot-copy .meter span {
   background: linear-gradient(180deg, #b6ef9f 0%, #5cb86a 55%, #3a8f4a 100%);
 }
