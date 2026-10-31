@@ -1698,6 +1698,7 @@ const scene = {
   review: null,
   onReviewApprove: null,
   onReviewDecline: null,
+  guardian: null,
 };
 let parade = [];
 let paradeOn = false;
@@ -1709,6 +1710,7 @@ let reviewBusy = false;
 let lastReview = "";
 let actionsEl = null;
 let reviewer = null;
+let guardian = null;
 const copPal = { K, N: "#2a3f8a", S: "#f4c89c", E: K, M: "#6e3418", Y: "#f4c542", B: "#1a1c2c" };
 const copTop = [
   "...KKKKKK...", "..KNNNYNNK..", ".KKKKKKKKKK.", "..KSSSSSSSK.", "..KSESSESSK.", "..KMMMMSSSK.", "...KSSSSK...",
@@ -1786,11 +1788,13 @@ function goTrail() {
   hero.down = false;
   hero.oxT = 0;
   hero.power = 0;
-  scrollTarget = scene.hero || scene.gear ? 18 : 12;
+  scrollTarget = scene.hero || scene.gear ? 18 : guardian ? 8 : 12;
   projectiles.length = 0;
   setReviewActions(false);
   if (scene.review) return;
-  say(scene.hero || scene.gear ? "Walking the forest trail..." : "Waiting for a finished quest...");
+  if (scene.hero || scene.gear) say("Walking the forest trail...");
+  else if (guardian) say("Waiting for a finished quest...");
+  else say("Waiting for a finished quest...");
 }
 
 function setReviewActions(on) {
@@ -1903,18 +1907,39 @@ function clearReviewer() {
   clearThought();
 }
 
-function setupReviewer(item) {
-  const tint = item.parentColor || "#2a9d8f";
-  const look = heroLook(item.parentHero || "knight", tint);
-  reviewer = {
-    x: 18,
+function parentFigure(info, x = 18) {
+  if (!info) return null;
+  const tint = info.color || info.parentColor || "#2a9d8f";
+  const look = heroLook(info.hero || info.parentHero || "knight", tint);
+  return {
+    x,
     look,
     stand: look.h || 16,
     hand: look.hand ?? 10,
-    weapon: item.parentWeapon || null,
+    weapon: info.weapon || info.parentWeapon || null,
     cast: 0,
-    name: item.parentName || "Parent",
+    name: info.name || info.parentName || "Parent",
   };
+}
+
+function syncGuardian(info) {
+  guardian = info ? parentFigure(info, 18) : null;
+}
+
+function setupReviewer(item) {
+  reviewer = parentFigure(
+    {
+      hero: item.parentHero,
+      color: item.parentColor,
+      weapon: item.parentWeapon,
+      name: item.parentName,
+    },
+    18,
+  );
+}
+
+function stageParent() {
+  return reviewer || guardian;
 }
 
 async function presentReview(token) {
@@ -1944,16 +1969,17 @@ async function playReviewApprove(token) {
   if (!item || reviewBusy) return;
   reviewBusy = true;
   setReviewActions(false);
-  if (reviewer) {
-    reviewer.cast = 1;
-    say(`${reviewer.name} casts a power-up!`);
+  const caster = stageParent();
+  if (caster) {
+    caster.cast = 1;
+    say(`${caster.name} casts a power-up!`);
     if (!(await waitFor(0.25, token))) {
       reviewBusy = false;
       return;
     }
-    const stand = reviewer.stand || 16;
+    const stand = caster.stand || 16;
     spellBolt = {
-      x: reviewer.x + 10,
+      x: caster.x + 10,
       y: G - stand + 6,
       tx: heroX() + 8,
       ty: G - 10,
@@ -1965,7 +1991,7 @@ async function playReviewApprove(token) {
       return;
     }
     spellBolt = null;
-    reviewer.cast = 0;
+    caster.cast = 0;
   }
   say(`${item.kidName} is powered up!`);
   hero.pose = "idle";
@@ -2263,6 +2289,15 @@ let heartFx = null;
 
 function paintHearts(count) {
   if (heartFx) return;
+  if (count == null) {
+    hudHearts = null;
+    if (!host) return;
+    const row = host.querySelector(".quest-hearts");
+    if (!row) return;
+    row.dataset.hearts = "";
+    row.setAttribute("aria-label", "Hearts hidden");
+    return;
+  }
   const n = Math.max(0, Math.min(3, Number(count) || 0));
   hudHearts = n;
   if (!host) return;
@@ -2288,6 +2323,7 @@ function crackHeart(lostIndex) {
 }
 
 function drawHearts() {
+  if (hudHearts == null) return;
   const max = 3;
   for (let i = 0; i < max; i += 1) {
     const x = W - 3 - (max - i) * 9;
@@ -2703,6 +2739,7 @@ export function setStageScene(next) {
     scene.review = null;
     scene.onReviewApprove = null;
     scene.onReviewDecline = null;
+    scene.guardian = null;
     lastLockup = "";
     lastWarn = "";
     lastReview = "";
@@ -2715,6 +2752,7 @@ export function setStageScene(next) {
     reviewBusy = false;
     warner = null;
     clearReviewer();
+    syncGuardian(null);
     hero.noWeapon = false;
     hero.hurt = 0;
     hero.power = 0;
@@ -2769,6 +2807,8 @@ export function setStageScene(next) {
   scene.onWarn = next.onWarn || null;
   scene.onReviewApprove = next.onReviewApprove || null;
   scene.onReviewDecline = next.onReviewDecline || null;
+  scene.guardian = next.guardian || null;
+  syncGuardian(scene.guardian);
   const review = next.review || null;
   const warn = next.warn || null;
   const lockup = next.lockup || null;
@@ -3227,15 +3267,16 @@ function draw() {
       else drawBroom(x + 11, y + (walker.hand ?? 10), walker.ang);
     });
   }
-  if (reviewer && !(paradeOn && parade.length)) {
-    const rx = Math.round(reviewer.x);
-    const ry = Math.round(G - ((reviewer.stand || 16) - 1));
-    const rHand = reviewer.hand ?? 10;
+  const parentFig = stageParent();
+  if (parentFig && !(paradeOn && parade.length)) {
+    const rx = Math.round(parentFig.x);
+    const ry = Math.round(G - ((parentFig.stand || 16) - 1));
+    const rHand = parentFig.hand ?? 10;
     rect(ctx, rx + 3, G, 8, 1, scenery.shadow);
-    ctx.drawImage(reviewer.look.a, rx, ry);
-    if (reviewer.weapon?.image) drawGearWeapon(reviewer.weapon, rx + 11, ry + rHand, -55);
+    ctx.drawImage(parentFig.look.a, rx, ry);
+    if (parentFig.weapon?.image) drawGearWeapon(parentFig.weapon, rx + 11, ry + rHand, -55);
     else drawBroom(rx + 11, ry + rHand, -55);
-    if (reviewer.cast) {
+    if (parentFig.cast) {
       const hx = rx + 10;
       const hy = ry + 4;
       disc(ctx, hx, hy, 2, "#5cc96a");

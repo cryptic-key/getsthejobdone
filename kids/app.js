@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-hearts";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-hearts";
-import { createChoreQuest } from "./chore-quest.js?v=71bc-hearts";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-parent";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-parent";
+import { createChoreQuest } from "./chore-quest.js?v=71bc-parent";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -558,10 +558,21 @@ function kidStageGear(child) {
   return { weapon: quest.weaponSprite(weaponKey) };
 }
 
+function parentGuardian() {
+  const me = parent();
+  return {
+    name: me?.name || "Parent",
+    hero: parentLook(me?.hero, me?.name),
+    color: COLOR_HEX[me?.color] || COLOR_HEX.teal,
+    weapon: heldWeapon(me?.weapon || "broom"),
+  };
+}
+
 function paintStage() {
   const host = document.querySelector(".stage");
   if (!host || host.hidden) return;
   if (db.session?.role === "parent" && route.name === "chart") {
+    const guardian = parentGuardian();
     const seen = seenFlee();
     const fleeing = (db.chores || []).filter((chore) => chore.verdict === "flee" && !seen.has(chore.id) && !finishedIds.has(chore.id));
     if (fleeing.length) {
@@ -574,6 +585,7 @@ function paintStage() {
         onDone: onFightDone,
         gear: kidStageGear(child),
         hearts: child?.hearts ?? 3,
+        guardian,
       });
       return;
     }
@@ -581,15 +593,14 @@ function paintStage() {
     const chore = waiting[0];
     if (chore) {
       const child = kidById(chore.kidId);
-      const me = parent();
       const review = {
         ...actor(chore),
         kidName: child?.name || "Hero",
         hero: kidHero(child?.hero),
-        parentName: me?.name || "Parent",
-        parentHero: parentLook(me?.hero, me?.name),
-        parentColor: COLOR_HEX[me?.color] || COLOR_HEX.teal,
-        parentWeapon: heldWeapon(me?.weapon || "broom"),
+        parentName: guardian.name,
+        parentHero: guardian.hero,
+        parentColor: guardian.color,
+        parentWeapon: guardian.weapon,
       };
       setStageScene({
         color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
@@ -599,6 +610,7 @@ function paintStage() {
         onDone: onFightDone,
         gear: kidStageGear(child),
         hearts: child?.hearts ?? 3,
+        guardian,
         review,
         onReviewApprove: (id) => {
           run(() => rpc("approve_chore", { p_chore: id }), "Approved. Add any new device minutes in Screen Time.");
@@ -611,12 +623,13 @@ function paintStage() {
       return;
     }
     setStageScene({
-      color: COLOR_HEX[host.dataset.color] || COLOR_HEX.leaf,
+      color: guardian.color,
       hero: "",
       waiting: [],
       plays: [],
       gear: null,
-      hearts: 3,
+      hearts: null,
+      guardian,
     });
     return;
   }
