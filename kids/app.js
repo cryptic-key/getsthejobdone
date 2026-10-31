@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=18";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=18";
-import { createChoreQuest } from "./chore-quest.js?v=18";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=19";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=19";
+import { createChoreQuest } from "./chore-quest.js?v=19";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -407,8 +407,11 @@ async function loadKid() {
     session: { role: "kid", id: snap.kid.id },
   };
   if (Array.isArray(db.hero?.pets)) {
-    db.pets = db.hero.pets.filter((key) => PET_CATALOG[key]);
+    db.pets = [...new Set([...db.pets, ...db.hero.pets])].filter((key) => PET_CATALOG[key]);
   }
+  const equippedPet = normalizePet(db.hero?.pet || db.kids[0]?.pet) || "";
+  if (db.kids[0]) db.kids[0].pet = equippedPet;
+  if (db.hero) db.hero.pet = equippedPet || null;
   return true;
 }
 
@@ -943,18 +946,18 @@ function petMarketBoard(child) {
     const ready = coins >= cost;
     const tag = [info.fly ? "flies" : "", info.hop ? "hops" : ""].filter(Boolean).join(" · ");
     let action = `<button class="btn small leaf" data-action="buy-pet" data-pet="${esc(key)}" ${ready ? "" : "disabled"}>Buy</button>`;
-    if (have && equipped === key) action = `<span class="chip">With you</span>`;
-    else if (have) action = `<button class="btn small" data-action="set-pet" data-pet="${esc(key)}">Bring</button>`;
-    return `<div class="item loot pet-loot${have || ready ? " ready" : ""}">
+    if (equipped === key) action = `<span class="chip">Equipped</span>`;
+    else if (have) action = `<button class="btn small" data-action="set-pet" data-pet="${esc(key)}">Equip</button>`;
+    return `<div class="item loot pet-loot${have || ready || equipped === key ? " ready" : ""}">
       <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
-      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${have ? "Owned" : `${cost} coins`}${tag ? ` · ${tag}` : ""}</div>${have ? "" : meter(coins, cost)}</div>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${equipped === key ? "Equipped" : have ? "Owned" : `${cost} coins`}${tag ? ` · ${tag}` : ""}</div>${have || equipped === key ? "" : meter(coins, cost)}</div>
       ${action}
     </div>`;
   }).join("");
   return `<section class="card">
     <h2 class="page-title">Pets</h2>
-    <p class="lede">Buy a buddy that battles beside you on the trail. Parents can change the coin price later.</p>
-    ${equipped ? `<p class="hint">Out now: ${esc(PET_CATALOG[equipped]?.name || equipped)}. <button class="btn small ghost" data-action="set-pet" data-pet="">Send home</button></p>` : ""}
+    <p class="lede">Buy a buddy that battles beside you on the trail. Buying equips it right away. Parents can change the coin price later.</p>
+    ${equipped ? `<p class="hint">Equipped: ${esc(PET_CATALOG[equipped]?.name || equipped)}. <button class="btn small ghost" data-action="set-pet" data-pet="">Unequip</button></p>` : ""}
     <div class="pet-market">${rows}</div>
   </section>`;
 }
@@ -2463,7 +2466,7 @@ app.addEventListener("click", (event) => {
     const key = btn.dataset.pet;
     run(
       () => rpc("kid_buy_pet", { p_token: kidToken(), p_pet: key }),
-      `${PET_CATALOG[key]?.name || "Pet"} joined your party!`,
+      `${PET_CATALOG[key]?.name || "Pet"} bought and equipped!`,
       "kid-shop"
     );
   }
@@ -2471,7 +2474,7 @@ app.addEventListener("click", (event) => {
     const key = btn.dataset.pet || "";
     run(
       () => rpc("kid_set_pet", { p_token: kidToken(), p_pet: key || null }),
-      key ? `${PET_CATALOG[key]?.name || "Pet"} is with you on the trail.` : "Pet sent home.",
+      key ? `${PET_CATALOG[key]?.name || "Pet"} equipped.` : "Pet unequipped.",
       "kid-shop"
     );
   }
