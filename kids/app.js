@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=4";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=4";
-import { createChoreQuest } from "./chore-quest.js?v=4";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=5";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=5";
+import { createChoreQuest } from "./chore-quest.js?v=5";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {

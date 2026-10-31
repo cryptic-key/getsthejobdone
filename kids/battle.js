@@ -1748,6 +1748,59 @@ const copTop = [
 ];
 const copA = sprite([...copTop, "..KNNK.KNNK.", "..KBBK.KBBK.", "..KKK..KKK.."], copPal);
 const copB = sprite([...copTop, "...KNNKNNK..", "...KBBKBBK..", "...KKKKKK..."], copPal);
+/* Pointing arm: drawn pointing RIGHT; flip it for a left-facing parent.
+   Sleeve + cuff match the outfit; one outlined index finger, shaded knuckles. */
+function makeArm(sleeve, cuff, skin = "#f4c89c", shadeCol = "#d39a6c") {
+  return sprite(
+    [
+      "KKKKKKK.........",
+      "KRRRRWKKKKKKKKK.",
+      "KRRRRWKSSSSSSSSK",
+      "KRRRRWKSSSKKKKK.",
+      "KKKKKKKSsSK.....",
+      "......KKKK......",
+    ],
+    { K, R: sleeve, W: cuff, S: skin, s: shadeCol }
+  );
+}
+const armCache = new Map();
+function pointingArm(heroKey, tint) {
+  const sleeve = tint || "#c0392b";
+  const cuff = heroKey === "queen" ? "#f4c542" : "#ffffff";
+  const key = `${heroKey || "knight"}:${sleeve}:${cuff}`;
+  if (!armCache.has(key)) armCache.set(key, makeArm(sleeve, cuff));
+  return armCache.get(key);
+}
+function drawPointingArm(fig, faceLeft) {
+  const amount = Number(fig?.point) || 0;
+  if (!fig || amount <= 0.01) return;
+  const arm = pointingArm(fig.hero, fig.tint);
+  const jab = ((time * 6) | 0) % 2 ? (faceLeft ? -1 : 1) : 0;
+  const ext = Math.min(1, amount);
+  const x = Math.round(fig.x);
+  const y = Math.round(G - ((fig.stand || 16) - 1));
+  const hand = fig.hand ?? 10;
+  const ay = y + hand - 3;
+  if (faceLeft) {
+    const ax = Math.round(x + 5 - arm.width * ext) + jab;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(ax - 2, ay - 1, x + 6 - ax + 2, arm.height + 2);
+    ctx.clip();
+    ctx.translate(ax + arm.width, ay);
+    ctx.scale(-1, 1);
+    ctx.drawImage(arm, 0, 0);
+    ctx.restore();
+    return;
+  }
+  const ax = Math.round(x + 9 - arm.width * (1 - ext)) + jab;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x + 8, ay - 1, ax + arm.width - (x + 8) + 2, arm.height + 2);
+  ctx.clip();
+  ctx.drawImage(arm, ax, ay);
+  ctx.restore();
+}
 let lockBusy = false;
 let siren = false;
 let cage = null;
@@ -1945,16 +1998,20 @@ function clearReviewer() {
 
 function parentFigure(info, x = 18) {
   if (!info) return null;
+  const heroKey = info.hero || info.parentHero || "knight";
   const tint = info.color || info.parentColor || "#2a9d8f";
-  const look = heroLook(info.hero || info.parentHero || "knight", tint);
+  const look = heroLook(heroKey, tint);
   return {
     x,
     look,
+    hero: heroKey,
+    tint,
     stand: look.h || 16,
     hand: look.hand ?? 10,
     weapon: info.weapon || info.parentWeapon || null,
     cast: 0,
     point: 0,
+    pointT: 0,
     name: info.name || info.parentName || "Parent",
   };
 }
@@ -2442,6 +2499,9 @@ async function playParentWarn(token, info) {
   }
   caster.cast = 0;
   caster.point = 0;
+  caster.pointT = 0;
+  if (!caster.hero) caster.hero = info.hero || parentLookKey(info.parent);
+  if (!caster.tint) caster.tint = info.color || "#2a9d8f";
   const kidName = info.kidName || "the hero";
   say(`${caster.name} warns ${kidName}!`);
   if (!(await waitFor(0.45, token))) {
@@ -2492,7 +2552,7 @@ async function playParentWarn(token, info) {
       warnBusy = false;
       return;
     }
-    caster.point = 1;
+    caster.pointT = 1;
     say(`${caster.name} points at ${kidName}!`);
     if (!(await waitFor(0.85, token))) {
       warnBusy = false;
@@ -2546,7 +2606,7 @@ async function playParentWarn(token, info) {
       return;
     }
     cops.forEach((c) => { c.vx = -40; c.flip = false; });
-    caster.point = 0;
+    caster.pointT = 0;
     if (!(await until(() => cops.every((c) => c.x < -20), token))) {
       warnBusy = false;
       return;
@@ -2593,7 +2653,20 @@ async function playWarn(token) {
   const look = heroLook(info.hero || parentLookKey(info.parent), tint);
   const stand = look.h || 16;
   const slot = 78;
-  warner = { x: W + 10, tx: slot, look, stand, cast: 0, point: 0, name: info.parent || "Parent" };
+  const heroKey = info.hero || parentLookKey(info.parent);
+  warner = {
+    x: W + 10,
+    tx: slot,
+    look,
+    hero: heroKey,
+    tint,
+    stand,
+    hand: look.hand ?? 10,
+    cast: 0,
+    point: 0,
+    pointT: 0,
+    name: info.parent || "Parent",
+  };
   say(`${warner.name} steps in!`);
   if (!(await until(() => warner && warner.x <= slot + 0.5, token))) {
     warnBusy = false;
@@ -2640,7 +2713,7 @@ async function playWarn(token) {
       warnBusy = false;
       return;
     }
-    warner.point = 1;
+    warner.pointT = 1;
     say(`${warner.name} points at you!`);
     if (!(await waitFor(0.85, token))) {
       warnBusy = false;
@@ -2694,7 +2767,7 @@ async function playWarn(token) {
       return;
     }
     cops.forEach((c) => { c.vx = 40; c.flip = true; });
-    warner.point = 0;
+    warner.pointT = 0;
     warner.tx = W + 28;
     if (!(await until(() => cops.every((c) => c.x > W + 4) && (!warner || warner.x > W + 6), token))) {
       warnBusy = false;
@@ -3347,6 +3420,13 @@ function update(dt) {
   hero.smear = Math.max(0, hero.smear - dt);
   hero.alert = Math.max(0, hero.alert - dt);
   hero.hurt = Math.max(0, hero.hurt - dt);
+  const parentPoint = stageParent();
+  if (parentPoint) {
+    parentPoint.point += ((parentPoint.pointT || 0) - parentPoint.point) * Math.min(1, dt * 14);
+  }
+  if (warner) {
+    warner.point += ((warner.pointT || 0) - warner.point) * Math.min(1, dt * 14);
+  }
   if (hero.power > 0) {
     hero.power = Math.max(0, hero.power - dt);
     if (R() < dt * 16) {
@@ -3485,10 +3565,13 @@ function draw() {
     const ry = Math.round(G - ((parentFig.stand || 16) - 1));
     const rHand = parentFig.hand ?? 10;
     const warnCast = scene.warn?.view === "parent" && parentFig.cast;
+    const pointing = (Number(parentFig.point) || 0) > 0.05;
     rect(ctx, rx + 3, G, 8, 1, scenery.shadow);
     ctx.drawImage(parentFig.look.a, rx, ry);
-    if (parentFig.weapon?.image) drawGearWeapon(parentFig.weapon, rx + 11, ry + rHand, -55);
-    else drawBroom(rx + 11, ry + rHand, -55);
+    if (!pointing) {
+      if (parentFig.weapon?.image) drawGearWeapon(parentFig.weapon, rx + 11, ry + rHand, -55);
+      else drawBroom(rx + 11, ry + rHand, -55);
+    }
     if (parentFig.cast) {
       const hx = rx + 10;
       const hy = ry + 4;
@@ -3500,17 +3583,8 @@ function draw() {
         particles.push({ x: hx + rnd(-1, 2), y: hy + rnd(-2, 1), vx: rnd(-4, 12), vy: rnd(-20, -6), g: 40, life: 0.25, c: R() < 0.5 ? glow : spark });
       }
     }
-    if (parentFig.point) {
-      const hx = rx + 12;
-      const hy = ry + Math.round((parentFig.stand || 16) * 0.4);
-      rect(ctx, hx, hy, 11, 2, "#f4c89c");
-      rect(ctx, hx + 9, hy - 1, 3, 4, "#f4c89c");
-      px(ctx, hx + 12, hy, "#f4c89c");
-      px(ctx, hx + 1, hy + 2, "#f4c89c");
-      if (R() < 0.2) {
-        particles.push({ x: hx + 12, y: hy, vx: rnd(6, 18), vy: rnd(-8, 4), g: 40, life: 0.2, c: "#fff3a8" });
-      }
-    }
+    // Parent stands on the left and points right at the kid.
+    drawPointingArm(parentFig, false);
   }
   const look = scene.hero ? heroLook(scene.hero, scene.color) : null;
   const x = Math.round(heroX());
@@ -3593,8 +3667,18 @@ function draw() {
     const wy = Math.round(G - ((warner.stand || 16) - 1));
     const moving = Math.abs((warner.tx ?? wx) - warner.x) > 0.4;
     const fr = moving && ((time * 8) | 0) % 2;
-    rect(ctx, wx + 3, G, 8, 1, "#3e8c2c");
-    ctx.drawImage(fr ? warner.look.b : warner.look.a, wx, wy);
+    const pointing = (Number(warner.point) || 0) > 0.05;
+    rect(ctx, wx + 3, G, 8, 1, scenery.shadow);
+    // Face the kid on the left while pointing.
+    if (pointing) {
+      ctx.save();
+      ctx.translate(wx + 14, wy);
+      ctx.scale(-1, 1);
+      ctx.drawImage(fr ? warner.look.b : warner.look.a, 0, 0);
+      ctx.restore();
+    } else {
+      ctx.drawImage(fr ? warner.look.b : warner.look.a, wx, wy);
+    }
     if (warner.cast) {
       const hx = wx + 4;
       const hy = wy + 4;
@@ -3604,17 +3688,8 @@ function draw() {
         particles.push({ x: hx + rnd(-1, 2), y: hy + rnd(-2, 1), vx: rnd(-8, 8), vy: rnd(-20, -6), g: 40, life: 0.25, c: R() < 0.5 ? "#c77dff" : "#fff3a8" });
       }
     }
-    if (warner.point) {
-      const hx = wx + 2;
-      const hy = wy + Math.round((warner.stand || 16) * 0.4);
-      rect(ctx, hx - 10, hy, 11, 2, "#f4c89c");
-      rect(ctx, hx - 12, hy - 1, 3, 4, "#f4c89c");
-      px(ctx, hx - 13, hy, "#f4c89c");
-      px(ctx, hx - 1, hy + 2, "#f4c89c");
-      if (R() < 0.2) {
-        particles.push({ x: hx - 12, y: hy, vx: rnd(-18, -6), vy: rnd(-8, 4), g: 40, life: 0.2, c: "#fff3a8" });
-      }
-    }
+    // Warner stands on the right and points left at the kid.
+    drawPointingArm(warner, true);
   }
   if (spellBolt) {
     const t = Math.min(1, spellBolt.t);
