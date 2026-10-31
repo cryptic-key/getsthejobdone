@@ -2,6 +2,12 @@
 
 export const SPRITES = [
   { id: "dust", name: "Dust Bunny" },
+  { id: "sleep", name: "Bedtime Beast" },
+  { id: "dry", name: "Diaper Monster" },
+  { id: "breakfast", name: "Toaster Terror" },
+  { id: "dinner", name: "Sizzle Skillet" },
+  { id: "lunchmade", name: "Sandwich Snapper" },
+  { id: "bath", name: "Bubble Bath Beast" },
   { id: "bed", name: "Sheet Ghost" },
   { id: "shoes", name: "Shoe Chomper" },
   { id: "pack", name: "Backpack Beast" },
@@ -37,6 +43,11 @@ export function normalizeSprite(value) {
 
 export function guessSprite(title) {
   const text = String(title || "").toLowerCase();
+  if (/sleep|bedtime|went to bed|lights out/.test(text)) return "sleep";
+  if (/diaper|dry all night|potty/.test(text)) return "dry";
+  if (/breakfast|toast|cereal/.test(text)) return "breakfast";
+  if (/dinner|supper|cook/.test(text)) return "dinner";
+  if (/bath|bathtub|shower/.test(text)) return "bath";
   if (/snow|shovel/.test(text)) return "snow";
   if (/outside|fresh air/.test(text)) return "outside";
   if (/firewood|woodpile|fire wood/.test(text)) return "wood";
@@ -47,6 +58,7 @@ export function guessSprite(title) {
   if (/towel/.test(text)) return "towels";
   if (/dress|pajama|pyjama/.test(text)) return "dressed";
   if (/homework/.test(text)) return "homework";
+  if (/make lunch|helped make lunch/.test(text)) return "lunchmade";
   if (/lunch/.test(text)) return "lunch";
   if (/coat|jacket/.test(text)) return "coats";
   if (/grocer/.test(text)) return "groceries";
@@ -744,6 +756,59 @@ function woodpile(mouth) {
 const woodA = woodpile(logMouthA);
 const woodB = woodpile(logMouthB);
 const logS = sprite(["KKKKKK", "KBBBBw", "KKKKKK"], woodPal);
+const bathPal={K,W:'#f6a8c0',w:'#d47a98',F:'#f4faff',f:'#b8d8f0',E:K,I:'#ffffff',D:'#3a2a4a',G:'#f4c542'};
+const foamTop=["......KKKK.KKK......","....KKFFFFKFFFKK....","..KKFFFFFFFFFFFFKK..",".KFFFEEFFFFEEFFFFK..",".KFFFEIFFFFEIFFfFFK."];
+const tubRows=["KKKKKKKKKKKKKKKKKKKK","KWWWWWWWWWWWWWWWWWwK",".KWWWWWWWWWWWWWWWwK.",".KWWWWWWWWWWWWWWwwK.","..KWWWWWWWWWWWWwwK..","...KKKKKKKKKKKKKK...","...KG.........KG....","..KGG........KGG...."];
+const bathA=sprite([...foamTop,"KFFfFFFFKKKFFFFFFFFK","KFFFFFFFFFFFFFfFFFFK",...tubRows],bathPal);
+const bathB=sprite([...foamTop,"KFFfFFFKDDDKFFFFFFFK","KFFFFFFFKKKFFFFfFFFK",...tubRows],bathPal);
+const duckS=sprite(["..KK..",".KYEK.","OOYYYK",".KYYYK","..KKK."],{K,Y:'#f4d742',E:K,O:'#f4862e'});
+const bedPal={K,N:'#4a7ad8',n:'#7fa8f0',W:'#ffffff',w:'#c8d0e0',E:K,B:'#9a6232',b:'#6a4220'};
+const bedTop=sprite([
+"..........KKKKKK...",
+".KKKKKKKKKWWWWWWK..",
+"KnNnNnNnNKEWWEWWK..",
+"KNnNnNnNnKWWWWWWK..",
+"KnNnNnNnNnNnNnNnNK.",
+"KNnNnNnNnNnNnNnNnK.",
+"KKKKKKKKKKKKKKKKKK."],bedPal);
+const bedBot=sprite([
+"KWWWWWWWWWWWWWWWWK.",
+"KwwwwwwwwwwwwwwwwK.",
+"KKKKKKKKKKKKKKKKKK.",
+"KBBBBBBBBBBBBBBBBK.",
+"KKKKKKKKKKKKKKKKKK.",
+"KK.............KK.."],bedPal);
+const headboard=sprite([".KKKK.","KBBBBK","KBbbBK","KBBBBK","KBbbBK","KBBBBK","KBbbBK","KBBBBK","KBBBBK","KBBBBK","KBBBBK","KBBBBK","KBBBBK","KKKKKK","KBKKBK","KK..KK"],bedPal);
+const teddyS=sprite([".K.K.","KBBBK","KEBEK","KBBBK",".KKK."],{K,B:'#a0622a',E:K});
+const diaPal={K,W:'#ffffff',w:'#d6e2f2',B:'#7fb4f0',E:K,P:'#ffb0c4',D:'#3a2a4a',b:'#a8ccf6'};
+const diaTop=["KKKKKKKKKKKKKKKK","KBWWWWWWWWWWWWBK","KBBWWWWWWWWWWBBK",".KWWWEWWWWEWWWK.",".KWWWWWWWWWWWWK."];
+const diaLow=["..KWbWWbWWbWWK..","..KwWWWWWWWWwK..","...KwWbWWbWwK...","....KwWWWWwK....",".....KwwwwK.....","......KKKK......"];
+const diaA=sprite([...diaTop,".KWPWWWKKWWWPWK.",...diaLow],diaPal);
+const diaB=sprite([...diaTop,".KWPWWKDDKWWPWK.",...diaLow],diaPal);
+const dropS=sprite(["..K..",".KBK.","KBBBK","KBWBK",".KKK."],{K,B:'#4aa3ff',W:'#ffffff'});
+const powderS=sprite([".WW.","WWWW",".WW."],{W:'#fff8f0'});
+const toastPal={K,S:'#d8dee8',s:'#9aa4b6',H:'#ffffff',W:'#ffffff',E:K,D:'#3a3a48'};
+const toastTop=["..KKKKKKKKKKKKKK..",".KSDDDDSSDDDDSSSK.","KSSSSSSSSSSSSSSSsK","KSHHSSSSSSSSSSSSsK","KSWWSSSSWWSSSSSSsK","KSEWSSSSEWSSSSSSsK","KSSSSSSSSSSSSSSSsK"];
+const toastLow=["KSSSSSSSSSSSSSSSsK","KsSSSSSSSSSSSSSssK","KssssssssssssssssK",".KKKKKKKKKKKKKKKK.",".KK............KK."];
+const toasterA=sprite([...toastTop,"KSSSKKKKKKSSSSSSsK",...toastLow],toastPal);
+const toasterB=sprite([...toastTop,"KSSSKDDDDKSSSSSSsK",...toastLow],toastPal);
+const toastS=sprite([".KKKKK.","KCCCCCK","KCtttCK","KCtttCK","KCtttCK","KCCCCCK",".KKKKK."],{K,C:'#b07840',t:'#f0d090'});
+function makePan(open){const[c,g]=canvas(24,13);
+  const ell=(rx,ry,col)=>{for(let dy=-Math.ceil(ry);dy<=Math.ceil(ry);dy++){const t=1-(dy*dy)/(ry*ry);if(t<0)continue;const hw=Math.floor(rx*Math.sqrt(t));rect(g,9-hw,6+dy,hw*2+1,1,col)}};
+  rect(g,17,5,7,3,K);rect(g,18,6,5,1,'#8a5a2a');px(g,22,6,'#5a3418');
+  ell(9.4,5.6,K);ell(8.4,4.6,'#6e7688');ell(7.4,3.6,'#2a2a38');
+  for(const ex of [3,10]){rect(g,ex,4,5,3,'#ffffff');px(g,ex,4,'#2a2a38');px(g,ex+4,6,'#2a2a38');rect(g,ex,5,2,1,'#f4c542');px(g,ex,5,'#e8862e')}
+  if(open){rect(g,6,8,6,2,'#8a2a26');px(g,7,8,'#ffffff');px(g,10,8,'#ffffff')}else rect(g,6,8,6,1,'#55606e');
+  rect(g,4,12,10,1,'#3e8c2c');return c}
+const panA=makePan(false),panB=makePan(true);
+const sausageS=sprite([".KKKK.","KBBbBK",".KKKK."],{K,B:'#b0583a',b:'#e08a6a'});
+const peaS=sprite(["GG","Gg"],{G:'#5cc96a',g:'#3a8f4a'});
+const sandPal={K,B:'#e0a858',b:'#b07838',W:'#fff8e0',E:K,L:'#5cc96a',l:'#3a8f4a',R:'#e04a4a',Y:'#f4d742',M:'#e08a8a'};
+const sandTop=sprite(["....KKKKKKKKKK....","..KKBBBWBBBBWBKK..",".KBBWBBBBBBBBBBBK.","KBBBEWBBBBEWBBBBbK","KBBBBBBBBBBBBBBBbK","KbbbbbbbbbbbbbbbbK"],sandPal);
+const sandBot=sprite(["KLlLLlLLlLLlLLlLLK","KRRRRRRRRRRRRRRRRK","KYYYYYYYYYYYYYYYYK","KMMMMMMMMMMMMMMMMK","KBBBBBBBBBBBBBBBBK","KbbbbbbbbbbbbbbbbK",".KKKKKKKKKKKKKKKK."],sandPal);
+const pickleS=sprite([".KKK.","KGgGK","KgGgK",".KKK."],{K,G:'#5cc96a',g:'#3a8f4a'});
+const tomatoS=sprite([".KKK.","KRrRK","KrRrK",".KKK."],{K,R:'#e04a4a',r:'#ff9a8a'});
+
 const couchPal = { K, C: "#c8403a", c: "#8a2a26", h: "#e86a5a", W: "#ffffff", E: K, T: "#ffffff" };
 const couchTop = sprite([
   "...KKKKKKKKKKKKKKKK...",
@@ -1221,6 +1286,169 @@ const MON = {
 };
 for (const def of Object.values(MON)) def.tx = Math.round(94 - def.w / 2);
 
+const featherS = sprite(["...F", "..Ff", ".Ff.", "F..."], { F: "#ff8ac6", f: "#c46cd9" });
+const flowerS = sprite([".P.", "PYP", ".P.", ".G."], { P: "#ff8ac6", Y: "#f4d742", G: "#3a9d4a" });
+const starS = sprite(["..Y..", ".YYY.", "YYYYY", ".Y.Y."], { Y: "#f4d742" });
+const pageS = sprite(["KKKK", "KWWK", "KwwK", "KWWK", "KKKK"], { K, W: "#fff8e6", w: "#b8b0a0" });
+const sprOf = (k) => ({ feather: featherS, flower: flowerS, star: starS, page: pageS, snowball: snowballS, log: logS, duck: duckS, crumb: crumbS, leaf: leafS[0] })[k];
+const RAINBOW = ["#e04a4a", "#f4862e", "#f4c542", "#5cc96a", "#4aa3ff", "#9b6ad6"];
+const SPECIALS={
+ broom:{name:'Dust Tornado',fx:'swirl',cols:['#e8d07a','#c9a84e','#b4b4c4']},
+ duster:{name:'Feather Storm',fx:'rain',spr:'feather',n:14},
+ dustpan:{name:'Dust Devil',fx:'swirl',cols:['#b4b4c4','#8890a8','#e8603c']},
+ mop:{name:'Tidal Splash',fx:'wave',cols:['#4aa3ff','#bfe3ff','#ffffff']},
+ sponge:{name:'Soap Bomb',fx:'bubble',cols:['#f4d742','#bfefff']},
+ squeegee:{name:'Sparkle Shine',fx:'flash',spr:'star'},
+ spray:{name:'Mist Cloud',fx:'burst',cols:['#bfefff','#ffffff','#e6f8ff'],n:36,speed:30},
+ vacuum:{name:'Black Hole Suck',fx:'suck',cols:['#7fe0ff','#ffffff','#b4b4c4']},
+ plunger:{name:'Mega Plunge',fx:'ring',cols:['#d64545','#ffffff']},
+ golden:{name:'Rainbow Burst',fx:'ring',cols:'rainbow'},
+ diamond:{name:'Crystal Storm',fx:'burst',spr:'star',cols:['#9ff0ff','#ffffff'],n:16,ring:['#9ff0ff','#ffffff']},
+ toothbrush:{name:'Minty Fresh Blast',fx:'bubble',cols:['#bfefff','#ffffff']},
+ spatula:{name:'Pancake Flip',fx:'flip'},
+ bubble:{name:'Mega Bubble',fx:'bubble',cols:['#9fe8ff','#c39bd3']},
+ rake:{name:'Leaf Storm',fx:'swirl',cols:['#e8862e','#c8402a','#f4c542']},
+ pencil:{name:'Scribble Storm',fx:'scribble'},
+ lint:{name:'Fluff Cyclone',fx:'swirl',cols:['#e8c08a','#9b6ad6','#ffffff']},
+ watering:{name:'Flower Power',fx:'bloom'},
+ bookmark:{name:'Page Storm',fx:'rain',spr:'page',n:10},
+ bone:{name:'Dizzy Stars',fx:'orbit'},
+ shovel:{name:'Snowball Avalanche',fx:'rain',spr:'snowball',n:10},
+ bat:{name:'Home Run',fx:'flip',homerun:true},
+ mallet:{name:'Timber!',fx:'rain',spr:'log',n:8},
+ duckhammer:{name:'Duck Parade',fx:'rain',spr:'duck',n:10},
+ pillowmace:{name:'Pillow Fight',fx:'burst',spr:'feather',n:18,speed:60},
+ rattle:{name:'Confetti Party',fx:'burst',cols:'rainbow',n:44,speed:90},
+ butterknife:{name:'Butter Slide',fx:'wave',cols:['#f4e08a','#fff7c0','#ffffff']},
+ whisk:{name:'Whirlwind Whip',fx:'swirl',cols:['#ffffff','#e6ecf5','#fff8e6']},
+ baguette:{name:'Breadcrumb Storm',fx:'rain',spr:'crumb',n:20}
+};
+const effects = [];
+let beamT = 0;
+function weaponTipFromGear(w, hx, hy, deg) {
+  const grip = w.grip || [2, 2];
+  const len = (w.mapLen || 14) - grip[0];
+  const q = Math.round(deg / 15) * 15 * Math.PI / 180;
+  return [hx + Math.cos(q) * len, hy + Math.sin(q) * len];
+}
+function special(wk, cx, cy) {
+  const sp = SPECIALS[wk] || { name: "Power Strike", fx: "burst", cols: (scene.gear?.weapon?.fx) || ["#ffffff"] };
+  const cols = sp.cols === "rainbow" ? RAINBOW : (sp.cols || ["#ffffff"]);
+  say(`SPECIAL ATTACK: ${sp.name.toUpperCase()}!`);
+  if (!reduce) shake = 0.35;
+  effects.push({ type: "flash", t: 0, dur: 0.12 });
+  const P = (o) => particles.push(o);
+  switch (sp.fx) {
+    case "swirl": effects.push({ type: "swirl", t: 0, dur: 1.1, cx, cy, cols }); break;
+    case "rain":
+      for (let i = 0; i < (sp.n || 10); i += 1) P({ x: cx + rnd(-24, 22), y: -rnd(4, 46), vx: rnd(-6, 6), vy: rnd(45, 75), g: 70, life: 1.8, spr: sprOf(sp.spr) });
+      break;
+    case "wave": effects.push({ type: "wave", t: 0, dur: 0.8, cols }); break;
+    case "flash":
+      effects.push({ type: "flash", t: 0, dur: 0.35 });
+      for (let i = 0; i < 8; i += 1) { const a = i / 8 * Math.PI * 2; P({ x: cx, y: cy, vx: Math.cos(a) * 55, vy: Math.sin(a) * 55, g: 0, life: 0.6, spr: starS }); }
+      break;
+    case "suck": effects.push({ type: "suck", t: 0, dur: 0.9, cx, cy, cols }); break;
+    case "ring": effects.push({ type: "ring", t: 0, dur: 0.7, cx, cy, cols }); break;
+    case "burst":
+      for (let i = 0; i < (sp.n || 20); i += 1) {
+        const a = R() * Math.PI * 2, v = rnd(20, sp.speed || 70);
+        P({ x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, g: sp.spr ? 40 : 110, life: rnd(0.6, 1.1), spr: sp.spr ? sprOf(sp.spr) : null, c: cols[i % cols.length] });
+      }
+      if (sp.ring) effects.push({ type: "ring", t: 0, dur: 0.6, cx, cy, cols: sp.ring });
+      break;
+    case "bubble": effects.push({ type: "bubble", t: 0, dur: 0.9, cx, cy, cols }); break;
+    case "flip":
+      if (mon) { mon.hopV = sp.homerun ? -150 : -110; mon.spinT = 0.6; }
+      for (let i = 0; i < 6; i += 1) { const a = R() * Math.PI * 2; P({ x: cx, y: cy, vx: Math.cos(a) * 50, vy: Math.sin(a) * 50, g: 0, life: 0.5, spr: starS }); }
+      if (sp.homerun) P({ x: cx, y: cy, vx: 90, vy: -110, g: 60, life: 1.2, spr: starS });
+      break;
+    case "scribble": effects.push({ type: "scribble", t: 0, dur: 0.9, cx, cy }); break;
+    case "bloom":
+      for (let i = 0; i < 9; i += 1) P({ x: cx + rnd(-26, 22), y: G - 3, vx: 0, vy: -rnd(30, 60), g: 140, life: 1.4, spr: flowerS });
+      for (let i = 0; i < 12; i += 1) { const a = R() * Math.PI * 2; P({ x: cx, y: cy, vx: Math.cos(a) * 40, vy: Math.sin(a) * 40, g: 60, life: 0.6, c: ["#ff8ac6", "#f4d742", "#5cc96a"][i % 3] }); }
+      break;
+    case "orbit": effects.push({ type: "orbit", t: 0, dur: 1.4, cx, cy }); break;
+  }
+}
+function updateEffects(dt) {
+  for (let i = effects.length - 1; i >= 0; i -= 1) {
+    const e = effects[i];
+    e.t += dt;
+    if (e.type === "suck" && mon) {
+      const tip = scene.gear?.weapon
+        ? weaponTipFromGear(scene.gear.weapon, heroX() + 11, heroY() + (heroLook(scene.hero, scene.color)?.hand || 10), hero.ang)
+        : [heroX() + 25, heroY() + 10];
+      const [tx, ty] = tip;
+      for (let k = 0; k < 3; k += 1) {
+        const a = R() * Math.PI * 2, r = rnd(10, 20), x = e.cx + Math.cos(a) * r, y = e.cy + Math.sin(a) * r;
+        particles.push({ x, y, vx: (tx - x) / 0.35, vy: (ty - y) / 0.35, g: 0, life: 0.35, c: e.cols[k % e.cols.length] });
+      }
+    }
+    if (e.type === "bubble" && e.t >= e.dur) {
+      for (let k = 0; k < 20; k += 1) {
+        const a = k / 20 * Math.PI * 2;
+        particles.push({ x: e.cx + Math.cos(a) * 14, y: e.cy + Math.sin(a) * 12, vx: Math.cos(a) * 50, vy: Math.sin(a) * 50, g: 60, life: 0.4, c: e.cols[k % e.cols.length] });
+      }
+    }
+    if (e.t >= e.dur) effects.splice(i, 1);
+  }
+}
+function drawEffects() {
+  for (const e of effects) {
+    const p = e.t / e.dur;
+    if (e.type === "swirl") {
+      for (let k = 0; k < 48; k += 1) {
+        const f = k / 48, a = f * Math.PI * 5 + e.t * 12, r = (3 + f * 16) * (1 - p * 0.4), z = k % 2 ? 1 : 2;
+        rect(ctx, e.cx + Math.cos(a) * r, e.cy + 10 - f * 30, z, z, e.cols[k % e.cols.length]);
+        if (k % 4 === 0) px(ctx, e.cx + Math.cos(a + 0.3) * r, e.cy + 10 - f * 30, K);
+      }
+    }
+    if (e.type === "wave") {
+      const front = -12 + p * (W + 30);
+      for (let x = Math.max(0, front - 40); x < Math.min(W, front); x += 1) {
+        const h = Math.round(Math.sin((x - front + 40) / 40 * Math.PI) * 7);
+        if (h <= 0) continue;
+        rect(ctx, x, G - h, 1, h, e.cols[0]); px(ctx, x, G - h, e.cols[2]);
+        if ((x + ((time * 20) | 0)) % 5 === 0) px(ctx, x, G - h - 1, e.cols[1]);
+      }
+    }
+    if (e.type === "ring") {
+      const r = 4 + p * 42;
+      for (let k = 0; k < 48; k += 1) {
+        const a = k / 48 * Math.PI * 2;
+        px(ctx, e.cx + Math.cos(a) * r, e.cy + Math.sin(a) * r * 0.8, e.cols[k % e.cols.length]);
+        px(ctx, e.cx + Math.cos(a) * (r - 2), e.cy + Math.sin(a) * (r - 2) * 0.8, e.cols[(k + 1) % e.cols.length]);
+      }
+    }
+    if (e.type === "flash") {
+      ctx.fillStyle = `rgba(255,255,255,${0.45 * (1 - p)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (e.type === "bubble") {
+      const r = 6 + p * 18;
+      for (let k = 0; k < 24; k += 1) {
+        const a = k / 24 * Math.PI * 2;
+        px(ctx, e.cx + Math.cos(a) * r, e.cy + Math.sin(a) * r * 0.85, e.cols[k % e.cols.length]);
+      }
+      px(ctx, e.cx - r * 0.3, e.cy - r * 0.4, "#ffffff");
+    }
+    if (e.type === "scribble") {
+      for (let k = 0; k < 30; k += 1) {
+        const a = e.t * 10 + k * 0.7;
+        px(ctx, e.cx + Math.cos(a) * (8 + (k % 5) * 2), e.cy + Math.sin(a * 1.3) * (6 + (k % 4)), k % 2 ? "#3a3a48" : "#f4c542");
+      }
+    }
+    if (e.type === "orbit") {
+      for (let k = 0; k < 8; k += 1) {
+        const a = e.t * 8 + k * (Math.PI * 2 / 8);
+        const rr = 12 + Math.sin(e.t * 6 + k) * 2;
+        ctx.drawImage(starS, Math.round(e.cx + Math.cos(a) * rr - 2), Math.round(e.cy + Math.sin(a) * rr * 0.7 - 2));
+      }
+    }
+  }
+}
+
 function layer(w, h, fn) {
   const [c, g] = canvas(w, h);
   const wrap = (f) => { f(0); f(-w); f(w); };
@@ -1600,12 +1828,13 @@ const FONT = {
 
 export function drawMonsterIcon(target, type) {
   const def = MON[normalizeSprite(type)];
-  target.width = def.w;
-  target.height = def.h + 2;
+  const hr = def.headroom || 0;
+  target.width = def.w + (hr ? 2 : 0);
+  target.height = def.h + hr + 2;
   const g = target.getContext("2d");
   g.imageSmoothingEnabled = false;
   g.clearRect(0, 0, target.width, target.height);
-  def.draw(g, 0, 2, { open: 0, t: 0, idle: false });
+  def.draw(g, 0, hr + 2, { open: 0, t: 0, idle: false });
 }
 
 export function drawHeroIcon(target, color) {
@@ -1685,7 +1914,7 @@ export function paintHeroBadge(target, heroKey, weapon, color) {
   );
 }
 
-const POSE = { walk: -55, idle: -55, windup: -160, swing: 35, block: -78, victory: -95 };
+const POSE = { walk: -55, idle: -55, windup: -160, swing: 35, block: -78, victory: -95, aim: -10 };
 const [mc, mg] = canvas(56, 56);
 
 let host = null;
@@ -1867,6 +2096,7 @@ function apiFor(token) {
     wait: (seconds) => waitFor(seconds, token),
     until: (fn) => until(fn, token),
     projectiles,
+    particles,
     heroX,
     block,
   };
@@ -1927,10 +2157,11 @@ function cloudMask(w, h) {
 
 function makeThought(spriteId) {
   const def = MON[normalizeSprite(spriteId)];
-  const [ic, ig] = canvas(def.w, def.h);
-  def.draw(ig, 0, 0, { open: 0, t: 0, idle: false, shake: 0, flash: 0, lunge: 0 });
+  const hr = def.headroom || 0;
+  const [ic, ig] = canvas(def.w, def.h + hr);
+  def.draw(ig, 0, hr, { open: 0, t: 0, idle: false, shake: 0, flash: 0, lunge: 0 });
   const w = def.w + 10;
-  const h = def.h + 8;
+  const h = def.h + hr + 8;
   const mask = cloudMask(w, h);
   const [c, g] = canvas(w + 2, h + 2);
   const edge = tintCanvas(mask, K);
@@ -2231,25 +2462,53 @@ async function playBattle(item, token) {
   hero.alert = 0.9;
   say(`${def.name} battles for ${item.title}!`);
   if (!(await waitFor(0.45, token))) return;
-  const lines = ["Broom sword!", "Another sweep!", "Final sweep!"];
+  const wpn = scene.gear?.weapon || {};
+  const wk = wpn.key || "broom";
+  const lines = [
+    wpn.beam ? `You fire the ${wpn.name || "weapon"}!` : `You strike with the ${wpn.name || "broom"}!`,
+    "Another big hit!",
+    "Final blow!",
+  ];
   const fight = apiFor(token);
   for (let i = 0; i < 3; i += 1) {
     if (token !== runToken || !mon?.alive) return;
     say(lines[i]);
-    hero.pose = "windup";
-    if (!(await waitFor(0.2, token))) return;
-    hero.oxT = mon.x - 18 - 26;
-    if (!(await waitFor(0.14, token))) return;
-    hero.pose = "swing";
-    hero.ang = POSE.swing;
-    hero.smear = 0.12;
+    if (wpn.beam) {
+      hero.pose = "aim";
+      hero.oxT = -2;
+      if (!(await waitFor(0.3, token))) return;
+      beamT = 0.45;
+      mon.lungeT = -5;
+    } else {
+      hero.pose = "windup";
+      if (!(await waitFor(0.2 * (wpn.speed || 1), token))) return;
+      const reach = (wpn.mapLen || 14) - (wpn.grip?.[0] || 2);
+      hero.oxT = mon.x - (reach > 15 ? 22 : 18) - 26;
+      if (!(await waitFor(0.14, token))) return;
+      hero.pose = "swing";
+      hero.ang = POSE.swing;
+      hero.smear = 0.12;
+    }
     mon.hp -= 1;
     mon.flash = 0.2;
     mon.shake = 0.25;
     mon.idle = false;
-    if (!reduce) shake = 0.15;
-    burst(mon.x + def.w / 2, G - def.h / 2 + def.yoff(mon), def.hit, 16, 70);
-    if (!(await waitFor(0.25, token))) return;
+    if (!reduce) shake = wpn.heavy ? 0.3 : 0.15;
+    const hx = mon.x + def.w / 2;
+    const hy = G - def.h / 2 + def.yoff(mon);
+    burst(hx, hy, def.hit, 12, 70);
+    const fxCols = wpn.fx || def.hit;
+    for (let k = 0; k < 10; k += 1) {
+      const a = R() * Math.PI * 2;
+      const v = rnd(20, 60);
+      particles.push({ x: hx, y: hy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 15, g: wpn.fxG ?? 120, life: rnd(0.3, 0.7), c: fxCols[k % fxCols.length] });
+    }
+    if (i === 2) {
+      special(wk, hx, hy);
+      if (!(await waitFor(0.75, token))) return;
+    }
+    if (!(await waitFor(wpn.beam ? 0.45 : 0.25, token))) return;
+    mon.lungeT = 0;
     hero.oxT = 0;
     hero.pose = "idle";
     if (!(await waitFor(0.3, token))) return;
@@ -2283,7 +2542,7 @@ async function playBattle(item, token) {
   }
   burst(cx, cy, def.hit, 10, 50);
   mon.alive = false;
-  const reward = Math.max(0, mon.points);
+  const reward = Math.max(0, mon.points) + (wpn.bonus || 0);
   floats.push({ s: `+${reward}`, x: cx - 6, y: cy - 8, life: 1.3 });
   const bits = Math.min(8, reward);
   for (let i = 0; i < bits; i += 1) coins.push({ x: cx, y: cy, vx: rnd(-35, 35), vy: rnd(-75, -45), t: -i * 0.06 });
@@ -3281,14 +3540,21 @@ function drawMonster(m) {
   rect(ctx, m.x + (d.w - sw) / 2 + sx, G, sw, 1, scenery.shadow);
   const dx = Math.round(m.x - 16 + sx);
   const dy = G + 1 - 52;
-  if (m.flee) {
+  const hop = Math.round(m.hopY || 0);
+  if (m.hopY && m.hopV != null && m.spinT > 0 && ((time * 16) | 0) % 2) {
     ctx.save();
-    ctx.translate(dx + 56, dy);
+    ctx.translate(dx + 28, dy + 28 + hop);
+    ctx.scale(-1, -1);
+    ctx.drawImage(mc, -28, -28);
+    ctx.restore();
+  } else if (m.flee) {
+    ctx.save();
+    ctx.translate(dx + 56, dy + hop);
     ctx.scale(-1, 1);
     ctx.drawImage(mc, 0, 0);
     ctx.restore();
   } else {
-    ctx.drawImage(mc, dx, dy);
+    ctx.drawImage(mc, dx, dy + hop);
   }
   if (m.tongue > 0) {
     const tone = m.def.lashCol || ["#ff79a8", "#c8406e"];
@@ -3306,7 +3572,7 @@ function drawMonster(m) {
   }
   if (m.showHp) {
     const bx = Math.round(m.x + d.w / 2 - 7);
-    const by = G + d.yoff(m) - d.h - 6;
+    const by = G + d.yoff(m) - d.h - 6 - (d.hpLift || 0);
     rect(ctx, bx - 1, by - 1, 15, 4, K);
     for (let i = 0; i < 3; i += 1) rect(ctx, bx + i * 5, by, 4, 2, i < m.hp ? "#e04a4a" : "#4a2030");
   }
@@ -3486,6 +3752,13 @@ function update(dt) {
     if (mon.def.snow && R() < dt * 30) {
       particles.push({ x: rnd(0, W + 30), y: -2, vx: -10, vy: rnd(12, 22), g: 0, life: 4.5, c: R() < 0.3 ? "#c8d8ee" : "#ffffff" });
     }
+    if (mon.def.sizzle && R() < dt * 9) particles.push({ x: mon.x + rnd(3, 15), y: G - 10 + mon.def.yoff(mon), vx: rnd(-3, 3), vy: -rnd(10, 18), g: -5, life: 0.9, c: R() < 0.5 ? "#c8d0e0" : "#e6ecf5" });
+    if (mon.def.drizzle && R() < dt * 6) particles.push({ x: mon.x + 4 + ((R() * 9) | 0), y: G + 1 - mon.def.h + mon.def.yoff(mon) - 5, vx: 0, vy: 30, g: 80, life: 0.2, c: "#4aa3ff" });
+    if (mon.def.shower && R() < dt * 14) particles.push({ x: mon.x + 9 + ((R() * 3) | 0) * 2, y: G + 1 - mon.def.h + mon.def.yoff(mon) - 7, vx: 0, vy: 35, g: 90, life: 0.22, c: R() < 0.5 ? "#7fd0ff" : "#bfefff" });
+    if (mon.def.bubbly && R() < dt * 5) particles.push({ x: mon.x + rnd(3, 17), y: G - 13 + mon.def.yoff(mon), vx: rnd(-4, 4), vy: -12, g: -6, life: 1.3, c: R() < 0.5 ? "#bfefff" : "#ffffff" });
+    if (mon.hopV != null) { mon.hopY = (mon.hopY || 0) + mon.hopV * dt; mon.hopV += 360 * dt; if (mon.hopY >= 0) { mon.hopY = 0; mon.hopV = null; } }
+    if (mon.spinT > 0) mon.spinT = Math.max(0, mon.spinT - dt);
+
   }
   const hx = heroX() + 17;
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
@@ -3605,11 +3878,17 @@ function draw() {
   );
   if (!(paradeOn && parade.length) && showHero) {
   rect(ctx, x + 3, G, 8, 1, scenery.shadow);
-  if (hero.smear > 0 && !scene.gear?.weapon) {
-    for (let a = -160; a <= 35; a += 7) {
+  if (hero.smear > 0) {
+    const W_ = scene.gear?.weapon;
+    const smear = W_?.smear || ["#fffbe0", "#fff3b0"];
+    const reach = ((W_?.mapLen || 14) - (W_?.grip?.[0] || 2));
+    let k = 0;
+    for (let a = -160; a <= 35; a += 7, k += 1) {
       const r = a * (Math.PI / 180);
-      px(ctx, x + 11 + Math.cos(r) * 14, y + hand + Math.sin(r) * 14, "#fffbe0");
-      px(ctx, x + 11 + Math.cos(r) * 13, y + hand + Math.sin(r) * 13, "#fff3b0");
+      const c1 = smear === "rainbow" ? RAINBOW[k % 6] : smear[0];
+      const c2 = smear === "rainbow" ? RAINBOW[(k + 1) % 6] : smear[1];
+      px(ctx, x + 11 + Math.cos(r) * reach, y + hand + Math.sin(r) * reach, c1);
+      px(ctx, x + 11 + Math.cos(r) * (reach - 1), y + hand + Math.sin(r) * (reach - 1), c2);
     }
   }
   const sprites = look || (scene.gear?.frames?.a ? scene.gear.frames : heroSprites);
@@ -3634,6 +3913,18 @@ function draw() {
     if (!hero.noWeapon) {
       if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + hand, hero.ang);
       else drawBroom(x + 11, y + hand, hero.ang);
+      if (beamT > 0 && mon && scene.gear?.weapon?.beam) {
+        const [bx, by] = weaponTipFromGear(scene.gear.weapon, x + 11, y + hand, hero.ang);
+        const ex = mon.x + mon.def.w / 2;
+        const BC = scene.gear.weapon.beamCol || ["#7fe0ff", "#ffffff", "#bfefff", "#4aa3ff"];
+        for (let i = 0; bx + i < ex; i += 1) {
+          const c = ((i + ((time * 60) | 0)) % 4) < 2 ? BC[0] : BC[1];
+          const w = 1 + (((i + ((time * 30) | 0)) % 5 === 0) ? 1 : 0);
+          px(ctx, bx + i, by, c);
+          if (w > 1) px(ctx, bx + i, by - 1, BC[2]);
+          px(ctx, bx + i, by + 1, BC[3]);
+        }
+      }
     }
   }
   if (hero.power > 0) {
@@ -3702,7 +3993,8 @@ function draw() {
   }
   if (mon?.alive) drawMonster(mon);
   projectiles.forEach(drawProj);
-  particles.forEach((p) => rect(ctx, p.x, p.y, p.s || 1, p.s || 1, p.c));
+  particles.forEach((p) => (p.spr ? ctx.drawImage(p.spr, Math.round(p.x), Math.round(p.y)) : rect(ctx, p.x, p.y, p.s || 1, p.s || 1, p.c)));
+  drawEffects();
   coins.forEach((c) => { if (c.t >= 0) drawCoin(c.x, c.y, time + c.x * 0.05); });
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
   drawLayer(scenery.fore, worldX * 1.3, H - 12);
