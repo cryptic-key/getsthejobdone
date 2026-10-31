@@ -169,6 +169,8 @@ function mapKid(row) {
     groundProgress: Math.max(0, Number(row.ground_progress) || 0),
     warnParent: row.warn_parent || "",
     warnSeq: Number(row.warn_seq) || 0,
+    hero: row.hero || "knight",
+    weapon: row.weapon || "broom",
   };
 }
 
@@ -200,7 +202,7 @@ async function loadParent() {
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,hero,weapon").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
@@ -529,15 +531,23 @@ function pendingWarn(child) {
   if (!child?.warnParent || !child.warnSeq) return null;
   const key = `${child.warnSeq}:${child.warnParent}`;
   if (sessionStorage.getItem(WARN_SEEN) === key) return null;
+  const parent = (db.parents || []).find((person) => person.name === child.warnParent);
   return {
     parent: child.warnParent,
-    hero: parentHeroFallback(child.warnParent),
-    color: COLOR_HEX.teal,
+    hero: parent ? parentLook(parent.hero, parent.name) : parentHeroFallback(child.warnParent),
+    color: COLOR_HEX[parent?.color] || COLOR_HEX.teal,
     hearts: child.hearts,
     seq: child.warnSeq,
     locked: grounded(child),
     lockKey: grounded(child) ? String(child.groundedUntil || child.id) : "",
   };
+}
+
+function kidStageGear(child) {
+  if (!child) return null;
+  const quest = questCatalog();
+  const weaponKey = quest.weapons[child.weapon] ? child.weapon : "broom";
+  return { weapon: quest.weaponSprite(weaponKey) };
 }
 
 function paintStage() {
@@ -546,14 +556,54 @@ function paintStage() {
   if (db.session?.role === "parent" && route.name === "chart") {
     const seen = seenFlee();
     const fleeing = (db.chores || []).filter((chore) => chore.verdict === "flee" && !seen.has(chore.id) && !finishedIds.has(chore.id));
-    const child = fleeing[0] ? kidById(fleeing[0].kidId) : null;
+    if (fleeing.length) {
+      const child = kidById(fleeing[0].kidId);
+      setStageScene({
+        color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+        hero: kidHero(child?.hero),
+        waiting: [],
+        plays: fleeing.map((chore) => ({ ...actor(chore), flee: true, approved: true })),
+        onDone: onFightDone,
+        gear: kidStageGear(child),
+        hearts: child?.hearts ?? 3,
+      });
+      return;
+    }
+    const waiting = (db.chores || []).filter((chore) => chore.status === "submitted");
+    const chore = waiting[0];
+    if (chore) {
+      const child = kidById(chore.kidId);
+      const review = {
+        ...actor(chore),
+        kidName: child?.name || "Hero",
+        hero: kidHero(child?.hero),
+      };
+      setStageScene({
+        color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+        hero: kidHero(child?.hero),
+        waiting: [],
+        plays: [],
+        onDone: onFightDone,
+        gear: kidStageGear(child),
+        hearts: child?.hearts ?? 3,
+        review,
+        onReviewApprove: (id) => {
+          run(() => rpc("approve_chore", { p_chore: id }), "Approved. Add any new device minutes in Screen Time.");
+        },
+        onReviewDecline: (id) => {
+          markFleeSeen(id);
+          run(() => rpc("reject_chore", { p_chore: id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
+        },
+      });
+      return;
+    }
     setStageScene({
-      color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+      color: COLOR_HEX[host.dataset.color] || COLOR_HEX.leaf,
+      hero: "",
       waiting: [],
-      plays: fleeing.map((chore) => ({ ...actor(chore), flee: true, approved: true })),
-      onDone: onFightDone,
+      plays: [],
       gear: null,
-      hearts: child?.hearts ?? 3,
+      hearts: 3,
     });
     return;
   }

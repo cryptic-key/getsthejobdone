@@ -776,6 +776,48 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
   overflow-wrap: anywhere;
   border: 2px solid #f4f0e4;
 }
+.quest-actions {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  bottom: 3%;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(8px, 2vw, 14px);
+  pointer-events: auto;
+}
+.quest-actions[hidden] { display: none !important; }
+.quest-actions button {
+  margin: 0;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  padding: clamp(10px, 2.4vw, 16px) 8px;
+  font-family: "Press Start 2P", monospace;
+  font-size: clamp(8px, 2vw, 12px);
+  line-height: 1.2;
+  color: #fffdf8;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(26, 28, 44, 0.35);
+}
+.quest-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.quest-actions button:not(:disabled):active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 rgba(26, 28, 44, 0.35);
+}
+.quest-approve {
+  background: #2f9e44;
+  box-shadow: 0 4px 0 #1f5c40;
+}
+.quest-approve:not(:disabled):active { box-shadow: 0 2px 0 #1f5c40; }
+.quest-decline {
+  background: #d64545;
+  box-shadow: 0 4px 0 #7a1f1f;
+}
+.quest-decline:not(:disabled):active { box-shadow: 0 2px 0 #7a1f1f; }
 .sprite-library { display: flex; flex-wrap: wrap; gap: 14px; }
 .sprite-card { margin: 0; display: grid; justify-items: center; gap: 6px; min-width: 92px; }
 .sprite-card figcaption { font-size: 0.78rem; font-weight: 800; text-align: center; }

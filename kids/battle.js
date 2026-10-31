@@ -1667,7 +1667,7 @@ let scroll = 18;
 let scrollTarget = 18;
 let shake = 0;
 let time = 0;
-const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0, down: false, noWeapon: false, hurt: 0 };
+const hero = { ox: 0, oxT: 0, kx: 0, jy: 0, vy: 0, pose: "walk", ang: -55, smear: 0, alert: 0, down: false, noWeapon: false, hurt: 0, power: 0 };
 let mon = null;
 const projectiles = [];
 const particles = [];
@@ -1682,13 +1682,32 @@ let full = "";
 let shown = 0;
 let lastFrame = 0;
 let loopOn = false;
-const scene = { waiting: [], plays: [], onDone: null, color: "#3fa34d", paradeKey: "", gear: null, hero: "", lockup: null, hearts: 3, onLockup: null, warn: null, onWarn: null };
+const scene = {
+  waiting: [],
+  plays: [],
+  onDone: null,
+  color: "#3fa34d",
+  paradeKey: "",
+  gear: null,
+  hero: "",
+  lockup: null,
+  hearts: 3,
+  onLockup: null,
+  warn: null,
+  onWarn: null,
+  review: null,
+  onReviewApprove: null,
+  onReviewDecline: null,
+};
 let parade = [];
 let paradeOn = false;
 let warner = null;
 let spellBolt = null;
 let warnBusy = false;
 let lastWarn = "";
+let reviewBusy = false;
+let lastReview = "";
+let actionsEl = null;
 const copPal = { K, N: "#2a3f8a", S: "#f4c89c", E: K, M: "#6e3418", Y: "#f4c542", B: "#1a1c2c" };
 const copTop = [
   "...KKKKKK...", "..KNNNYNNK..", ".KKKKKKKKKK.", "..KSSSSSSSK.", "..KSESSESSK.", "..KMMMMSSSK.", "...KSSSSK...",
@@ -1764,9 +1783,135 @@ function goTrail() {
   hero.pose = "walk";
   hero.down = false;
   hero.oxT = 0;
-  scrollTarget = 18;
+  hero.power = 0;
+  scrollTarget = scene.hero || scene.gear ? 18 : 12;
   projectiles.length = 0;
-  say("Walking the forest trail...");
+  setReviewActions(false);
+  if (scene.review) return;
+  say(scene.hero || scene.gear ? "Walking the forest trail..." : "Waiting for a finished quest...");
+}
+
+function setReviewActions(on) {
+  if (!actionsEl) actionsEl = host?.querySelector(".quest-actions");
+  if (!actionsEl) return;
+  actionsEl.hidden = !on;
+  actionsEl.querySelectorAll("button").forEach((btn) => {
+    btn.disabled = !on;
+  });
+}
+
+function drawThoughtBubble(hx, hy, spriteId) {
+  const def = MON[normalizeSprite(spriteId)];
+  const bx = hx + 12;
+  const by = hy - 16;
+  disc(ctx, bx, by, 11, K);
+  disc(ctx, bx, by, 10, "#fffdf8");
+  disc(ctx, hx + 9, hy - 5, 2.4, K);
+  disc(ctx, hx + 9, hy - 5, 1.6, "#fffdf8");
+  disc(ctx, hx + 7, hy - 1, 1.5, K);
+  disc(ctx, hx + 7, hy - 1, 0.9, "#fffdf8");
+  const scale = Math.min(1, 14 / Math.max(def.w, def.h, 1));
+  ctx.save();
+  ctx.translate(bx, by + 1);
+  ctx.scale(scale, scale);
+  def.draw(ctx, Math.round(-def.w / 2), Math.round(-def.h / 2), {
+    open: 0.2,
+    t: time,
+    idle: true,
+    flash: 0,
+    shake: 0,
+    lunge: 0,
+  });
+  ctx.restore();
+}
+
+async function presentReview(token) {
+  const item = scene.review;
+  if (!item) return;
+  reviewBusy = false;
+  mon = null;
+  projectiles.length = 0;
+  hero.down = false;
+  hero.hurt = 0;
+  hero.power = 0;
+  hero.noWeapon = false;
+  hero.pose = "idle";
+  hero.ox = 0;
+  hero.oxT = 0;
+  hero.kx = 0;
+  scroll = 0;
+  scrollTarget = 0;
+  say(`${item.kidName} is done defeating ${item.title}`);
+  setReviewActions(true);
+}
+
+async function playReviewApprove(token) {
+  const item = scene.review;
+  if (!item || reviewBusy) return;
+  reviewBusy = true;
+  setReviewActions(false);
+  say(`${item.kidName} is powered up!`);
+  hero.pose = "idle";
+  hero.power = 1.8;
+  burst(heroX() + 8, G - 10, ["#e04a4a", "#f4862e", "#f4c542", "#5cc96a", "#4aa3ff", "#9b6ad6"], 22, 60);
+  if (!reduce) shake = 0.12;
+  if (!(await waitFor(1.35, token))) {
+    reviewBusy = false;
+    return;
+  }
+  say(`${item.kidName} heads off!`);
+  hero.pose = "walk";
+  hero.oxT = 120;
+  if (!(await until(() => heroX() > W + 10, token))) {
+    reviewBusy = false;
+    return;
+  }
+  hero.power = 0;
+  hero.ox = 0;
+  hero.oxT = 0;
+  const done = scene.onReviewApprove;
+  const choreId = item.id;
+  scene.review = null;
+  scene.onReviewApprove = null;
+  scene.onReviewDecline = null;
+  lastReview = "";
+  reviewBusy = false;
+  done?.(choreId);
+}
+
+async function playReviewDecline(token) {
+  const item = scene.review;
+  if (!item || reviewBusy) return;
+  reviewBusy = true;
+  setReviewActions(false);
+  say(`Not yet. ${item.kidName} tries again.`);
+  hero.pose = "block";
+  hero.alert = 1;
+  hero.kx = -10;
+  hero.down = true;
+  if (!reduce) shake = 0.18;
+  burst(heroX() + 8, G - 8, ["#ffffff", "#e04a4a", "#f4c542"], 12, 45);
+  if (!(await waitFor(0.7, token))) {
+    reviewBusy = false;
+    return;
+  }
+  hero.down = false;
+  hero.pose = "walk";
+  hero.oxT = 120;
+  if (!(await until(() => heroX() > W + 10, token))) {
+    reviewBusy = false;
+    return;
+  }
+  hero.ox = 0;
+  hero.oxT = 0;
+  const done = scene.onReviewDecline;
+  const choreId = item.id;
+  scene.review = null;
+  scene.onReviewApprove = null;
+  scene.onReviewDecline = null;
+  lastReview = "";
+  reviewBusy = false;
+  done?.(choreId);
 }
 async function approach(item, token, showHp) {
   const def = MON[normalizeSprite(item.sprite)];
@@ -2041,7 +2186,7 @@ async function playWarn(token) {
   const look = heroLook(info.hero || parentLookKey(info.parent), tint);
   const stand = look.h || 16;
   const slot = 78;
-  warner = { x: W + 10, tx: slot, look, stand, cast: 0, name: info.parent || "Parent" };
+  warner = { x: W + 10, tx: slot, look, stand, cast: 0, point: 0, name: info.parent || "Parent" };
   say(`${warner.name} steps in!`);
   if (!(await until(() => warner && warner.x <= slot + 0.5, token))) {
     warnBusy = false;
@@ -2082,7 +2227,91 @@ async function playWarn(token) {
   }
   await cracking;
   paintHearts(Number(info.hearts) || 0);
-  say(info.locked ? "Last heart gone..." : "Be careful out there.");
+  if (info.locked) {
+    say("Last heart gone...");
+    if (!(await waitFor(0.55, token))) {
+      warnBusy = false;
+      return;
+    }
+    warner.point = 1;
+    say(`${warner.name} points at you!`);
+    if (!(await waitFor(0.85, token))) {
+      warnBusy = false;
+      return;
+    }
+    siren = true;
+    say("WEE-OOO! The Chore Patrol is on the way!");
+    if (!(await waitFor(0.35, token))) {
+      warnBusy = false;
+      return;
+    }
+    cops = [
+      { x: Math.max(W + 8, warner.x + 28), vx: -58, flip: false },
+      { x: Math.max(W + 24, warner.x + 46), vx: -58, flip: false },
+    ];
+    if (!(await until(() => cops[0] && cops[0].x <= heroX() + 19, token))) {
+      warnBusy = false;
+      return;
+    }
+    cops.forEach((c) => { c.vx = 0; });
+    cops[1].x = cops[0].x + 14;
+    hero.alert = 1;
+    say("Halt! You're GROUNDED!");
+    if (!(await waitFor(1.0, token))) {
+      warnBusy = false;
+      return;
+    }
+    const hx = heroX() + 11;
+    const hy = heroY() + 10;
+    flyWeapon = { x: hx, y: hy, tx: cops[0].x + 1, ty: G - 6, t: 0 };
+    hero.noWeapon = true;
+    say("The Chore Patrol confiscates your weapon!");
+    if (!(await until(() => flyWeapon && flyWeapon.t >= 1, token))) {
+      warnBusy = false;
+      return;
+    }
+    cage = { y: -60, vy: 0, drop: true, locked: false, lift: false };
+    if (!(await until(() => cage && !cage.drop, token))) {
+      warnBusy = false;
+      return;
+    }
+    if (!reduce) shake = 0.3;
+    burst(heroX() + 7, G, ["#b4b4c4", "#8890a8", "#ffffff"], 18, 60);
+    if (!(await waitFor(0.35, token))) {
+      warnBusy = false;
+      return;
+    }
+    cage.locked = true;
+    burst(heroX() + 10, G - 5, ["#f4c542", "#ffffff"], 8, 30);
+    say("Locked in! Earn coins to break out.");
+    if (!(await waitFor(0.85, token))) {
+      warnBusy = false;
+      return;
+    }
+    cops.forEach((c) => { c.vx = 40; c.flip = true; });
+    warner.point = 0;
+    warner.tx = W + 28;
+    if (!(await until(() => cops.every((c) => c.x > W + 4) && (!warner || warner.x > W + 6), token))) {
+      warnBusy = false;
+      return;
+    }
+    cops = [];
+    flyWeapon = null;
+    siren = false;
+    warner = null;
+    hero.hurt = 0;
+    scene.lockup = "held";
+    lastLockup = `held:${info.lockKey || ""}`;
+    scene.onLockup?.("held");
+    warnBusy = false;
+    const done = scene.onWarn;
+    scene.warn = null;
+    scene.onWarn = null;
+    lastWarn = "";
+    done?.(info);
+    return;
+  }
+  say("Be careful out there.");
   warner.tx = W + 24;
   if (!(await until(() => !warner || warner.x > W + 6, token))) {
     warnBusy = false;
@@ -2097,7 +2326,7 @@ async function playWarn(token) {
   lastWarn = "";
   done?.(info);
   if (token !== runToken) return;
-  if (!info.locked) goTrail();
+  goTrail();
 }
 
 function holdCage() {
@@ -2263,6 +2492,10 @@ function reconcile() {
     if (!cage || !cage.locked) holdCage();
     return;
   }
+  if (scene.review) {
+    if (!reviewBusy) presentReview(token);
+    return;
+  }
   const play = scene.plays[0];
   if (play) {
     if (play.flee) playFlee(play, token);
@@ -2285,11 +2518,20 @@ export function stageElement() {
   if (host) return host;
   host = document.createElement("div");
   host.className = "stage";
-  host.innerHTML = `<canvas class="quest-canvas" width="128" height="72" aria-label="Forest battle"></canvas><div class="quest-hearts" aria-label="3 hearts left"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="quest-panel"><div class="quest-dialog" aria-live="polite"></div></div>`;
+  host.innerHTML = `<canvas class="quest-canvas" width="128" height="72" aria-label="Forest battle"></canvas><div class="quest-hearts" aria-label="3 hearts left"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="quest-panel"><div class="quest-dialog" aria-live="polite"></div></div><div class="quest-actions" hidden><button type="button" class="quest-approve">Approve</button><button type="button" class="quest-decline">Decline</button></div>`;
   const canvasEl = host.querySelector("canvas");
   ctx = canvasEl.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   dialog = host.querySelector(".quest-dialog");
+  actionsEl = host.querySelector(".quest-actions");
+  actionsEl.querySelector(".quest-approve").addEventListener("click", () => {
+    if (!scene.review || reviewBusy) return;
+    playReviewApprove(runToken);
+  });
+  actionsEl.querySelector(".quest-decline").addEventListener("click", () => {
+    if (!scene.review || reviewBusy) return;
+    playReviewDecline(runToken);
+  });
   if (!loopOn) {
     loopOn = true;
     lastFrame = performance.now();
@@ -2310,18 +2552,25 @@ export function setStageScene(next) {
     scene.onLockup = null;
     scene.warn = null;
     scene.onWarn = null;
+    scene.review = null;
+    scene.onReviewApprove = null;
+    scene.onReviewDecline = null;
     lastLockup = "";
     lastWarn = "";
+    lastReview = "";
     cage = null;
     cops = [];
     flyWeapon = null;
     siren = false;
     lockBusy = false;
     warnBusy = false;
+    reviewBusy = false;
     warner = null;
     spellBolt = null;
     hero.noWeapon = false;
     hero.hurt = 0;
+    hero.power = 0;
+    setReviewActions(false);
     const key = next.parade.map((kid) => `${kid.id}:${kid.hero || "knight"}:${kid.color || ""}:${kid.weaponKey || "broom"}`).sort().join("|");
     if (paradeOn && scene.paradeKey === key) return;
     scene.paradeKey = key;
@@ -2370,6 +2619,9 @@ export function setStageScene(next) {
   scene.onDone = next.onDone;
   scene.onLockup = next.onLockup || null;
   scene.onWarn = next.onWarn || null;
+  scene.onReviewApprove = next.onReviewApprove || null;
+  scene.onReviewDecline = next.onReviewDecline || null;
+  const review = next.review || null;
   const warn = next.warn || null;
   const lockup = next.lockup || null;
   const color = next.color || "#3fa34d";
@@ -2383,6 +2635,35 @@ export function setStageScene(next) {
   if (color !== scene.color) {
     scene.color = color;
     heroSprites = buildHero(color);
+  }
+  if (review) {
+    const reviewKey = `${review.id}:${review.sprite}:${review.title}:${review.hero || ""}`;
+    scene.review = review;
+    scene.warn = null;
+    scene.lockup = null;
+    setReviewActions(false);
+    if (reviewKey === lastReview && (reviewBusy || hero.pose === "idle")) {
+      if (!reviewBusy) presentReview(runToken);
+      return;
+    }
+    lastReview = reviewKey;
+    runToken += 1;
+    projectiles.length = 0;
+    mon = null;
+    hero.ox = 0;
+    hero.oxT = 0;
+    reconcile();
+    return;
+  }
+  if (scene.review || reviewBusy) {
+    if (!reviewBusy) {
+      scene.review = null;
+      scene.onReviewApprove = null;
+      scene.onReviewDecline = null;
+      lastReview = "";
+      setReviewActions(false);
+      hero.power = 0;
+    }
   }
   if (warn) {
     const warnKey = `${warn.seq || ""}:${warn.parent || ""}:${warn.hearts ?? ""}`;
@@ -2665,6 +2946,22 @@ function update(dt) {
   hero.smear = Math.max(0, hero.smear - dt);
   hero.alert = Math.max(0, hero.alert - dt);
   hero.hurt = Math.max(0, hero.hurt - dt);
+  if (hero.power > 0) {
+    hero.power = Math.max(0, hero.power - dt);
+    if (R() < dt * 16) {
+      const a = R() * Math.PI * 2;
+      const cols = ["#e04a4a", "#f4862e", "#f4c542", "#5cc96a", "#4aa3ff", "#9b6ad6"];
+      particles.push({
+        x: heroX() + 8 + Math.cos(a) * 9,
+        y: heroY() + 6 + Math.sin(a) * 7,
+        vx: Math.cos(a) * 10,
+        vy: Math.sin(a) * 10 - 12,
+        g: 30,
+        life: 0.35,
+        c: cols[(R() * cols.length) | 0],
+      });
+    }
+  }
   if (warner) {
     warner.x += ((warner.tx ?? warner.x) - warner.x) * Math.min(1, dt * 5);
   }
@@ -2786,7 +3083,11 @@ function draw() {
   const stand = look?.h || 16;
   const hand = look?.hand ?? 10;
   const y = Math.round(G - (stand - 1) + hero.jy) - (fr ? 1 : 0);
-  if (!(paradeOn && parade.length)) {
+  const showHero = Boolean(
+    scene.hero || scene.gear || scene.review || scene.warn || scene.lockup || cage || cops.length
+      || scene.plays.length || scene.waiting.length
+  );
+  if (!(paradeOn && parade.length) && showHero) {
   rect(ctx, x + 3, G, 8, 1, scenery.shadow);
   if (hero.smear > 0 && !scene.gear?.weapon) {
     for (let a = -160; a <= 35; a += 7) {
@@ -2808,6 +3109,19 @@ function draw() {
       if (scene.gear?.weapon?.image) drawGearWeapon(scene.gear.weapon, x + 11, y + hand, hero.ang);
       else drawBroom(x + 11, y + hand, hero.ang);
     }
+  }
+  if (hero.power > 0) {
+    const cols = ["#e04a4a", "#f4862e", "#f4c542", "#5cc96a", "#4aa3ff", "#9b6ad6"];
+    for (let i = 0; i < 12; i += 1) {
+      const a = time * 5 + i * ((Math.PI * 2) / 12);
+      const rx = 9 + Math.sin(time * 8 + i) * 1.5;
+      const ry = 10;
+      px(ctx, x + 8 + Math.cos(a) * rx, y + stand / 2 + Math.sin(a) * ry, cols[i % 6]);
+      px(ctx, x + 8 + Math.cos(a) * (rx - 2), y + stand / 2 + Math.sin(a) * (ry - 2), cols[(i + 2) % 6]);
+    }
+  }
+  if (scene.review && !hero.down && hero.oxT <= 0) {
+    drawThoughtBubble(x + 8, y + 2, scene.review.sprite);
   }
   if (hero.alert > 0) {
     rect(ctx, x + 4, y - 11, 7, 9, K);
@@ -2836,6 +3150,17 @@ function draw() {
       disc(ctx, hx + 1, hy - 1, 1, "#fff3a8");
       if (R() < 0.35) {
         particles.push({ x: hx + rnd(-1, 2), y: hy + rnd(-2, 1), vx: rnd(-8, 8), vy: rnd(-20, -6), g: 40, life: 0.25, c: R() < 0.5 ? "#c77dff" : "#fff3a8" });
+      }
+    }
+    if (warner.point) {
+      const hx = wx + 2;
+      const hy = wy + Math.round((warner.stand || 16) * 0.4);
+      rect(ctx, hx - 10, hy, 11, 2, "#f4c89c");
+      rect(ctx, hx - 12, hy - 1, 3, 4, "#f4c89c");
+      px(ctx, hx - 13, hy, "#f4c89c");
+      px(ctx, hx - 1, hy + 2, "#f4c89c");
+      if (R() < 0.2) {
+        particles.push({ x: hx - 12, y: hy, vx: rnd(-18, -6), vy: rnd(-8, 4), g: 40, life: 0.2, c: "#fff3a8" });
       }
     }
   }
