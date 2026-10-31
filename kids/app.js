@@ -1,8 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-parent";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-parent";
-import { createChoreQuest } from "./chore-quest.js?v=71bc-parent";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71bc-warn";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71bc-warn";
+import { createChoreQuest } from "./chore-quest.js?v=71bc-warn";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -534,6 +534,7 @@ function actor(chore) {
 const CAGE_SEEN = "chart-cage-seen";
 const CAGE_HELD = "chart-cage-held";
 const WARN_SEEN = "chart-warn-seen";
+const PARENT_WARN_SEEN = "chart-parent-warn-seen";
 
 function pendingWarn(child) {
   if (!child?.warnParent || !child.warnSeq) return null;
@@ -548,6 +549,31 @@ function pendingWarn(child) {
     seq: child.warnSeq,
     locked: grounded(child),
     lockKey: grounded(child) ? String(child.groundedUntil || child.id) : "",
+  };
+}
+
+function pendingParentWarn() {
+  const me = parent();
+  if (!me?.name) return null;
+  const kids = (db.kids || [])
+    .filter((child) => child.warnParent === me.name && child.warnSeq)
+    .sort((a, b) => (b.warnSeq || 0) - (a.warnSeq || 0));
+  const child = kids[0];
+  if (!child) return null;
+  const key = `${child.warnSeq}:${child.id}`;
+  if (sessionStorage.getItem(PARENT_WARN_SEEN) === key) return null;
+  return {
+    view: "parent",
+    parent: me.name,
+    hero: parentLook(me.hero, me.name),
+    color: COLOR_HEX[me.color] || COLOR_HEX.teal,
+    weapon: heldWeapon(me.weapon || "broom"),
+    hearts: child.hearts,
+    seq: child.warnSeq,
+    locked: grounded(child),
+    lockKey: grounded(child) ? String(child.groundedUntil || child.id) : "",
+    kidId: child.id,
+    kidName: child.name,
   };
 }
 
@@ -573,6 +599,29 @@ function paintStage() {
   if (!host || host.hidden) return;
   if (db.session?.role === "parent" && route.name === "chart") {
     const guardian = parentGuardian();
+    const parentWarn = pendingParentWarn();
+    if (parentWarn) {
+      const child = kidById(parentWarn.kidId);
+      setStageScene({
+        color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+        hero: kidHero(child?.hero),
+        waiting: [],
+        plays: [],
+        onDone: onFightDone,
+        gear: kidStageGear(child),
+        hearts: Math.min(3, (child?.hearts ?? 0) + 1),
+        guardian,
+        warn: parentWarn,
+        onWarn: (info) => {
+          sessionStorage.setItem(PARENT_WARN_SEEN, `${info?.seq || parentWarn.seq}:${info?.kidId || parentWarn.kidId}`);
+          paintStage();
+        },
+        onLockup: (mode) => {
+          if (mode === "held" && parentWarn.lockKey) sessionStorage.setItem(CAGE_SEEN, parentWarn.lockKey);
+        },
+      });
+      return;
+    }
     const seen = seenFlee();
     const fleeing = (db.chores || []).filter((chore) => chore.verdict === "flee" && !seen.has(chore.id) && !finishedIds.has(chore.id));
     if (fleeing.length) {

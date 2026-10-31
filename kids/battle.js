@@ -1734,7 +1734,7 @@ function say(text) {
 }
 function heroX() {
   if (paradeOn && parade.length) return parade.reduce((max, walker) => Math.max(max, walker.x), 0);
-  if (scene.review) return 78 + hero.ox + hero.kx;
+  if (scene.review || scene.warn?.view === "parent") return 78 + hero.ox + hero.kx;
   return 26 + hero.ox + hero.kx;
 }
 function heroY() { return G - 15 + hero.jy; }
@@ -1918,6 +1918,7 @@ function parentFigure(info, x = 18) {
     hand: look.hand ?? 10,
     weapon: info.weapon || info.parentWeapon || null,
     cast: 0,
+    point: 0,
     name: info.name || info.parentName || "Parent",
   };
 }
@@ -2353,10 +2354,180 @@ function parentLookKey(name) {
   return "knight";
 }
 
+function finishWarn(info) {
+  warnBusy = false;
+  const done = scene.onWarn;
+  scene.warn = null;
+  scene.onWarn = null;
+  lastWarn = "";
+  done?.(info);
+}
+
+async function playParentWarn(token, info) {
+  mon = null;
+  projectiles.length = 0;
+  spellBolt = null;
+  warner = null;
+  hero.down = false;
+  hero.hurt = 0;
+  hero.noWeapon = false;
+  scroll = 0;
+  scrollTarget = 0;
+  hero.pose = "idle";
+  hero.ox = 0;
+  hero.oxT = 0;
+  hero.kx = 0;
+  if (!guardian) syncGuardian({
+    hero: info.hero,
+    color: info.color,
+    name: info.parent,
+    weapon: info.weapon || null,
+  });
+  const caster = stageParent();
+  if (!caster) {
+    finishWarn(info);
+    return;
+  }
+  caster.cast = 0;
+  caster.point = 0;
+  const kidName = info.kidName || "the hero";
+  say(`${caster.name} warns ${kidName}!`);
+  if (!(await waitFor(0.45, token))) {
+    warnBusy = false;
+    return;
+  }
+  say(`${caster.name} casts a warning spell!`);
+  if (!(await waitFor(0.3, token))) {
+    warnBusy = false;
+    return;
+  }
+  caster.cast = 1;
+  if (!(await waitFor(0.2, token))) {
+    warnBusy = false;
+    return;
+  }
+  const stand = caster.stand || 16;
+  spellBolt = {
+    x: caster.x + 12,
+    y: G - stand + 6,
+    tx: heroX() + 8,
+    ty: G - 10,
+    t: 0,
+  };
+  burst(spellBolt.x, spellBolt.y, ["#c77dff", "#fff3a8", "#ffffff"], 10, 40);
+  if (!(await until(() => !spellBolt || spellBolt.t >= 1, token))) {
+    warnBusy = false;
+    return;
+  }
+  spellBolt = null;
+  caster.cast = 0;
+  hero.hurt = 2.6;
+  hero.kx = 8;
+  if (!reduce) shake = 0.25;
+  burst(heroX() + 10, G - 6, ["#e04a4a", "#ffffff", "#c77dff"], 16, 55);
+  say("The spell hits! A heart cracks!");
+  const lost = Math.max(0, Math.min(2, Number(info.hearts) || 0));
+  const cracking = crackHeart(lost);
+  if (!(await waitFor(2.4, token))) {
+    warnBusy = false;
+    return;
+  }
+  await cracking;
+  paintHearts(Number(info.hearts) || 0);
+  if (info.locked) {
+    say("Last heart gone...");
+    if (!(await waitFor(0.55, token))) {
+      warnBusy = false;
+      return;
+    }
+    caster.point = 1;
+    say(`${caster.name} points at ${kidName}!`);
+    if (!(await waitFor(0.85, token))) {
+      warnBusy = false;
+      return;
+    }
+    siren = true;
+    say("WEE-OOO! The Chore Patrol is on the way!");
+    if (!(await waitFor(0.35, token))) {
+      warnBusy = false;
+      return;
+    }
+    cops = [
+      { x: Math.min(-16, caster.x - 28), vx: 58, flip: true },
+      { x: Math.min(-32, caster.x - 46), vx: 58, flip: true },
+    ];
+    if (!(await until(() => cops[0] && cops[0].x >= heroX() - 4, token))) {
+      warnBusy = false;
+      return;
+    }
+    cops.forEach((c) => { c.vx = 0; });
+    cops[1].x = cops[0].x - 14;
+    hero.alert = 1;
+    say(`Halt! ${kidName} is GROUNDED!`);
+    if (!(await waitFor(1.0, token))) {
+      warnBusy = false;
+      return;
+    }
+    flyWeapon = { x: heroX() + 11, y: heroY() + 10, tx: cops[0].x + 11, ty: G - 6, t: 0 };
+    hero.noWeapon = true;
+    say("The Chore Patrol confiscates the weapon!");
+    if (!(await until(() => flyWeapon && flyWeapon.t >= 1, token))) {
+      warnBusy = false;
+      return;
+    }
+    cage = { y: -60, vy: 0, drop: true, locked: false, lift: false };
+    if (!(await until(() => cage && !cage.drop, token))) {
+      warnBusy = false;
+      return;
+    }
+    if (!reduce) shake = 0.3;
+    burst(heroX() + 7, G, ["#b4b4c4", "#8890a8", "#ffffff"], 18, 60);
+    if (!(await waitFor(0.35, token))) {
+      warnBusy = false;
+      return;
+    }
+    cage.locked = true;
+    burst(heroX() + 10, G - 5, ["#f4c542", "#ffffff"], 8, 30);
+    say("Locked in! Earn coins to break out.");
+    if (!(await waitFor(0.85, token))) {
+      warnBusy = false;
+      return;
+    }
+    cops.forEach((c) => { c.vx = -40; c.flip = false; });
+    caster.point = 0;
+    if (!(await until(() => cops.every((c) => c.x < -20), token))) {
+      warnBusy = false;
+      return;
+    }
+    cops = [];
+    flyWeapon = null;
+    siren = false;
+    hero.hurt = 0;
+    scene.lockup = "held";
+    lastLockup = `held:${info.lockKey || ""}`;
+    scene.onLockup?.("held");
+    finishWarn(info);
+    return;
+  }
+  say(`Be careful out there, ${kidName}.`);
+  if (!(await waitFor(1.0, token))) {
+    warnBusy = false;
+    return;
+  }
+  hero.hurt = 0;
+  finishWarn(info);
+  if (token !== runToken) return;
+  goTrail();
+}
+
 async function playWarn(token) {
   const info = scene.warn;
   if (!info || warnBusy) return;
   warnBusy = true;
+  if (info.view === "parent") {
+    await playParentWarn(token, info);
+    return;
+  }
   mon = null;
   projectiles.length = 0;
   spellBolt = null;
@@ -2445,9 +2616,7 @@ async function playWarn(token) {
       warnBusy = false;
       return;
     }
-    const hx = heroX() + 11;
-    const hy = heroY() + 10;
-    flyWeapon = { x: hx, y: hy, tx: cops[0].x + 1, ty: G - 6, t: 0 };
+    flyWeapon = { x: heroX() + 11, y: heroY() + 10, tx: cops[0].x + 1, ty: G - 6, t: 0 };
     hero.noWeapon = true;
     say("The Chore Patrol confiscates your weapon!");
     if (!(await until(() => flyWeapon && flyWeapon.t >= 1, token))) {
@@ -2487,12 +2656,7 @@ async function playWarn(token) {
     scene.lockup = "held";
     lastLockup = `held:${info.lockKey || ""}`;
     scene.onLockup?.("held");
-    warnBusy = false;
-    const done = scene.onWarn;
-    scene.warn = null;
-    scene.onWarn = null;
-    lastWarn = "";
-    done?.(info);
+    finishWarn(info);
     return;
   }
   say("Be careful out there.");
@@ -2503,12 +2667,7 @@ async function playWarn(token) {
   }
   warner = null;
   hero.hurt = 0;
-  warnBusy = false;
-  const done = scene.onWarn;
-  scene.warn = null;
-  scene.onWarn = null;
-  lastWarn = "";
-  done?.(info);
+  finishWarn(info);
   if (token !== runToken) return;
   goTrail();
 }
@@ -3272,6 +3431,7 @@ function draw() {
     const rx = Math.round(parentFig.x);
     const ry = Math.round(G - ((parentFig.stand || 16) - 1));
     const rHand = parentFig.hand ?? 10;
+    const warnCast = scene.warn?.view === "parent" && parentFig.cast;
     rect(ctx, rx + 3, G, 8, 1, scenery.shadow);
     ctx.drawImage(parentFig.look.a, rx, ry);
     if (parentFig.weapon?.image) drawGearWeapon(parentFig.weapon, rx + 11, ry + rHand, -55);
@@ -3279,10 +3439,23 @@ function draw() {
     if (parentFig.cast) {
       const hx = rx + 10;
       const hy = ry + 4;
-      disc(ctx, hx, hy, 2, "#5cc96a");
-      disc(ctx, hx + 1, hy - 1, 1, "#fff3a8");
+      const glow = warnCast ? "#c77dff" : "#5cc96a";
+      const spark = warnCast ? "#fff3a8" : "#f4c542";
+      disc(ctx, hx, hy, 2, glow);
+      disc(ctx, hx + 1, hy - 1, 1, spark);
       if (R() < 0.35) {
-        particles.push({ x: hx + rnd(-1, 2), y: hy + rnd(-2, 1), vx: rnd(-4, 12), vy: rnd(-20, -6), g: 40, life: 0.25, c: R() < 0.5 ? "#5cc96a" : "#f4c542" });
+        particles.push({ x: hx + rnd(-1, 2), y: hy + rnd(-2, 1), vx: rnd(-4, 12), vy: rnd(-20, -6), g: 40, life: 0.25, c: R() < 0.5 ? glow : spark });
+      }
+    }
+    if (parentFig.point) {
+      const hx = rx + 12;
+      const hy = ry + Math.round((parentFig.stand || 16) * 0.4);
+      rect(ctx, hx, hy, 11, 2, "#f4c89c");
+      rect(ctx, hx + 9, hy - 1, 3, 4, "#f4c89c");
+      px(ctx, hx + 12, hy, "#f4c89c");
+      px(ctx, hx + 1, hy + 2, "#f4c89c");
+      if (R() < 0.2) {
+        particles.push({ x: hx + 12, y: hy, vx: rnd(6, 18), vy: rnd(-8, 4), g: 40, life: 0.2, c: "#fff3a8" });
       }
     }
   }
@@ -3293,7 +3466,12 @@ function draw() {
   const stand = look?.h || 16;
   const hand = look?.hand ?? 10;
   const y = Math.round(G - (stand - 1) + hero.jy) - (fr ? 1 : 0);
-  const faceParent = Boolean(scene.review && !hero.down && hero.oxT <= 0 && hero.pose !== "walk");
+  const faceParent = Boolean(
+    (scene.review || scene.warn?.view === "parent")
+      && !hero.down
+      && hero.oxT <= 0
+      && hero.pose !== "walk"
+  );
   const showHero = Boolean(
     scene.hero || scene.gear || scene.review || scene.warn || scene.lockup || cage || cops.length
       || scene.plays.length || scene.waiting.length
