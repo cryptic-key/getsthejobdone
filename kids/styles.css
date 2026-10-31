@@ -319,8 +319,35 @@ input:focus, select:focus, button:focus-visible {
 }
 .kid-column .balance { padding: 10px; text-align: left; }
 .kid-column .balance b { font-size: 1.1rem; }
-.kid-column .task-log { text-align: left; }
 .kid-column .banner { text-align: left; font-size: 0.85rem; }
+.log-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.log-entry {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+}
+.log-entry .log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.log-type {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: var(--sky-soft);
+  border: 2px solid #c5dfe6;
+  color: var(--ink);
+}
 @media (max-width: 520px) {
   .kid-hero-toggle .hero-icon { width: 64px; }
   .kid-column-head .btn { width: 100%; font-size: 0.82rem; padding-inline: 8px; }

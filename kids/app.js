@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=9";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=9";
-import { createChoreQuest } from "./chore-quest.js?v=9";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=10";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=10";
+import { createChoreQuest } from "./chore-quest.js?v=10";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -45,6 +45,54 @@ let notice = "";
 let busy = false;
 let libraryOpen = false;
 let chartOpenKidId = "";
+let logKidFilter = "";
+let logTypeFilter = "";
+
+const LOG_TYPES = [
+  ["approve", "Approved"],
+  ["done", "Marked done"],
+  ["reject", "Sent back"],
+  ["undo", "Undo approval"],
+  ["reward", "Reward"],
+  ["deduct", "Deduct"],
+  ["warn", "Warn"],
+  ["ground", "Ground"],
+  ["lift", "Lift"],
+  ["shop", "Shop"],
+  ["reset", "Reset"],
+  ["family", "Family"],
+  ["other", "Other"],
+];
+
+function activityType(text) {
+  const t = String(text || "");
+  if (/was paid for /.test(t)) return "approve";
+  if (/ marked .+ done\./.test(t)) return "done";
+  if (/was sent back on /.test(t)) return "reject";
+  if (/^Approval undone/.test(t)) return "undo";
+  if (/ got a reward/.test(t)) return "reward";
+  if (/ is grounded until /.test(t)) return "ground";
+  if (/ warned /.test(t)) return "warn";
+  if (/ is free\. Three hearts/.test(t)) return "lift";
+  if (/ was reset/.test(t)) return "reset";
+  if (/ asked for | points went back to | bought 30 device| cashed .+ points for \$1/.test(t)) return "shop";
+  if (/ got (?!a reward)/.test(t)) return "shop";
+  if (/ spent | cashed in | had a balance taken off| was paid \$/.test(t)) return "deduct";
+  if (/PIN|joined as a parent|was removed/.test(t)) return "family";
+  return "other";
+}
+
+function activityTypeLabel(type) {
+  return LOG_TYPES.find(([id]) => id === type)?.[1] || "Other";
+}
+
+function filteredActivity() {
+  return (db.activity || []).filter((row) => {
+    if (logKidFilter && row.kidId !== logKidFilter) return false;
+    if (logTypeFilter && activityType(row.text) !== logTypeFilter) return false;
+    return true;
+  });
+}
 
 function blank() {
   return { family: null, parents: [], kids: [], chores: [], templates: [], sections: [], items: [], requests: [], activity: [], week: [], hero: null, session: null };
@@ -214,7 +262,7 @@ async function loadParent() {
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
-    supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(20),
+    supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(200),
     supabase.rpc("door_ready"),
   ]);
   for (const result of [parents, kids, chores, templates, sections, items, requests, activity]) {
@@ -1125,6 +1173,7 @@ function parentNav(current) {
   const waiting = (db.chores || []).filter((chore) => chore.status === "submitted").length;
   return `<nav class="nav">${[
     ["chart", waiting ? `Approve (${waiting})` : "Approve"],
+    ["log", "Log"],
     ["chores", "Tasks"],
     ["shop", "Shop"],
     ["family", "Family"],
@@ -1775,8 +1824,6 @@ const views = {
           db.kids.length
             ? `<div class="chart-kids">${db.kids
                 .map((child) => {
-                  const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted" && chore.status !== "approved");
-                  const approved = db.chores.filter((chore) => chore.kidId === child.id && chore.status === "approved" && afterReset(chore, child));
                   const goal = Number(db.family.ungroundPoints) || 0;
                   const look = kidHero(child.hero);
                   const weapon = child.weapon || "broom";
@@ -1796,19 +1843,6 @@ const views = {
                         ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
                         : ""
                     }
-                    <details class="task-log"><summary>Task log${open.length + approved.length ? ` (${open.length + approved.length})` : ""}</summary>${
-                      open.length || approved.length
-                        ? `${open
-                            .map(
-                              (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Still open</div></div></div>`
-                            )
-                            .join("")}${approved
-                            .map(
-                              (chore) => `<div class="chore"><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)} · Approved</div></div><button class="btn small ghost" type="button" data-action="undo-approval" data-id="${chore.id}">Undo</button></div>`
-                            )
-                            .join("")}`
-                        : `<p class="muted">Nothing in the log.</p>`
-                    }</details>
                   </section>`;
                 })
                 .join("")}</div>`
@@ -1886,6 +1920,51 @@ const views = {
         </dialog>
       </div>`,
       parentNav("chart")
+    );
+  },
+
+  log() {
+    const rows = filteredActivity();
+    const kidOptions = `<option value="">Everybody</option>${db.kids
+      .map((child) => `<option value="${esc(child.id)}" ${logKidFilter === child.id ? "selected" : ""}>${esc(child.name)}</option>`)
+      .join("")}`;
+    const typeOptions = `<option value="">All actions</option>${LOG_TYPES.map(
+      ([id, label]) => `<option value="${esc(id)}" ${logTypeFilter === id ? "selected" : ""}>${esc(label)}</option>`
+    ).join("")}`;
+    return shell(
+      db.family.name,
+      "Log",
+      `<div class="stack">
+        <section class="card stack">
+          <h2 class="page-title">Log</h2>
+          <p class="lede">Everything that happened for the family. Filter by child or action type.</p>
+          <div class="log-filters">
+            <label>Child<select name="logKid">${kidOptions}</select></label>
+            <label>Action<select name="logType">${typeOptions}</select></label>
+          </div>
+          <div class="list">
+            ${
+              rows.length
+                ? rows
+                    .map((row) => {
+                      const type = activityType(row.text);
+                      const child = row.kidId ? kidById(row.kidId) : null;
+                      return `<div class="item log-entry">
+                        <div class="log-meta">
+                          <span class="log-type">${esc(activityTypeLabel(type))}</span>
+                          ${child ? `<span class="tiny muted">${esc(child.name)}</span>` : ""}
+                          <span class="tiny muted">${esc(when(row.at))}</span>
+                        </div>
+                        <div>${esc(row.text)}</div>
+                      </div>`;
+                    })
+                    .join("")
+                : `<p class="muted">${db.activity?.length ? "Nothing matches those filters." : "No actions yet."}</p>`
+            }
+          </div>
+        </section>
+      </div>`,
+      parentNav("log")
     );
   },
 
@@ -2042,6 +2121,18 @@ const views = {
 
 app.addEventListener("toggle", (event) => {
   if (event.target.classList?.contains("library")) libraryOpen = event.target.open;
+});
+
+app.addEventListener("change", (event) => {
+  if (event.target.name === "logKid") {
+    logKidFilter = event.target.value || "";
+    render();
+    return;
+  }
+  if (event.target.name === "logType") {
+    logTypeFilter = event.target.value || "";
+    render();
+  }
 });
 
 app.addEventListener("input", (event) => {
