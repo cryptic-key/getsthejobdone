@@ -1128,7 +1128,8 @@ button.monster-option canvas {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
-.monster-dialog {
+.monster-dialog,
+.reset-child-dialog {
   width: min(720px, calc(100vw - 28px));
   max-height: min(80vh, 640px);
   overflow: auto;
@@ -1138,7 +1139,9 @@ button.monster-option canvas {
   padding: 16px;
   box-shadow: 0 12px 0 rgba(36, 49, 44, 0.16);
 }
-.monster-dialog::backdrop { background: rgba(36, 49, 44, 0.45); }
+.monster-dialog::backdrop,
+.reset-child-dialog::backdrop { background: rgba(36, 49, 44, 0.45); }
+.reset-child-dialog { width: min(420px, calc(100vw - 28px)); max-height: none; }
 button.monster-option {
   border: 3px solid transparent;
   background: transparent;

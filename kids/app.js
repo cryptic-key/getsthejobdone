@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=3";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=3";
-import { createChoreQuest } from "./chore-quest.js?v=3";
+import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=4";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=4";
+import { createChoreQuest } from "./chore-quest.js?v=4";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -1776,17 +1776,8 @@ const views = {
                 .map((child) => {
                   const open = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "submitted" && chore.status !== "approved");
                   const approved = db.chores.filter((chore) => chore.kidId === child.id && chore.status === "approved" && afterReset(chore, child));
-                  const confirming = route.confirmReset === child.id;
                   const goal = Number(db.family.ungroundPoints) || 0;
-                  return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div>${
-                    confirming
-                      ? ""
-                      : `<span class="row"><button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button><button class="btn small clay" type="button" data-action="reset-kid" data-id="${child.id}">Reset all</button></span>`
-                  }</div>${
-                    confirming
-                      ? `<div class="banner">Reset ${esc(child.name)}? This clears coins, cash, device minutes, finished tasks, shop requests, achievements, and monster counts. The hero goes back to the adventurer with a broom. Hearts are full and the cage is lifted. Today's tasks come back as not done. <span class="row"><button class="btn small clay" type="button" data-action="confirm-reset" data-id="${child.id}">Reset</button><button class="btn small ghost" type="button" data-action="cancel-reset">Keep</button></span></div>`
-                      : ""
-                  }${balances(child)}${
+                  return `<section class="card stack"><div class="section-title"><div class="who"><span class="swatch ${esc(child.color)}"></span><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div><span class="row"><button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button></span></div>${balances(child)}${
                     grounded(child)
                       ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
                       : ""
@@ -1847,6 +1838,21 @@ const views = {
           </form>
           ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
         </section>
+        <section class="card stack">
+          <h2 class="page-title">Reset child</h2>
+          <p class="lede">Start one kid over. This clears coins, cash, minutes, finished tasks, shop requests, achievements, and monster counts.</p>
+          <button class="btn clay wide" type="button" data-action="open-reset-child" ${db.kids.length ? "" : "disabled"}>Reset child</button>
+        </section>
+        <dialog class="reset-child-dialog">
+          <form class="stack" data-action="confirm-reset-child">
+            <div class="section-title"><h2>Reset child</h2><button type="button" class="btn small ghost" data-action="close-reset-child">Close</button></div>
+            <p class="lede">Which child should start over? Hearts come back full, the cage lifts, and today's tasks show as not done.</p>
+            <label>Child<select name="kidId" required ${db.kids.length ? "" : "disabled"}>${
+              db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")
+            }</select></label>
+            <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Reset</button><button class="btn ghost" type="button" data-action="close-reset-child">Cancel</button></span>
+          </form>
+        </dialog>
       </div>`,
       parentNav("chart")
     );
@@ -2144,21 +2150,11 @@ app.addEventListener("click", (event) => {
       "chores"
     );
   }
-  if (action === "reset-kid") {
-    route = { ...route, confirmReset: btn.dataset.id };
-    render();
+  if (action === "open-reset-child") {
+    const dialog = document.querySelector(".reset-child-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
   }
-  if (action === "cancel-reset") {
-    route = { ...route, confirmReset: "" };
-    render();
-  }
-  if (action === "confirm-reset") {
-    run(
-      () => rpc("reset_kid_progress", { p_kid: btn.dataset.id }),
-      "Reset. Coins, cash, minutes, and the finished log are cleared. Today's tasks are not done again.",
-      "chart"
-    );
-  }
+  if (action === "close-reset-child") document.querySelector(".reset-child-dialog")?.close();
   if (action === "reject-chore") run(() => rpc("reject_chore", { p_chore: btn.dataset.id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
   if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
   if (action === "done") {
@@ -2343,6 +2339,16 @@ app.addEventListener("submit", (event) => {
     );
   }
   if (action === "save-daily") run(() => rpc("save_daily_chore", { p_id: data.id, p_points: Number(data.points) || 0 }), "Points updated for everybody.", "chores");
+  if (action === "confirm-reset-child") {
+    document.querySelector(".reset-child-dialog")?.close();
+    if (!data.kidId) return;
+    const name = kidById(data.kidId)?.name || "that child";
+    run(
+      () => rpc("reset_kid_progress", { p_kid: data.kidId }),
+      `Reset ${name}. Coins, cash, minutes, and the finished log are cleared. Today's tasks are not done again.`,
+      "chart"
+    );
+  }
   if (action === "grant") {
     run(
       () =>
