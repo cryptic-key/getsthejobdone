@@ -1120,11 +1120,15 @@ details.library .lede { margin-top: 8px; }
   border-radius: 14px;
   padding: 4px 10px 4px 4px;
   font-weight: 800;
+  min-height: 52px;
 }
 .monster-choice canvas,
 button.monster-option canvas {
   width: 40px;
-  height: auto;
+  height: 40px;
+  flex: none;
+  object-fit: contain;
+  object-position: center;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
