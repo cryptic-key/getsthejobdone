@@ -87,7 +87,7 @@ create table if not exists public.chores (
   template_id uuid,
   chore_day date,
   approved_at timestamptz,
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'sleep', 'dry', 'breakfast', 'dinner', 'lunchmade', 'bath', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood')),
   created_at timestamptz not null default now()
 );
 
@@ -97,7 +97,7 @@ create table if not exists public.chore_templates (
   title text not null,
   points integer not null default 1 check (points >= 0),
   kind text not null default 'daily' check (kind in ('daily', 'special')),
-  sprite text not null default 'dust' check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood')),
+  sprite text not null default 'dust' check (sprite in ('dust', 'sleep', 'dry', 'breakfast', 'dinner', 'lunchmade', 'bath', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood')),
   created_at timestamptz not null default now()
 );
 
@@ -172,11 +172,11 @@ begin
   alter table public.chores drop constraint if exists chores_sprite_check;
   alter table public.chores
     add constraint chores_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood'));
+    check (sprite in ('dust', 'sleep', 'dry', 'breakfast', 'dinner', 'lunchmade', 'bath', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood'));
   alter table public.chore_templates drop constraint if exists chore_templates_sprite_check;
   alter table public.chore_templates
     add constraint chore_templates_sprite_check
-    check (sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood'));
+    check (sprite in ('dust', 'sleep', 'dry', 'breakfast', 'dinner', 'lunchmade', 'bath', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood'));
 end $$;
 
 create or replace function private.normalize_sprite(p_sprite text)
@@ -186,7 +186,7 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_sprite in ('dust', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood') then p_sprite
+    when p_sprite in ('dust', 'sleep', 'dry', 'breakfast', 'dinner', 'lunchmade', 'bath', 'bed', 'shoes', 'pack', 'dishes', 'teeth', 'laundry', 'toys', 'reading', 'pet', 'plants', 'table', 'trash', 'counters', 'towels', 'bookshelf', 'lunch', 'coats', 'groceries', 'homework', 'dressed', 'petbrush', 'leaves', 'snow', 'outside', 'wood') then p_sprite
     else 'dust'
   end
 $$;
@@ -1871,7 +1871,13 @@ as $$
     ('bone', 'chore', 25, 'pet'),
     ('shovel', 'chore', 10, 'snow'),
     ('bat', 'chore', 15, 'outside'),
-    ('mallet', 'chore', 15, 'wood')
+    ('mallet', 'chore', 15, 'wood'),
+    ('duckhammer', 'chore', 15, 'bath'),
+    ('pillowmace', 'chore', 15, 'sleep'),
+    ('rattle', 'chore', 15, 'dry'),
+    ('butterknife', 'chore', 15, 'breakfast'),
+    ('whisk', 'chore', 15, 'dinner'),
+    ('baguette', 'chore', 15, 'lunchmade')
   ) as rules(key, mode, goal, chore)
 $$;
 
@@ -1977,7 +1983,7 @@ language sql
 immutable
 set search_path = ''
 as $$
-  select array['dust','bed','shoes','pack','dishes','teeth','laundry','toys','reading','pet','plants','table','trash','counters','towels','bookshelf','lunch','coats','groceries','homework','dressed','petbrush','leaves','snow','outside','wood']
+  select array['dust','sleep','dry','breakfast','dinner','lunchmade','bath','bed','shoes','pack','dishes','teeth','laundry','toys','reading','pet','plants','table','trash','counters','towels','bookshelf','lunch','coats','groceries','homework','dressed','petbrush','leaves','snow','outside','wood']
 $$;
 
 create or replace function private.sync_kid_rewards(p_kid uuid)
