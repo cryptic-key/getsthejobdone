@@ -3468,6 +3468,131 @@ export function paintSpriteIcons(root) {
   root.querySelectorAll("canvas[data-hero]").forEach((icon) => drawHeroIcon(icon, icon.dataset.hero));
 }
 
+let questWalkRaf = 0;
+let questWalkers = [];
+
+function randRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function scheduleWalkerBeat(walker) {
+  if (Math.random() < 0.45) {
+    walker.mode = "idle";
+    walker.timer = randRange(0.45, 1.8);
+    walker.speed = 0;
+    return;
+  }
+  walker.mode = "walk";
+  walker.dir = Math.random() < 0.5 ? -1 : 1;
+  walker.speed = randRange(18, 42);
+  walker.timer = randRange(0.7, 2.6);
+}
+
+function buildQuestWalker(canvas) {
+  const sprite = normalizeSprite(canvas.dataset.questWalker || canvas.dataset.sprite);
+  const def = MON[sprite];
+  const scale = 2;
+  const box = canvas.parentElement?.getBoundingClientRect();
+  const cssW = Math.max(48, Math.floor(box?.width || canvas.clientWidth || 96));
+  const cssH = Math.max(36, Math.floor(box?.height || canvas.clientHeight || 44));
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.max(1, Math.floor(cssW * dpr));
+  canvas.height = Math.max(1, Math.floor(cssH * dpr));
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  const g = canvas.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const drawW = def.w * scale;
+  const drawH = (def.h + 2) * scale;
+  const maxX = Math.max(0, cssW - drawW);
+  const walker = {
+    canvas,
+    g,
+    def,
+    sprite,
+    scale,
+    cssW,
+    cssH,
+    drawW,
+    drawH,
+    maxX,
+    x: maxX > 0 ? Math.random() * maxX : 0,
+    dir: Math.random() < 0.5 ? -1 : 1,
+    speed: 0,
+    mode: "idle",
+    timer: 0,
+    t: Math.random() * 10,
+    bob: 0,
+  };
+  scheduleWalkerBeat(walker);
+  return walker;
+}
+
+function paintQuestWalker(walker, dt) {
+  walker.timer -= dt;
+  walker.t += dt;
+  if (walker.timer <= 0) scheduleWalkerBeat(walker);
+  if (walker.mode === "walk") {
+    walker.x += walker.dir * walker.speed * dt;
+    if (walker.x <= 0) {
+      walker.x = 0;
+      walker.dir = 1;
+    } else if (walker.x >= walker.maxX) {
+      walker.x = walker.maxX;
+      walker.dir = -1;
+    }
+    walker.bob = Math.sin(walker.t * 10) * 1.5;
+  } else {
+    walker.bob = Math.sin(walker.t * 5) * 0.8;
+  }
+  const { g, cssW, cssH, def, scale, drawW, drawH } = walker;
+  g.clearRect(0, 0, cssW, cssH);
+  const ground = cssH - 2;
+  const y = ground - drawH + walker.bob;
+  const m = { open: 0, t: walker.t, idle: walker.mode === "idle", shake: 0, flash: 0, lunge: 0 };
+  g.save();
+  if (walker.dir < 0) {
+    g.translate(Math.round(walker.x + drawW), Math.round(y));
+    g.scale(-scale, scale);
+  } else {
+    g.translate(Math.round(walker.x), Math.round(y));
+    g.scale(scale, scale);
+  }
+  def.draw(g, 0, 2, m);
+  g.restore();
+}
+
+function tickQuestWalkers(now) {
+  if (!questWalkers.length) {
+    questWalkRaf = 0;
+    return;
+  }
+  const prev = tickQuestWalkers.prev || now;
+  const dt = Math.min(0.05, Math.max(0.001, (now - prev) / 1000));
+  tickQuestWalkers.prev = now;
+  const live = [];
+  for (const walker of questWalkers) {
+    if (!walker.canvas.isConnected) continue;
+    paintQuestWalker(walker, dt);
+    live.push(walker);
+  }
+  questWalkers = live;
+  if (questWalkers.length) questWalkRaf = requestAnimationFrame(tickQuestWalkers);
+  else questWalkRaf = 0;
+}
+
+export function mountQuestWalkers(root) {
+  if (questWalkRaf) {
+    cancelAnimationFrame(questWalkRaf);
+    questWalkRaf = 0;
+  }
+  tickQuestWalkers.prev = 0;
+  const nodes = root?.querySelectorAll?.("canvas[data-quest-walker]") || [];
+  questWalkers = [...nodes].map(buildQuestWalker);
+  if (questWalkers.length) questWalkRaf = requestAnimationFrame(tickQuestWalkers);
+}
+
 function drawLayer(c, off, y = 0) {
   const w = c.width;
   const x = -((((Math.round(off)) % w) + w) % w);

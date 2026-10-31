@@ -287,11 +287,7 @@ input:focus, select:focus, button:focus-visible {
   border: 3px solid transparent;
   border-radius: 18px;
   background: transparent;
-  cursor: pointer;
-}
-.kid-hero-toggle[aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--sun-soft);
+  pointer-events: none;
 }
 .kid-hero-toggle .hero-icon {
   width: 84px;
@@ -311,8 +307,7 @@ input:focus, select:focus, button:focus-visible {
   flex-wrap: wrap;
 }
 .kid-column-head .btn { width: min(100%, 120px); }
-.kid-column-balances { display: none; }
-.kid-column.balances-open .kid-column-balances { display: block; }
+.kid-column-balances { display: block; }
 .kid-column .balances {
   grid-template-columns: 1fr;
   gap: 8px;
@@ -979,7 +974,7 @@ body.play .pad button:active { transform: translateY(3px); box-shadow: 0 1px 0 r
 
 .quest {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(72px, 1.35fr) auto;
   gap: 10px;
   align-items: center;
   padding: 12px 0;
@@ -989,6 +984,25 @@ body.play .pad button:active { transform: translateY(3px); box-shadow: 0 1px 0 r
 .quest:nth-child(2) { animation-delay: .06s; }
 .quest:nth-child(3) { animation-delay: .12s; }
 .quest:nth-child(4) { animation-delay: .18s; }
+.quest-copy { min-width: 0; }
+.quest-lane {
+  position: relative;
+  height: 44px;
+  min-width: 64px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(126, 180, 196, 0.12), rgba(125, 186, 152, 0.1));
+}
+.quest-lane canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.quest.waiting-quest .quest-lane {
+  background: linear-gradient(180deg, rgba(246, 201, 69, 0.18), rgba(224, 154, 134, 0.12));
+}
 .quest-pay {
   width: 52px;
   height: 52px;

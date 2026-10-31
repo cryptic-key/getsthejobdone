@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
 import { APP_VERSION } from "./version.js";
-import { SPRITES, applySeasonTheme, guessSprite, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=10";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=10";
-import { createChoreQuest } from "./chore-quest.js?v=10";
+import { SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=11";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=11";
+import { createChoreQuest } from "./chore-quest.js?v=11";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
 const COLOR_HEX = {
@@ -44,7 +44,6 @@ let draft = {};
 let notice = "";
 let busy = false;
 let libraryOpen = false;
-let chartOpenKidId = "";
 let logKidFilter = "";
 let logTypeFilter = "";
 
@@ -1344,11 +1343,18 @@ function dragHandle() {
 function questBlock(list, empty) {
   if (!list.length) return `<p class="muted">${empty}</p>`;
   return list
-    .map(
-      (chore) => `<div class="quest"><span class="quest-pay">+${Number(chore.points) || 0}</span><div><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>${
-        chore.status === "submitted" ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`
-      }</div>`
-    )
+    .map((chore) => {
+      const sprite = taskSprite(chore);
+      const waiting = chore.status === "submitted";
+      return `<div class="quest${waiting ? " waiting-quest" : ""}">
+        <span class="quest-pay">+${Number(chore.points) || 0}</span>
+        <div class="quest-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>
+        <div class="quest-lane" aria-hidden="true">
+          <canvas data-quest-walker="${esc(sprite)}" width="96" height="44"></canvas>
+        </div>
+        ${waiting ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`}
+      </div>`;
+    })
     .join("");
 }
 
@@ -1469,6 +1475,7 @@ function render() {
   }
   paintSpriteIcons(app);
   paintQuestArt(app);
+  mountQuestWalkers(app);
   app.querySelectorAll("canvas[data-look]").forEach((icon) =>
     paintHeroBadge(icon, icon.dataset.look, heldWeapon(icon.dataset.weapon), icon.dataset.color || COLOR_HEX.leaf)
   );
@@ -1828,11 +1835,10 @@ const views = {
                   const look = kidHero(child.hero);
                   const weapon = child.weapon || "broom";
                   const tint = COLOR_HEX[child.color] || COLOR_HEX.leaf;
-                  const showBalances = chartOpenKidId === child.id;
-                  return `<section class="card stack kid-column${showBalances ? " balances-open" : ""}" data-kid-id="${esc(child.id)}">
-                    <button type="button" class="kid-hero-toggle" data-action="toggle-kid-balances" data-id="${esc(child.id)}" aria-pressed="${showBalances ? "true" : "false"}" aria-label="${esc(child.name)} balances">
-                      <canvas class="hero-icon" data-look="${esc(look)}" data-weapon="${esc(weapon)}" data-color="${esc(tint)}" width="40" height="34" aria-hidden="true"></canvas>
-                    </button>
+                  return `<section class="card stack kid-column" data-kid-id="${esc(child.id)}">
+                    <div class="kid-hero-toggle" aria-hidden="true">
+                      <canvas class="hero-icon" data-look="${esc(look)}" data-weapon="${esc(weapon)}" data-color="${esc(tint)}" width="40" height="34"></canvas>
+                    </div>
                     <div class="kid-column-head">
                       <div class="who"><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div>
                       <button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button>
@@ -2195,16 +2201,6 @@ app.addEventListener("click", (event) => {
   if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
   if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Cage open. Three hearts are back. Turn it off in Screen Time too.");
-  if (action === "toggle-kid-balances") {
-    const id = btn.dataset.id || "";
-    chartOpenKidId = chartOpenKidId === id ? "" : id;
-    app.querySelectorAll(".kid-column").forEach((card) => {
-      const open = card.dataset.kidId === chartOpenKidId;
-      card.classList.toggle("balances-open", open);
-      const hero = card.querySelector(".kid-hero-toggle");
-      if (hero) hero.setAttribute("aria-pressed", open ? "true" : "false");
-    });
-  }
   if (action === "warn-kid") {
     let warnNote = "Warning saved. One heart is gone.";
     const kidId = btn.dataset.id;
