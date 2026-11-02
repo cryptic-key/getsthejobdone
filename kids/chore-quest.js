@@ -1705,7 +1705,7 @@ async function arenaHit(dmg=1,bonus=0){const d=mon.def,wpn=WEAPONS[weapon];
   if(!last)return false;
   mon.idle=false;mon.showHp=false;mon.flash=.6;await wait(.5);const cx=mon.x+d.w/2,cy=G-d.h/2;
   for(let i=0;i<22;i++){const a=R()*Math.PI*2,v=rnd(10,45);particles.push({x:cx+rnd(-4,4),y:cy+rnd(-4,4),vx:Math.cos(a)*v,vy:Math.sin(a)*v-10,g:-15,life:rnd(.4,.8),c:['#ffffff','#e6e6ee','#c8c8d4'][i%3],s:2})}
-  burst(cx,cy,d.hit,10,50);mon.alive=false;sfx('defeat:'+mon.type);if(arenaScene){sfx('cheer')};if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});const drop=ARENA.perKill+bonus;floats.push({s:'+'+drop,x:cx-4,y:cy-8,life:1.2});if(bonus)say('Lucky Coin! +'+bonus+' extra');
+  burst(cx,cy,d.hit,10,50);mon.alive=false;sfx('defeat:'+mon.type);if(arenaScene){sfx('cheer')};if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});const drop=ARENA.perKill+bonus;if(drop>0)floats.push({s:'+'+drop,x:cx-4,y:cy-8,life:1.2});if(bonus)say('Lucky Coin! +'+bonus+' extra');
   for(let i=0;i<drop;i++)coins.push({x:cx,y:cy,vx:rnd(-30,30),vy:rnd(-70,-45),t:-i*.06});
   await until(()=>coins.length===0);await wait(.3);mon=null;return true}
 async function arenaMiss(blocked=false){const d=mon.def;hero.pose=blocked?'block':'idle';mon.idle=false;hurtMode=!blocked;sfx('attack:'+mon.type);

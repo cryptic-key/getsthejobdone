@@ -1,7 +1,7 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=60";
-import { gearSpecials, gearedLook } from "./gear.js?v=60";
+import { createChoreQuest } from "./chore-quest.js?v=61";
+import { gearSpecials, gearedLook } from "./gear.js?v=61";
 import { music, play as sfx } from "./sound.js";
 
 let host = null;
@@ -100,6 +100,8 @@ export function leaveArena() {
   }
   run = null;
   view = "lobby";
+  // Parents have no main stage to reset the music when they leave, so put the trail tune back here.
+  if (revealed && ctx?.practice) music("trail");
   revealed = false;
   try { window.speechSynthesis?.cancel(); } catch { /* speech is optional */ }
   quest?.destroy();
@@ -117,7 +119,32 @@ function levelInfo() {
   return levels[ctx.level()] || levels.kid || { name: "Adventurer", ages: "Ages 6–8" };
 }
 
-function paintLobby(message = "") {
+function paintParentLobby(message, tone) {
+  view = "lobby";
+  const el = panel();
+  if (!el) return;
+  const A = quest.arena;
+  const cats = [["any", "Any category"], ...Object.entries(A.categories).map(([key, cat]) => [key, cat.name])];
+  const levels = LEVEL_ORDER.filter((key) => A.levels[key]).map((key) => [key, A.levels[key]]);
+  const chip = (kind, value, label, on) =>
+    `<button class="btn small ${on ? "sun" : "ghost"}" type="button" data-arena="${kind}" data-v="${esc(value)}" aria-pressed="${on}">${label}</button>`;
+  el.innerHTML = `<h2 class="page-title">Monster Arena</h2>
+    <p class="lede">Practice round for parents. Free to enter and no coins to win. Pick a category and a level, beat one monster, and you come back here.</p>
+    <div class="stack">
+      <b>Category</b>
+      <div class="arena-chips">${cats.map(([key, name]) => chip("cat", key, esc(name), parentPick.cat === key)).join("")}</div>
+      <b>Level</b>
+      <div class="arena-chips">${levels.map(([key, lvl]) => chip("level", key, `${esc(lvl.name)} <small>${esc(lvl.ages)}</small>`, parentPick.level === key)).join("")}</div>
+    </div>
+    ${message ? `<p class="${tone === "good" ? "arena-good" : "error"}">${esc(message)}</p>` : ""}
+    <button class="btn sun wide" type="button" data-arena="enter">Enter the arena (free)</button>`;
+}
+
+function paintLobby(message = "", tone = "error") {
+  if (ctx.practice) {
+    paintParentLobby(message, tone);
+    return;
+  }
   view = "lobby";
   const el = panel();
   if (!el) return;
@@ -164,7 +191,7 @@ function paintQuestion(q) {
   const cat = A.categories[q.cat]?.name || "";
   const lvl = A.levels[run?.level] || {};
   const next = LEVEL_ORDER[LEVEL_ORDER.indexOf(run?.level) + 1];
-  const streak = next ? ` · Perfect streak ${run?.streak || 0}/${PERFECT_TO_LEVEL}` : "";
+  const streak = next && !ctx.practice ? ` · Perfect streak ${run?.streak || 0}/${PERFECT_TO_LEVEL}` : "";
   el.innerHTML = `<div class="arena-q-head"><span class="chip">${esc(cat)}</span><span class="tiny muted">${esc(lvl.name || "")}${streak} · Beaten: ${run?.kills || 0}</span></div>
     ${specialsBar()}
     <p class="arena-q">${esc(q.text)}</p>
@@ -278,7 +305,75 @@ function paintSummary(kills, won, topLevel, startLevel) {
     </div>`;
 }
 
+/* Ask questions about one monster until it is beaten or the hero is out of hearts. Returns whether it was beaten. */
+async function fightMonster(cat, level) {
+  const A = quest.arena;
+  let beaten = false;
+  while (alive && !beaten && A.hearts() > 0) {
+    const q = A.makeQuestion(cat, level, run.kills);
+    if (A.levels[level].readAloud) A.speak(q.say);
+    const picked = await ask(q);
+    pending = null;
+    if (!alive) return false;
+    const asked = current || q;
+    lockChoices(asked.answer, picked);
+    if (picked === asked.answer) {
+      sfx("right");
+      const dmg = run.power ? 2 : 1;
+      run.power = false;
+      beaten = await A.hit(dmg, run.lucky ? 1 : 0);
+      if (beaten && run.lucky) {
+        run.lucky = false;
+        run.luckyPaid = true;
+      }
+    } else {
+      A.speak([{ t: `The answer is ${A.choiceLabel(asked.choices[asked.answer])}`, lang: "en-CA" }]);
+      run.missed = true;
+      sfx("wrong");
+      const blocked = Boolean(run.shield);
+      run.shield = false;
+      await A.miss(blocked);
+    }
+    if (!alive) return false;
+  }
+  return beaten;
+}
+
+/* Parents practise for free: pick a category and level, beat one monster, win nothing, then back to the menu. */
+const parentPick = { cat: "any", level: "kid" };
+
+async function playParentRun() {
+  const A = quest.arena;
+  const level = A.levels[parentPick.level] ? parentPick.level : "kid";
+  const cats = Object.keys(A.categories);
+  const cat = parentPick.cat !== "any" && A.categories[parentPick.cat] ? parentPick.cat : cats[Math.floor(Math.random() * cats.length)];
+  alive = true;
+  A.config.entry = 0;
+  A.config.perKill = 0;
+  run = { id: null, kills: 0, won: 0, level, streak: 0, top: level };
+  const worn = ctx.gear?.() || {};
+  run.specials = gearSpecials(worn.head, worn.body).map((sp) => ({ ...sp, used: false }));
+  dressHero();
+  quest.setCoins(0);
+  A.begin();
+  if (panel()) panel().innerHTML = `<p class="arena-q">A monster enters the arena...</p>`;
+  run.missed = false;
+  await A.spawn(A.categories[cat].monster);
+  if (!alive) return;
+  const beaten = await fightMonster(cat, level);
+  if (!alive) return;
+  if (!beaten) {
+    if (panel()) panel().innerHTML = `<p class="arena-q">Out of hearts...</p>`;
+    await A.ko();
+  }
+  A.end(true);
+  run = null;
+  alive = false;
+  paintLobby(beaten ? "Monster defeated! Pick another challenge." : "Out of hearts. Try again!", beaten ? "good" : "error");
+}
+
 async function playRun() {
+  if (ctx.practice) return playParentRun();
   const A = quest.arena;
   let start;
   try {
@@ -311,35 +406,8 @@ async function playRun() {
     run.missed = false;
     await A.spawn(A.categories[cat].monster);
     if (!alive) return;
-    const level = run.level;
-    let beaten = false;
-    while (alive && !beaten && A.hearts() > 0) {
-      const q = A.makeQuestion(cat, level, run.kills);
-      if (A.levels[level].readAloud) A.speak(q.say);
-      const picked = await ask(q);
-      pending = null;
-      if (!alive) return;
-      const asked = current || q;
-      lockChoices(asked.answer, picked);
-      if (picked === asked.answer) {
-        sfx("right");
-        const dmg = run.power ? 2 : 1;
-        run.power = false;
-        beaten = await A.hit(dmg, run.lucky ? 1 : 0);
-        if (beaten && run.lucky) {
-          run.lucky = false;
-          run.luckyPaid = true;
-        }
-      } else {
-        A.speak([{ t: `The answer is ${A.choiceLabel(asked.choices[asked.answer])}`, lang: "en-CA" }]);
-        run.missed = true;
-        sfx("wrong");
-        const blocked = Boolean(run.shield);
-        run.shield = false;
-        await A.miss(blocked);
-      }
-      if (!alive) return;
-    }
+    const beaten = await fightMonster(cat, run.level);
+    if (!alive) return;
     if (beaten) {
       run.kills += 1;
       try {
@@ -404,6 +472,10 @@ function onClick(event) {
     playRun();
   }
   if (action === "lobby") paintLobby();
+  if (action === "cat" || action === "level") {
+    parentPick[action] = btn.dataset.v;
+    paintLobby();
+  }
   if (action === "pick" && pending) {
     const resolve = pending;
     pending = null;

@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=60";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=60";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=60";
-import { createChoreQuest } from "./chore-quest.js?v=60";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=60";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=60";
+import { APP_VERSION } from "./version.js?v=61";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=61";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=61";
+import { createChoreQuest } from "./chore-quest.js?v=61";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=61";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=61";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -1311,6 +1311,30 @@ function arenaContext() {
   };
 }
 
+/* Parent practice arena: free, no coins, no server calls. */
+function parentArenaContext() {
+  const me = parent();
+  const guardian = parentGuardian();
+  return {
+    practice: true,
+    rpc: async () => ({}),
+    nice,
+    token: () => "",
+    points: () => 0,
+    setPoints: () => {},
+    entry: () => 0,
+    perKill: () => 0,
+    level: () => "kid",
+    grounded: () => false,
+    priority: () => false,
+    hero: () => guardian.hero,
+    weapon: () => (questCatalog().weapons[me?.weapon] ? me.weapon : "broom"),
+    pet: () => guardian.pet,
+    gear: () => ({ head: guardian.head, body: guardian.body }),
+    refresh: () => {},
+  };
+}
+
 let questEngine = null;
 function questCatalog() {
   if (!questEngine) {
@@ -1946,6 +1970,7 @@ function parentNav(current) {
     ["shop", "Shop"],
     ["family", "Family"],
     ["parent-hero", "My Hero"],
+    ["parent-arena", "Arena"],
   ]
     .map(
       ([id, label]) =>
@@ -2392,7 +2417,11 @@ function render() {
   mountStage();
   const arenaSlot = app.querySelector(".arena-slot");
   if (arenaSlot && db.session?.role === "kid") mountArena(arenaSlot, arenaContext());
-  else leaveArena();
+  else if (arenaSlot && db.session?.role === "parent") {
+    // Parents have no colosseum gate: the arena is open as soon as they pick the tab.
+    if (!arenaRevealed()) revealArena();
+    mountArena(arenaSlot, parentArenaContext());
+  } else leaveArena();
   if (db.session?.role === "kid") {
     syncBattles();
     lastKidSig = `${kid()?.points}|${kid()?.hearts}|${kid()?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
@@ -3124,6 +3153,12 @@ const views = {
       </div>`,
       kidNav("hero")
     );
+  },
+
+  "parent-arena"() {
+    const me = parent();
+    if (!me) return views.family();
+    return shell(me.name, "Monster Arena", `<div class="stack"><div class="arena-slot"></div></div>`, parentNav("parent-arena"));
   },
 
   "parent-hero"() {
