@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=59";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=59";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=59";
-import { createChoreQuest } from "./chore-quest.js?v=59";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=59";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=59";
+import { APP_VERSION } from "./version.js?v=60";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=60";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=60";
+import { createChoreQuest } from "./chore-quest.js?v=60";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=60";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=60";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -1922,7 +1922,7 @@ function shell(title, sub, body, nav) {
         <span><h1>${esc(title)}</h1><p>${esc(sub)} <span class="ver-tag">v${APP_VERSION}</span></p></span>
       </button>
       <span class="top-actions">
-        ${play ? soundButton() : ""}
+        ${soundButton()}
         ${signedIn ? `<button class="btn ghost small" data-action="sign-out">${play ? "Exit" : "Sign out"}</button>` : ""}
       </span>
     </header>
@@ -1933,7 +1933,7 @@ function shell(title, sub, body, nav) {
     ${play ? nav || "" : ""}
     ${child ? proofDialogHtml() : ""}
     ${child ? contributeDialogHtml() : ""}
-    ${play ? soundDialog() : ""}
+    ${soundDialog()}
     ${play ? "" : `<footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`}`;
 }
 
@@ -4123,6 +4123,18 @@ function installPullToRefresh() {
     return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
   };
 
+  // A fast flick up leaves momentum scrolling running; grabbing the page then must not start a pull
+  // (preventDefault during momentum and the body padding shift can strand fixed elements on iOS).
+  let lastScrollAt = 0;
+  window.addEventListener(
+    "scroll",
+    () => {
+      lastScrollAt = performance.now();
+      if (document.body.style.getPropertyValue("--pull-space") && !tracking) reset();
+    },
+    { passive: true }
+  );
+
   document.addEventListener(
     "touchstart",
     (event) => {
@@ -4130,6 +4142,7 @@ function installPullToRefresh() {
         reset();
         return;
       }
+      if (performance.now() - lastScrollAt < 180) return;
       if (event.touches.length !== 1 || window.scrollY > 2 || typing()) return;
       startX = event.touches[0].clientX;
       startY = event.touches[0].clientY;

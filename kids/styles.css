@@ -59,6 +59,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--ink);
   background: var(--bg);
   font-size: 17px;
@@ -1270,11 +1271,17 @@ body.play .cash-card { border: 3px solid var(--ink); }
 
 body.play .play-nav {
   position: fixed;
-  left: 50%;
-  bottom: 10px;
-  transform: translateX(-50%);
+  /* Centered with auto margins (no translateX) and kept on its own layer so iOS Safari cannot strand it mid-screen after a fast scroll. */
+  left: 0;
+  right: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
   width: min(920px, calc(100% - 20px));
-  margin: 0;
+  margin: 0 auto;
   padding: 6px;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
