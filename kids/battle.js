@@ -2202,35 +2202,38 @@ let marketBusy = false;
 let lastMarket = "";
 let marketStall = null;
 let shopKeeper = null;
+let marketWorldX = null;
 const keeperPal = {
   K,
-  H: "#c45c2a",
-  h: "#8a3a18",
+  C: "#f4c542",
+  H: "#6e3418",
+  h: "#4a2410",
   S: "#f4c89c",
   s: "#d39a6c",
   A: "#f4e4b8",
   a: "#d8c090",
   B: "#6b4426",
-  Y: "#f4c542",
   R: "#c0392b",
   E: K,
 };
+// Cap, hair, face, apron — tall enough that the head clears the counter.
 const keeperTop = [
-  "....KKKKKK....",
+  ".....CCCC.....",
+  "....KCCCCK....",
   "...KHHHHHHK...",
-  "..KHhHHHHHhK..",
+  "..KHHHHHHHHK..",
   "..KHSSSSSSHK..",
-  "..KHSEESSEHK..",
+  "..KSSSESSESK..",
+  "..KSSSSSSSsK..",
   "...KSSSSSSK...",
   "....KAAAAK....",
   "...KAAAAAAK...",
   "..KAARRAARAK..",
   "..KAAAAAAAAK..",
   "...KAAAAAAK...",
-  "....KBBBBK....",
 ];
-const keeperA = sprite([...keeperTop, "...KBBK.KBBK..", "..KBBBK.KBBBK.", "..KKKKK.KKKKK."], keeperPal);
-const keeperB = sprite([...keeperTop, "....KBBKBBK...", "...KBBBKBBBK..", "...KKKKKKKKK.."], keeperPal);
+const keeperA = sprite([...keeperTop, "....KBBBBK....", "...KBBK.KBBK..", "..KBBBK.KBBBK.", "..KKKKK.KKKKK."], keeperPal);
+const keeperB = sprite([...keeperTop, "....KBBBBK....", "....KBBKBBK...", "...KBBBKBBBK..", "...KKKKKKKKK.."], keeperPal);
 let warner = null;
 let spellBolt = null;
 let warnBusy = false;
@@ -3363,9 +3366,17 @@ function holdCage() {
   say("Locked in! Earn coins to break out.");
 }
 
+function freezeMarketBg() {
+  if (marketWorldX == null) marketWorldX = worldX;
+  scroll = 0;
+  scrollTarget = 0;
+}
+
 function placeMarket(x = 74, rolling = false) {
+  freezeMarketBg();
   marketStall = { x, open: true, goal: 74, rolling };
-  shopKeeper = { x: x + 10, look: { a: keeperA, b: keeperB }, stand: 16 };
+  // stand lifts the keeper so head and shoulders sit above the counter
+  shopKeeper = { x: x + 9, look: { a: keeperA, b: keeperB }, stand: 22 };
 }
 
 function holdMarket() {
@@ -3379,8 +3390,7 @@ function holdMarket() {
   hero.oxT = 6;
   hero.kx = 0;
   hero.ang = POSE.idle;
-  scroll = 18;
-  scrollTarget = 18;
+  freezeMarketBg();
   say("Welcome to the Market! Spend your coins here.");
 }
 
@@ -3397,8 +3407,7 @@ async function playMarketArrive(token) {
   hero.oxT = 0;
   hero.kx = 0;
   hero.ang = POSE.walk;
-  scroll = 18;
-  scrollTarget = 28;
+  freezeMarketBg();
   placeMarket(W + 24, true);
   say("Heading to the Market...");
   if (!(await waitFor(0.35, token))) {
@@ -3419,7 +3428,7 @@ async function playMarketArrive(token) {
   hero.ox = 8;
   hero.oxT = 8;
   hero.ang = POSE.idle;
-  scrollTarget = 18;
+  freezeMarketBg();
   burst(heroX() + 10, G - 8, ["#f4c542", "#fff3a8", "#ffffff"], 10, 40);
   say("The shopkeeper waves hello!");
   if (!(await waitFor(1.1, token))) {
@@ -3436,39 +3445,39 @@ async function playMarketArrive(token) {
 function drawMarket() {
   if (!marketStall) return;
   const sx = Math.round(marketStall.x);
-  const top = G - 28;
+  const top = G - 26;
   if (shopKeeper) {
     const kx = Math.round(shopKeeper.x);
-    const ky = Math.round(G - ((shopKeeper.stand || 16) - 1));
+    const ky = Math.round(G - ((shopKeeper.stand || 22) - 1));
     const wave = ((time * 3) | 0) % 2 === 0;
     rect(ctx, kx + 3, G, 8, 1, scenery.shadow);
     ctx.drawImage(wave ? shopKeeper.look.b : shopKeeper.look.a, kx, ky);
   }
   // Awning posts
-  rect(ctx, sx + 2, top + 8, 2, 20, "#6b4426");
-  rect(ctx, sx + 28, top + 8, 2, 20, "#6b4426");
-  // Striped awning
+  rect(ctx, sx + 2, top + 8, 2, 18, "#6b4426");
+  rect(ctx, sx + 28, top + 8, 2, 18, "#6b4426");
+  // Striped awning sits above the keeper's head
   for (let i = 0; i < 8; i += 1) {
-    rect(ctx, sx + i * 4, top, 4, 8, i % 2 ? "#c0392b" : "#fff3a8");
+    rect(ctx, sx + i * 4, top, 4, 7, i % 2 ? "#c0392b" : "#fff3a8");
   }
-  rect(ctx, sx - 1, top + 7, 34, 2, "#4a2e18");
-  // Counter covers the shopkeeper's legs
-  rect(ctx, sx, G - 12, 32, 8, "#8a5a30");
-  rect(ctx, sx, G - 12, 32, 2, "#b08a5a");
-  rect(ctx, sx + 1, G - 10, 30, 1, "#6b4426");
-  // Coin crates
-  rect(ctx, sx + 3, G - 16, 8, 4, "#6b4426");
-  rect(ctx, sx + 4, G - 15, 6, 2, "#f4c542");
-  rect(ctx, sx + 21, G - 16, 8, 4, "#6b4426");
-  px(ctx, sx + 24, G - 14, "#fff3a8");
-  px(ctx, sx + 26, G - 15, "#f4c542");
-  // Sign
-  rect(ctx, sx + 10, top - 6, 12, 7, "#fffdf8");
-  rect(ctx, sx + 10, top - 6, 12, 1, K);
-  rect(ctx, sx + 10, top, 12, 1, K);
-  px(ctx, sx + 14, top - 4, "#f4c542");
-  px(ctx, sx + 16, top - 3, "#f4c542");
-  px(ctx, sx + 18, top - 4, "#c0392b");
+  rect(ctx, sx - 1, top + 6, 34, 2, "#4a2e18");
+  // Counter covers only the legs / apron hem
+  rect(ctx, sx, G - 10, 32, 7, "#8a5a30");
+  rect(ctx, sx, G - 10, 32, 2, "#b08a5a");
+  rect(ctx, sx + 1, G - 8, 30, 1, "#6b4426");
+  // Coin crates on the counter
+  rect(ctx, sx + 3, G - 14, 8, 4, "#6b4426");
+  rect(ctx, sx + 4, G - 13, 6, 2, "#f4c542");
+  rect(ctx, sx + 21, G - 14, 8, 4, "#6b4426");
+  px(ctx, sx + 24, G - 12, "#fff3a8");
+  px(ctx, sx + 26, G - 13, "#f4c542");
+  // Sign hangs from the awning, not over the face
+  rect(ctx, sx + 11, top - 5, 10, 6, "#fffdf8");
+  rect(ctx, sx + 11, top - 5, 10, 1, K);
+  rect(ctx, sx + 11, top, 10, 1, K);
+  px(ctx, sx + 14, top - 3, "#f4c542");
+  px(ctx, sx + 16, top - 2, "#f4c542");
+  px(ctx, sx + 18, top - 3, "#c0392b");
 }
 
 async function playLockup(token) {
@@ -3707,6 +3716,7 @@ export function setStageScene(next) {
     marketBusy = false;
     marketStall = null;
     shopKeeper = null;
+    marketWorldX = null;
     warner = null;
     clearReviewer();
     syncGuardian(null);
@@ -3796,6 +3806,7 @@ export function setStageScene(next) {
     scene.market = null;
     marketStall = null;
     shopKeeper = null;
+    marketWorldX = null;
     setReviewActions(false);
     if (reviewKey === lastReview && (reviewBusy || hero.pose === "idle")) {
       if (!reviewBusy) presentReview(runToken);
@@ -3826,6 +3837,7 @@ export function setStageScene(next) {
     scene.market = null;
     marketStall = null;
     shopKeeper = null;
+    marketWorldX = null;
     if (warnKey === lastWarn && (warnBusy || warner)) return;
     lastWarn = warnKey;
     bumpRun();
@@ -3849,6 +3861,7 @@ export function setStageScene(next) {
     scene.market = null;
     marketStall = null;
     shopKeeper = null;
+    marketWorldX = null;
     if (lockKey === lastLockup && (lockBusy || (lockup === "held" && cage?.locked) || (lockup === "arrive" && cage))) return;
     lastLockup = lockKey;
     bumpRun();
@@ -3886,13 +3899,14 @@ export function setStageScene(next) {
     reconcile();
     return;
   }
-  if (scene.market || marketStall || shopKeeper) {
+  if (scene.market || marketStall || shopKeeper || marketWorldX != null) {
     scene.market = null;
     scene.onMarket = null;
     lastMarket = "";
     marketBusy = false;
     marketStall = null;
     shopKeeper = null;
+    marketWorldX = null;
   }
   const sameLead = lead === lastLead;
   const sameFront = frontKey === lastFront;
@@ -4257,9 +4271,14 @@ function update(dt) {
       done.resolve(ok);
     }
   }
-  scroll += (scrollTarget - scroll) * Math.min(1, dt * 5);
-  if (Math.abs(scroll) < 0.2 && scrollTarget === 0) scroll = 0;
-  worldX += scroll * dt;
+  if (marketWorldX != null) {
+    scroll = 0;
+    scrollTarget = 0;
+  } else {
+    scroll += (scrollTarget - scroll) * Math.min(1, dt * 5);
+    if (Math.abs(scroll) < 0.2 && scrollTarget === 0) scroll = 0;
+    worldX += scroll * dt;
+  }
   hero.ox += (hero.oxT - hero.ox) * Math.min(1, dt * 22);
   hero.kx *= Math.exp(-dt * 9);
   hero.jy += hero.vy * dt;
@@ -4408,13 +4427,15 @@ function draw() {
   if (!ctx) return;
   ctx.save();
   if (shake > 0) ctx.translate(Math.round(rnd(-1.5, 1.5)), Math.round(rnd(-1, 1)));
+  const bgX = marketWorldX != null ? marketWorldX : worldX;
+  const cloudDrift = marketWorldX != null ? 0 : time * 2;
   ctx.drawImage(scenery.sky, 0, 0);
-  drawLayer(scenery.clouds, worldX * 0.08 + time * 2, 2);
-  drawLayer(scenery.hills, worldX * 0.15);
-  drawLayer(scenery.farPines, worldX * 0.3);
-  drawLayer(scenery.midPines, worldX * 0.5);
-  drawLayer(scenery.trees, worldX * 0.7);
-  drawLayer(scenery.ground, worldX);
+  drawLayer(scenery.clouds, bgX * 0.08 + cloudDrift, 2);
+  drawLayer(scenery.hills, bgX * 0.15);
+  drawLayer(scenery.farPines, bgX * 0.3);
+  drawLayer(scenery.midPines, bgX * 0.5);
+  drawLayer(scenery.trees, bgX * 0.7);
+  drawLayer(scenery.ground, bgX);
   if (paradeOn && parade.length) {
     const walking = scroll > 2;
     parade.slice().sort((a, b) => a.x - b.x).forEach((walker) => {
@@ -4604,7 +4625,7 @@ function draw() {
   drawEffects();
   coins.forEach((c) => { if (c.t >= 0) drawCoin(c.x, c.y, time + c.x * 0.05); });
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
-  drawLayer(scenery.fore, worldX * 1.3, H - 12);
+  drawLayer(scenery.fore, (marketWorldX != null ? marketWorldX : worldX) * 1.3, H - 12);
   drawHearts();
   if (siren) {
     const on = (time * 6 | 0) % 2;
