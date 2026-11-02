@@ -2882,6 +2882,7 @@ function idleLine(item, count, line) {
   if (behind) bits.push(`${behind} more in line`);
   if (ready) bits.push(`${ready} ready`);
   const extra = bits.length ? ` ${bits.join(". ")}.` : "";
+  if (mon?.hidden && mon.choreId === item.id) return `Something is hiding in the bush, waiting on ${item.title}.${extra}`;
   return `${def.name} is waiting on ${item.title}.${extra}`;
 }
 function waitFor(seconds, token) {
@@ -3202,42 +3203,62 @@ async function playReviewDecline(token) {
   reviewBusy = false;
   done?.(choreId);
 }
-async function approach(item, token, showHp) {
+// A bush rides in on the trail with the monster hiding inside it; the hero stops beside it.
+async function arriveBush(item, token, showHp) {
   const def = MON[normalizeSprite(item.sprite)];
-  if (mon?.choreId === item.id && mon.alive && !mon.approach) {
-    mon.def = def;
-    mon.title = item.title;
-    mon.points = Number(item.points) || 0;
-    mon.showHp = showHp;
-    return true;
-  }
   releaseBushes();
   mon = makeMon(def, item);
   mon.showHp = showHp;
   say("...");
   scrollTarget = 30;
   hero.pose = "walk";
+  const bush = { x: W + 8, state: "in", rustle: 0, peek: false, hiding: false, tick: 0 };
+  bushes.push(bush);
+  mon.bush = bush;
+  mon.hidden = true;
+  const there = await until(() => mon && bush.x <= BUSH_GOAL, token);
+  if (!there || token !== runToken || !mon) return null;
+  bush.x = BUSH_GOAL;
+  scroll = 0;
+  scrollTarget = 0;
+  hero.pose = "idle";
+  return bush;
+}
+async function approach(item, token, showHp) {
+  const def = MON[normalizeSprite(item.sprite)];
+  if (mon?.choreId === item.id && mon.alive && !mon.approach && !mon.hidden) {
+    mon.def = def;
+    mon.title = item.title;
+    mon.points = Number(item.points) || 0;
+    mon.showHp = showHp;
+    return true;
+  }
   if (reduce) {
+    releaseBushes();
+    mon = makeMon(def, item);
+    mon.showHp = showHp;
+    say("...");
+    scrollTarget = 30;
+    hero.pose = "walk";
     const arrived = await until(() => mon && mon.x <= def.tx, token);
     if (!arrived || token !== runToken || !mon) return false;
   } else {
-    // Ambush: a bush rides in on the trail, the hero stops beside it, and the monster jumps out.
-    const bush = { x: W + 8, state: "in", rustle: 0, peek: false };
-    bushes.push(bush);
-    mon.bush = bush;
-    mon.hidden = true;
-    const there = await until(() => mon && bush.x <= BUSH_GOAL, token);
-    if (!there || token !== runToken || !mon) return false;
-    bush.x = BUSH_GOAL;
-    scroll = 0;
-    scrollTarget = 0;
-    hero.pose = "idle";
+    // Ambush: if the monster is already hiding in a bush on screen it jumps out; otherwise the bush walks up first.
+    const waiting = mon?.choreId === item.id && mon.alive && mon.hidden && mon.bush && mon.bush.state === "in" && !mon.approach;
+    const bush = waiting ? mon.bush : await arriveBush(item, token, showHp);
+    if (!bush || token !== runToken || !mon) return false;
+    mon.approach = true;
+    mon.showHp = showHp;
+    mon.def = def;
+    mon.title = item.title;
+    mon.points = Number(item.points) || 0;
+    bush.hiding = false;
     hero.alert = 1.4;
     say("Something is rustling in the bush...");
     sfx("rustle");
-    bush.rustle = 1.1;
+    bush.rustle = waiting ? 0.9 : 1.1;
     bush.peek = true;
-    if (!(await waitFor(1.1, token)) || !mon) return false;
+    if (!(await waitFor(waiting ? 0.9 : 1.1, token)) || !mon) return false;
     bush.peek = false;
     mon.x = bush.x + 12 - def.w / 2;
     mon.hidden = false;
@@ -3429,6 +3450,21 @@ async function playBattle(item, token) {
   scene.onDone?.(item.id);
 }
 async function presentIdle(item, token) {
+  if (!reduce) {
+    // A finished quest: the bush walks up with the monster hiding inside until a parent decides.
+    const bush = await arriveBush(item, token, false);
+    if (!bush || token !== runToken || !mon) return;
+    mon.approach = false;
+    mon.showHp = false;
+    mon.idle = true;
+    bush.hiding = true;
+    bush.tick = 0;
+    hero.alert = 0;
+    sfx("rustle");
+    bush.rustle = 0.8;
+    say(idleLine(item, scene.waiting.length, scene.waiting));
+    return;
+  }
   const ready = await approach(item, token, false);
   if (!ready || token !== runToken) return;
   mon.showHp = false;
@@ -4091,6 +4127,15 @@ function updateBushes(dt) {
   for (const b of bushes) {
     b.x -= (b.state === "out" ? Math.max(scroll, 24) : scroll) * dt;
     b.rustle = Math.max(0, (b.rustle || 0) - dt);
+    if (b.hiding && b.state === "in") {
+      // A monster hiding inside fidgets now and then so the kid knows it is still in there.
+      b.tick = (b.tick || 0) + dt;
+      if (b.tick > 3.4) {
+        b.tick = 0;
+        b.rustle = 0.7;
+      }
+      b.peek = b.rustle > 0.25 && b.rustle < 0.6;
+    }
   }
   bushes = bushes.filter((b) => !(b.state === "out" && b.x < -40));
 }
@@ -5600,13 +5645,13 @@ function update(dt) {
     mon.lunge += (mon.lungeT - mon.lunge) * Math.min(1, dt * 12);
     mon.flash = Math.max(0, mon.flash - dt);
     mon.shake = Math.max(0, mon.shake - dt);
-    if (mon.def.snow && R() < dt * 30) {
+    if (!mon.hidden && mon.def.snow && R() < dt * 30) {
       particles.push({ x: rnd(0, W + 30), y: -2, vx: -10, vy: rnd(12, 22), g: 0, life: 4.5, c: R() < 0.3 ? "#c8d8ee" : "#ffffff" });
     }
-    if (mon.def.sizzle && R() < dt * 9) particles.push({ x: mon.x + rnd(3, 15), y: G - 10 + mon.def.yoff(mon), vx: rnd(-3, 3), vy: -rnd(10, 18), g: -5, life: 0.9, c: R() < 0.5 ? "#c8d0e0" : "#e6ecf5" });
-    if (mon.def.drizzle && R() < dt * 6) particles.push({ x: mon.x + 4 + ((R() * 9) | 0), y: G + 1 - mon.def.h + mon.def.yoff(mon) - 5, vx: 0, vy: 30, g: 80, life: 0.2, c: "#4aa3ff" });
-    if (mon.def.shower && R() < dt * 14) particles.push({ x: mon.x + 9 + ((R() * 3) | 0) * 2, y: G + 1 - mon.def.h + mon.def.yoff(mon) - 7, vx: 0, vy: 35, g: 90, life: 0.22, c: R() < 0.5 ? "#7fd0ff" : "#bfefff" });
-    if (mon.def.bubbly && R() < dt * 5) particles.push({ x: mon.x + rnd(3, 17), y: G - 13 + mon.def.yoff(mon), vx: rnd(-4, 4), vy: -12, g: -6, life: 1.3, c: R() < 0.5 ? "#bfefff" : "#ffffff" });
+    if (!mon.hidden && mon.def.sizzle && R() < dt * 9) particles.push({ x: mon.x + rnd(3, 15), y: G - 10 + mon.def.yoff(mon), vx: rnd(-3, 3), vy: -rnd(10, 18), g: -5, life: 0.9, c: R() < 0.5 ? "#c8d0e0" : "#e6ecf5" });
+    if (!mon.hidden && mon.def.drizzle && R() < dt * 6) particles.push({ x: mon.x + 4 + ((R() * 9) | 0), y: G + 1 - mon.def.h + mon.def.yoff(mon) - 5, vx: 0, vy: 30, g: 80, life: 0.2, c: "#4aa3ff" });
+    if (!mon.hidden && mon.def.shower && R() < dt * 14) particles.push({ x: mon.x + 9 + ((R() * 3) | 0) * 2, y: G + 1 - mon.def.h + mon.def.yoff(mon) - 7, vx: 0, vy: 35, g: 90, life: 0.22, c: R() < 0.5 ? "#7fd0ff" : "#bfefff" });
+    if (!mon.hidden && mon.def.bubbly && R() < dt * 5) particles.push({ x: mon.x + rnd(3, 17), y: G - 13 + mon.def.yoff(mon), vx: rnd(-4, 4), vy: -12, g: -6, life: 1.3, c: R() < 0.5 ? "#bfefff" : "#ffffff" });
     if (mon.hopV != null) { mon.hopY = (mon.hopY || 0) + mon.hopV * dt; mon.hopV += 360 * dt; if (mon.hopY >= 0) { mon.hopY = 0; mon.hopV = null; } }
     if (mon.spinT > 0) mon.spinT = Math.max(0, mon.spinT - dt);
 
