@@ -1410,6 +1410,10 @@ body.play .toast { margin-bottom: 14px; }
 .gear-option span:last-child { display: grid; }
 .gear-option small { color: var(--muted); font-size: 0.78rem; }
 .gear-option.on { border-color: var(--ink); background: var(--sun-soft); }
+.gear-option.locked { cursor: default; background: #f7f3ea; }
+.gear-option.locked .gear-thumb canvas { opacity: 0.45; filter: grayscale(1); }
+.gear-option.locked .meter { margin-top: 4px; }
+.gear-thumb canvas { max-width: 44px !important; height: auto !important; }
 @media (max-width: 520px) {
   .gear-board { grid-template-columns: 1fr; justify-items: center; }
   .gear-slots { width: 100%; }

@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=45";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=45";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=45";
-import { createChoreQuest } from "./chore-quest.js?v=45";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=45";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=45";
+import { APP_VERSION } from "./version.js?v=46";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=46";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=46";
+import { createChoreQuest } from "./chore-quest.js?v=46";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=46";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=46";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -64,7 +64,8 @@ let busy = false;
 let libraryOpen = false;
 let logKidFilter = "";
 let logTypeFilter = "";
-let heroExpand = { weapons: false, achievements: false };
+let heroExpand = { choose: false, achievements: false };
+const KID_HEROES = ["knight", "princess"];
 
 const LOG_TYPES = [
   ["approve", "Approved"],
@@ -1212,7 +1213,38 @@ function gearMarketBoard(child) {
   </section>`;
 }
 
-function heroGearBoard(child) {
+function weaponSlotCard(weapons) {
+  const open = Boolean(heroExpand["gear-weapon"]);
+  const current = weapons.find((entry) => entry.equipped) || weapons[0];
+  const unlocked = weapons.filter((entry) => entry.open).length;
+  const options = open
+    ? `<div class="gear-options">
+        ${weapons.map(({ key, weapon, progress, open: have, equipped }) => have
+          ? `<button type="button" class="gear-option${equipped ? " on" : ""}" data-action="set-weapon" data-weapon="${esc(key)}" aria-pressed="${equipped ? "true" : "false"}">
+              <span class="gear-thumb"><canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas></span>
+              <span><strong>${esc(weapon.name)}</strong><small>${esc(weapon.perk || weapon.unlock || "")}</small></span>
+            </button>`
+          : `<div class="gear-option locked" aria-disabled="true">
+              <span class="gear-thumb"><canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas></span>
+              <span><strong>${esc(weapon.name)}</strong><small>Locked · ${esc(weapon.unlock || "")}</small>${meter(progress.value, progress.goal)}</span>
+            </div>`).join("")}
+      </div>`
+    : "";
+  return `<div class="gear-slot">
+    <button type="button" class="gear-slot-head" data-action="open-gear-slot" data-slot="weapon" aria-expanded="${open ? "true" : "false"}">
+      <span class="gear-thumb">${current ? `<canvas data-quest-weapon="${esc(current.key)}" width="16" height="8" aria-hidden="true"></canvas>` : ""}</span>
+      <span class="gear-slot-copy">
+        <span class="field-label">Weapon</span>
+        <strong>${esc(current?.weapon.name || "Broom Sword")}</strong>
+        <small class="tiny muted">${esc(current?.weapon.perk || "")}${current?.weapon.perk ? " · " : ""}${unlocked} of ${weapons.length} unlocked</small>
+      </span>
+      <span class="gear-slot-chev" aria-hidden="true"></span>
+    </button>
+    ${options}
+  </div>`;
+}
+
+function heroGearBoard(child, weapons = []) {
   const owned = db.gear?.owned || [];
   const slots = [
     { slot: "head", label: "Helmet" },
@@ -1251,11 +1283,11 @@ function heroGearBoard(child) {
   const look = kidHero(db.hero?.hero || child?.hero);
   const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
   return `<section class="card stack">
-    <h2 class="page-title">Helmet &amp; Armour</h2>
-    <p class="lede">Each piece gives one special per Monster Arena run. Tap a slot to swap or take it off.</p>
+    <h2 class="page-title">Gear</h2>
+    <p class="lede">Tap a slot to swap. Weapons unlock as you do chores. Helmets and armour each give one special per Monster Arena run.</p>
     <div class="gear-board">
       <canvas class="hero-icon gear-preview" data-look="${esc(look)}" data-weapon="${esc(db.hero?.weapon || "broom")}" data-color="${esc(tint)}" data-head="${esc(db.gear?.head || "")}" data-body="${esc(db.gear?.body || "")}" width="40" height="34" aria-hidden="true"></canvas>
-      <div class="gear-slots">${cards}</div>
+      <div class="gear-slots">${weapons.length ? weaponSlotCard(weapons) : ""}${cards}</div>
     </div>
   </section>`;
 }
@@ -1361,18 +1393,6 @@ function sortedHeroAchievements(quest, stats, achievementProgress) {
     });
 }
 
-function weaponCard(entry) {
-  const { key, weapon, progress, open, equipped } = entry;
-  return `<article class="armory-card${open ? " open" : " locked"}${equipped ? " equipped" : ""}">
-    <canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas>
-    <div>
-      <strong>${esc(weapon.name)}</strong>
-      <p class="tiny muted">${esc(weapon.unlock)}</p>
-      ${open ? (equipped ? `<span class="chip">Equipped</span>` : `<button class="btn small leaf" type="button" data-action="set-weapon" data-weapon="${esc(key)}">Equip</button>`) : meter(progress.value, progress.goal)}
-    </div>
-  </article>`;
-}
-
 function achievementCard(entry) {
   const { medal, progress } = entry;
   return `<article class="medal${progress.done ? " done" : ""}">
@@ -1417,7 +1437,9 @@ function heroBoard() {
   const heroKey = quest.heroes[db.hero?.hero] ? db.hero.hero : "knight";
   const weaponKey = quest.weapons[db.hero?.weapon] ? db.hero.weapon : "broom";
   const achievementProgress = quest.achievementProgress(stats);
-  const heroes = Object.entries(quest.heroes).map(([key, hero]) => `
+  // King and Queen are parent heroes; kids pick from the kid heroes only.
+  const kidHeroes = Object.entries(quest.heroes).filter(([key]) => KID_HEROES.includes(key));
+  const heroes = kidHeroes.map(([key, hero]) => `
     <button type="button" class="hero-pick" data-action="set-hero" data-hero="${esc(key)}" aria-pressed="${key === heroKey ? "true" : "false"}">
       <canvas data-quest-hero="${esc(key)}" width="14" height="16" aria-hidden="true"></canvas>
       <span>${esc(hero.name)}</span>
@@ -1425,9 +1447,8 @@ function heroBoard() {
   const weapons = sortedHeroWeapons(quest, stats, weaponKey);
   const medals = sortedHeroAchievements(quest, stats, achievementProgress);
   const lastMedal = medals.find((entry) => entry.done) || null;
-  const weaponsOpen = Boolean(heroExpand.weapons);
   const medalsOpen = Boolean(heroExpand.achievements);
-  const shownWeapons = weaponsOpen ? weapons : weapons.filter((entry) => entry.equipped).slice(0, 1);
+  const chooseOpen = Boolean(heroExpand.choose);
   const shownMedals = medalsOpen ? medals : lastMedal ? [lastMedal] : medals.slice(0, 1);
   const monsters = SPRITES.map((sprite) => {
     const count = Number(stats.chores?.[sprite.id]) || 0;
@@ -1438,10 +1459,16 @@ function heroBoard() {
     </figure>`;
   }).join("");
   const color = heroColorName();
-  const moreWeapons = Math.max(0, weapons.length - shownWeapons.length);
   const moreMedals = Math.max(0, medals.length - shownMedals.length);
-  return `<section class="card stack">
-      <h2 class="page-title">Choose your hero</h2>
+  const heroName = quest.heroes[heroKey]?.name || "Adventurer";
+  return `<section class="card stack collapsible-card${chooseOpen ? "" : " collapsed"}">
+      <div class="card-head">
+        <h2 class="page-title">Choose your hero</h2>
+        <span class="card-head-tools">
+          ${chooseOpen ? "" : `<span class="tiny muted">${esc(heroName)} · ${esc(color.charAt(0).toUpperCase() + color.slice(1))}</span>`}
+          <button type="button" class="section-toggle" data-action="toggle-hero-section" data-section="choose" aria-expanded="${chooseOpen ? "true" : "false"}" aria-label="${chooseOpen ? "Hide" : "Show"} hero choices"><i aria-hidden="true"></i></button>
+        </span>
+      </div>
       <div class="hero-picks">${heroes}</div>
       <div>
         <div class="field-label">Color</div>
@@ -1449,15 +1476,7 @@ function heroBoard() {
       </div>
       <p class="hint">${stats.battles} quests finished · ${stats.streak}-day streak</p>
     </section>
-    <section class="card stack">
-      <div class="section-title">
-        <h2 class="page-title">Weapons</h2>
-        <button type="button" class="btn small ghost" data-action="toggle-hero-section" data-section="weapons" aria-expanded="${weaponsOpen ? "true" : "false"}">${weaponsOpen ? "Show less" : moreWeapons ? `Show all (${weapons.length})` : "Show all"}</button>
-      </div>
-      <p class="lede">${weaponsOpen ? "Equipped first, then owned, then closest to unlock." : "Your equipped weapon. Tap Show all to browse the armory."}</p>
-      <div class="armory">${shownWeapons.map(weaponCard).join("") || `<p class="muted">No weapon equipped yet.</p>`}</div>
-    </section>
-    ${heroGearBoard(child)}
+    ${heroGearBoard(child, weapons)}
     <section class="card stack">
       <div class="section-title">
         <h2 class="page-title">Achievements</h2>
@@ -2997,12 +3016,13 @@ app.addEventListener("click", (event) => {
     else run(() => rpc("kid_set_color", { p_token: kidToken(), p_color: btn.dataset.color }), "Color saved.", "hero");
   }
   if (action === "set-weapon") {
+    heroExpand["gear-weapon"] = false;
     if (db.session?.role === "parent") run(() => rpc("parent_set_weapon", { p_weapon: btn.dataset.weapon }), "Weapon equipped.", "parent-hero");
     else run(() => rpc("kid_set_weapon", { p_token: kidToken(), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
   }
   if (action === "toggle-hero-section") {
     const section = btn.dataset.section;
-    if (section === "weapons" || section === "achievements") {
+    if (section === "choose" || section === "achievements") {
       heroExpand[section] = !heroExpand[section];
       render();
     }
