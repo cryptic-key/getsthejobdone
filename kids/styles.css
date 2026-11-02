@@ -826,6 +826,19 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
   aspect-ratio: 16 / 9;
 }
 .stage[hidden] { display: none !important; }
+.arena-host[hidden] { display: none !important; }
+.arena-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #0b0d18;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+.arena-host.leaving .arena-stage::after { opacity: 1; }
+.arena-host .arena-panel { transition: opacity 0.35s ease; }
+.arena-host.leaving .arena-panel { opacity: 0; }
 .arena-stage {
   position: relative;
   overflow: hidden;

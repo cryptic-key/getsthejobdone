@@ -1,10 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=42";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=42";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=42";
-import { createChoreQuest } from "./chore-quest.js?v=42";
-import { arenaRevealed, leaveArena, mountArena, revealArena } from "./arena.js?v=42";
+import { APP_VERSION } from "./version.js?v=43";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=43";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=43";
+import { createChoreQuest } from "./chore-quest.js?v=43";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=43";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1079,6 +1079,8 @@ function paintStage() {
     },
   });
 }
+
+let leavingArena = false;
 
 function arenaContext() {
   return {
@@ -2800,7 +2802,20 @@ app.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-action]");
   if (!btn || btn.tagName === "FORM") return;
   const action = btn.dataset.action;
-  if (action === "goto") go(btn.dataset.to);
+  if (action === "goto") {
+    const to = btn.dataset.to;
+    if (route.name === "arena" && to !== "arena" && arenaRevealed()) {
+      if (leavingArena) return;
+      leavingArena = true;
+      fadeOutArena().then(() => {
+        leavingArena = false;
+        go(to);
+        fadeInStage();
+      });
+    } else {
+      go(to);
+    }
+  }
   if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "chart" : "welcome");
   if (action === "auth-mode") go("parent-auth", { mode: btn.dataset.mode, email: draft.email || "" });
   if (action === "kids-door") openKidGate();

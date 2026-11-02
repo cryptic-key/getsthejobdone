@@ -1,6 +1,6 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=42";
+import { createChoreQuest } from "./chore-quest.js?v=43";
 
 let host = null;
 let quest = null;
@@ -15,6 +15,13 @@ let revealed = false;
 
 export function arenaRevealed() {
   return revealed;
+}
+
+export function fadeOutArena() {
+  if (!host || host.hidden || !revealed) return Promise.resolve();
+  if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
+  host.classList.add("leaving");
+  return new Promise((resolve) => setTimeout(resolve, 450));
 }
 
 export function revealArena() {

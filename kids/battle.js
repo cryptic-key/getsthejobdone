@@ -3577,6 +3577,12 @@ const SPOT_GOAL = { board: 54, chest: 44, gate: 58 };
 let spots = [];
 let spotHold = false;
 let gateFade = 0;
+let stageFadeIn = 0;
+
+// Coming back from the arena: the trail fades in from black while the hero walks on.
+export function fadeInStage() {
+  stageFadeIn = reduce ? 0 : 1;
+}
 
 function activeSpot() {
   return spots.find((s) => s.state !== "out") || null;
@@ -3665,6 +3671,7 @@ function updateSpots(dt) {
   }
   spots = spots.filter((s) => !(s.state === "out" && s.x < -60));
   if (gateFade > 0 && gateFade < 1) gateFade = Math.min(1, gateFade + dt * 1.8);
+  if (stageFadeIn > 0) stageFadeIn = Math.max(0, stageFadeIn - dt * 1.6);
 }
 
 function drawChest(x, open) {
@@ -3774,8 +3781,9 @@ function drawSpots() {
 }
 
 function drawGateFade() {
-  if (gateFade <= 0) return;
-  ctx.globalAlpha = Math.min(1, gateFade);
+  const shade = Math.max(gateFade, stageFadeIn);
+  if (shade <= 0) return;
+  ctx.globalAlpha = Math.min(1, shade);
   rect(ctx, 0, 0, W, H, "#0b0d18");
   ctx.globalAlpha = 1;
 }
