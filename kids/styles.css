@@ -80,15 +80,23 @@ button { cursor: pointer; }
   overflow: hidden;
 }
 
-.orb {
+.forest-bg {
   position: absolute;
-  border-radius: 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
-
-.orb-a { width: 280px; height: 280px; background: #ead9a4; top: -90px; right: -70px; }
-.orb-b { width: 220px; height: 220px; background: #d5e7dc; bottom: -60px; left: -70px; }
-.orb-c { width: 120px; height: 120px; background: #d5e6ec; top: 40%; left: 8%; }
+body:not(.play) .backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(243, 239, 228, 0.5);
+}
+body:not(.play)[data-sky="night"] .backdrop::after,
+body:not(.play)[data-sky="evening"] .backdrop::after { background: rgba(243, 239, 228, 0.68); }
 
 .app {
   width: min(920px, calc(100% - 28px));
@@ -669,8 +677,6 @@ body.play[data-sky="evening"] {
 body.play[data-sky="night"] {
   background: linear-gradient(#0d111a 0%, #171f33 48%, #24304a 100%);
 }
-
-body.play .backdrop .orb { opacity: 0; }
 
 body.play .sky-fx {
   display: block;

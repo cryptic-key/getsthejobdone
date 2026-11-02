@@ -1995,6 +1995,36 @@ export function applySeasonTheme(at = new Date()) {
   return { season, sky };
 }
 
+export function paintForestBackdrop(el) {
+  if (!el || typeof window === "undefined") return;
+  const vw = Math.max(1, window.innerWidth);
+  const vh = Math.max(1, window.innerHeight);
+  const scale = Math.max(2, Math.round(Math.min((vh * 0.5) / H, vw / 80)));
+  const w = Math.ceil(vw / scale);
+  const h = Math.max(H, Math.ceil(vh / scale));
+  const key = `${scenery.season}:${scenery.skyPeriod}:${w}:${h}`;
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  el.width = w;
+  el.height = h;
+  const g = el.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  const top = h - H;
+  g.drawImage(scenery.sky, 0, 0, 1, 1, 0, 0, w, top + 1);
+  for (let y = 0; y < H; y += 1) g.drawImage(scenery.sky, 0, y, 1, 1, 0, top + y, w, 1);
+  g.drawImage(scenery.sky, w - W, top);
+  const tile = (c, y, shift = 0) => {
+    for (let x = -shift; x < w; x += c.width) g.drawImage(c, x, y);
+  };
+  tile(scenery.clouds, top + 2, 40);
+  tile(scenery.hills, top, 20);
+  tile(scenery.farPines, top, 60);
+  tile(scenery.midPines, top, 90);
+  tile(scenery.trees, top, 30);
+  tile(scenery.ground, top);
+  tile(scenery.fore, top + H - 12, 50);
+}
+
 const FONT = {
   0: "111101101101111",
   1: "010110010010111",
