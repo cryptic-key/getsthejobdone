@@ -1,10 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=39";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=39";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=39";
-import { createChoreQuest } from "./chore-quest.js?v=39";
-import { leaveArena, mountArena } from "./arena.js?v=39";
+import { APP_VERSION } from "./version.js?v=40";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=40";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=40";
+import { createChoreQuest } from "./chore-quest.js?v=40";
+import { leaveArena, mountArena } from "./arena.js?v=40";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -370,10 +370,11 @@ function arenaLevelFor(birthDate) {
   if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age -= 1;
   if (age <= 5) return "little";
   if (age <= 8) return "kid";
-  return "big";
+  if (age <= 12) return "big";
+  return "teen";
 }
 
-const ARENA_LEVEL_NAMES = { little: "Little Explorer · ages 3–5", kid: "Adventurer · ages 6–8", big: "Champion · ages 9–12" };
+const ARENA_LEVEL_NAMES = { little: "Little Explorer · ages 3–5", kid: "Adventurer · ages 6–8", big: "Champion · ages 9–12", teen: "Legend · ages 13–16" };
 
 function petPrice(key) {
   const custom = Number(db.petPrices?.[key]);

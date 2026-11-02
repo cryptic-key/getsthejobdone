@@ -1446,7 +1446,7 @@ const ARENA_CATS={
  puzzles:{name:'Puzzles',monster:'alarm'},
  morals:{name:'Good Morals',monster:'robber'}
 };
-const ARENA_LEVELS={little:{name:'Little Explorer',ages:'Ages 3–5',readAloud:true},kid:{name:'Adventurer',ages:'Ages 6–8',readAloud:false},big:{name:'Champion',ages:'Ages 9–12',readAloud:false}};
+const ARENA_LEVELS={little:{name:'Little Explorer',ages:'Ages 3–5',readAloud:true},kid:{name:'Adventurer',ages:'Ages 6–8',readAloud:false},big:{name:'Champion',ages:'Ages 9–12',readAloud:false},teen:{name:'Legend',ages:'Ages 13–16',readAloud:false}};
 let hurtMode=false;
 const aqR=(()=>{try{const buf=new Uint32Array(1);crypto.getRandomValues(buf);return()=>{crypto.getRandomValues(buf);return buf[0]/4294967296}}catch(e){return R}})();
 const aqPick=a=>a[aqR()*a.length|0];
@@ -1520,6 +1520,26 @@ const MORALS={
   ['A friend tells you someone is getting hurt, and asks you to keep it secret. What should you do?','Tell a trusted adult. Safety comes first',['Keep the secret no matter what','Post about it online','Try to handle it all alone']],
   ['A parent comes home tired and stressed. What should you do?','Offer to help without being asked',['Ask for something you want right away','Complain about dinner','Leave your mess for them']],
   ['You borrowed a friend’s game and scratched it. What should you do?','Tell them and offer to replace it',['Return it and say nothing','Say it was already scratched','Keep it so they forget']]]};
+MORALS.teen=[
+  ['Friends at a party offer you a vape. What should you do?','Say no thanks, and leave or call a parent if you feel pressured',['Try it so you fit in','Hold one so they stop asking','Post a picture of it']],
+  ['Your ride home has been drinking. What should you do?','Don’t get in. Call a parent or another safe adult for a ride',['Get in, it’s only a short drive','Drive the car yourself','Walk home alone without telling anyone']],
+  ['A friend says they want to hurt themselves. What should you do?','Tell a trusted adult right away, even if they asked you not to',['Keep it secret to be loyal','Tell them they’re being dramatic','Post about it online']],
+  ['Someone online asks you to send a private photo. What should you do?','Say no, block them, and tell a trusted adult',['Send it if you trust them','Send someone else’s photo instead','Keep chatting so they like you']],
+  ['Your group project partner isn’t doing any work. What should you do?','Talk to them first, then tell the teacher if nothing changes',['Do nothing and let the grade drop','Do it all and complain to everyone','Leave their name off without telling anyone']],
+  ['Your plans change and you won’t be where you told your parents. What should you do?','Text your parents where you’re going before you go',['Don’t mention it','Turn off your location','Ask a friend to cover for you']],
+  ['Your friends are mocking someone’s post in a group chat. What should you do?','Don’t join in, and say it’s not cool',['Add a meme about it','Screenshot it and share it','React with a laugh and stay quiet']],
+  ['You want to skip a shift at your part-time job for a party. What should you do?','Keep your commitment, or arrange a proper shift swap',['Just don’t show up','Call in sick when you aren’t','Quit by text']],
+  ['You feel bad about yourself after scrolling social media. What should you do?','Take a break, and remember people only post their best moments',['Scroll more to keep up','Post something mean about others','Change everything about yourself']],
+  ['A friend copies your essay and hands it in. What should you do?','Talk to them, and be honest with the teacher if asked',['Say nothing, ever','Copy theirs next time','Tell everyone they’re a cheater']],
+  ['Your younger sibling sees you break a house rule. What should you do?','Own up to it and set a better example',['Bribe them to stay quiet','Blame them first','Threaten them if they tell']],
+  ['Your younger brother is being bullied at school. What should you do?','Support him and help him tell a parent or teacher',['Tell him to toughen up','Go fight the bully','Ignore it, it’s not your problem']],
+  ['Your parents are busy and ask you to help out more. What should you do?','Pitch in with chores without being asked twice',['Say it’s not your job','Do it badly so they stop asking','Demand to be paid for everything']],
+  ['You borrowed money from a sibling. What should you do?','Pay it back when you said you would',['Hope they forget','Say you never borrowed it','Pay back only half']],
+  ['Someone you’ve only met online wants to meet in person. What should you do?','Don’t go, and tell a parent',['Go alone','Go, but don’t tell anyone','Send them your address']],
+  ['You said something that hurt a friend’s feelings. What should you do?','Apologize sincerely and try to make it right',['Wait for them to forget','Say they’re too sensitive','Avoid them']],
+  ['Your little sister wants to tag along with you and your friends. What should you do?','Include her when you can, or kindly plan time with her later',['Tell her she’s embarrassing','Sneak out so she can’t follow','Make fun of her in front of your friends']],
+  ['You and a sibling both want the last of something you share. What should you do?','Split it fairly or let them have it this time',['Hide it so they can’t find it','Take it and say they had more last time','Tell on them to get it']]
+];
 /* Sibling scenarios: sharing, patience, fairness and looking after each other */
 MORALS.little.push(
   ['Your baby sister knocks over your block tower. What should you do?','Take a deep breath and build it again together',['Knock her down','Yell at her']],
@@ -1552,11 +1572,45 @@ MORALS.big.push(
   ['You said something mean to your brother when you were angry. What should you do?','Say sorry and tell him how you really felt',['Pretend it never happened','Say it was his fault','Say something even meaner']]
 );
 
+/* ---- ages 13-16 (Legend) ---- */
+const TEEN_WORDS=['accommodate','conscientious','embarrass','millennium','occurrence','perseverance','questionnaire','recommend','liaison','bureaucracy','entrepreneur','hierarchy','mischievous','pronunciation','threshold','unnecessary','acquaintance','definitely','independent','maintenance','noticeable','parliament','possession','reminiscent','surveillance'];
+const TEEN_VOCAB=[['benevolent','kind and generous',['angry and loud','careless','very sleepy']],['meticulous','very careful about details',['messy','very fast','forgetful']],['ambiguous','having more than one meaning',['very clear','very loud','brand new']],['resilient','able to recover quickly',['easily broken','very shy','always late']],['candid','honest and direct',['secretive','sweet-tasting','very tall']],['tedious','long and boring',['exciting','tiny','dangerous']],['diligent','hard-working',['lazy','rude','lucky']],['skeptical','doubtful',['certain','cheerful','hungry']],['obsolete','out of date',['brand new','popular','expensive']],['empathy','understanding how others feel',['being jealous','being bored','winning a prize']],['concise','short and clear',['long-winded','confusing','very loud']],['frugal','careful with money',['wasteful','generous','famous']],['inevitable','certain to happen',['impossible','unlikely','optional']],['vivid','bright and clear',['dull','faded','invisible']]];
+const TEEN_DEVICES=[['“The wind whispered through the trees.”','personification',['simile','alliteration','hyperbole']],['“She was as brave as a lion.”','simile',['metaphor','onomatopoeia','personification']],['“Time is a thief.”','metaphor',['simile','alliteration','hyperbole']],['“Peter Piper picked a peck of pickled peppers.”','alliteration',['metaphor','simile','personification']],['“The bacon sizzled and the door went bang.”','onomatopoeia',['alliteration','metaphor','simile']],['“I’ve told you a million times!”','hyperbole',['simile','personification','onomatopoeia']],['“The classroom was a zoo.”','metaphor',['simile','hyperbole','alliteration']],['“The sun smiled down on us.”','personification',['metaphor','simile','onomatopoeia']]];
+const FR_CONJ={'être':['suis','es','est','sommes','êtes','sont'],'avoir':['ai','as','a','avons','avez','ont'],'aller':['vais','vas','va','allons','allez','vont'],'faire':['fais','fais','fait','faisons','faites','font'],'parler':['parle','parles','parle','parlons','parlez','parlent'],'finir':['finis','finis','finit','finissons','finissez','finissent']};
+const FR_PRON=['Je','Tu','Il','Nous','Vous','Ils'];
+const FR_TEEN=[['Je voudrais un verre d’eau.','I would like a glass of water.'],['Où est la bibliothèque ?','Where is the library?'],['J’ai faim.','I am hungry.'],['Il fait froid aujourd’hui.','It is cold today.'],['Nous allons au cinéma ce soir.','We are going to the movies tonight.'],['Qu’est-ce que tu fais ?','What are you doing?'],['Je ne comprends pas.','I don’t understand.'],['Elle a quinze ans.','She is fifteen years old.'],['Peux-tu m’aider, s’il te plaît ?','Can you help me, please?'],['Mon frère est plus grand que moi.','My brother is taller than me.'],['J’aime jouer au hockey.','I like playing hockey.'],['Quelle heure est-il ?','What time is it?'],['Il pleut depuis ce matin.','It has been raining since this morning.'],['Je dois faire mes devoirs.','I have to do my homework.']];
+const NAT_TEEN=[['Which part of a cell makes energy?','mitochondria',['nucleus','cell wall','ribosome']],['What is the chemical formula for water?','H₂O',['CO₂','O₂','NaCl']],['What is the capital of British Columbia?','Victoria',['Vancouver','Kelowna','Surrey']],['In what year did Canada become a country?','1867',['1776','1914','1982']],['How many territories does Canada have?','3',['2','4','10']],['What carries genetic information in cells?','DNA',['ATP','protein','glucose']],['What is the pH of pure water?','7',['0','14','1']],['Which gas do plants give off during photosynthesis?','oxygen',['carbon dioxide','nitrogen','methane']],['Which particle has a negative charge?','electron',['proton','neutron','nucleus']],['Which blood cells fight infection?','white blood cells',['red blood cells','platelets','plasma']],['What is the largest organ of the human body?','skin',['liver','heart','brain']],['Which is a renewable energy source?','wind',['coal','oil','natural gas']],['What is the capital of Nova Scotia?','Halifax',['Sydney','Moncton','Charlottetown']],['What is the main gas in the air we breathe?','nitrogen',['oxygen','carbon dioxide','hydrogen']],['Newton’s first law is also called the law of…','inertia',['gravity','friction','energy']],['Which 1982 document protects the rights of Canadians?','the Charter of Rights and Freedoms',['the Magna Carta','the US Bill of Rights','the Treaty of Paris']],['Which ocean is on Canada’s east coast?','Atlantic',['Pacific','Indian','Southern']],['What is the longest river entirely in Canada?','Mackenzie River',['St. Lawrence River','Fraser River','Yukon River']],['Animals that eat both plants and meat are called…','omnivores',['herbivores','carnivores','decomposers']],['Light travels about how fast?','300,000 km per second',['300 km per second','3,000 km per hour','30 km per second']]];
+const TEEN_ODDS=[['You flip a coin twice. What is the chance of two heads?','1 in 4',['1 in 2','1 in 3','1 in 8']],['You roll a six-sided die. What is the chance of rolling a 6?','1 in 6',['1 in 3','1 in 2','1 in 12']],['A bag has 3 red marbles and 1 blue. What is the chance of picking blue?','1 in 4',['1 in 3','3 in 4','1 in 2']],['You roll two dice. Which total is most likely?','7',['2','12','10']]];
+const aqSigned=n=>n<0?'- '+(-n):'+ '+n;
+function teenQuestion(cat,k,Q){const r=aqR();
+ if(cat==='math'){
+  if(r<.25){const x=aqInt(-6,12),a=aqInt(2,9),b=aqInt(-15,20),c=a*x+b;return Q('Solve for x:  '+a+'x '+aqSigned(b)+' = '+c,[aqEN('Solve for x. '+a+' x '+(b<0?'minus '+(-b):'plus '+b)+' equals '+c)],aqMC(aqT(x),aqNear(x,3,-30),4))}
+  if(r<.45){const p=aqPick([10,15,20,25,30,40,50,75]),n=aqInt(2,20)*20;return Q('What is '+p+'% of '+n+'?',null,aqMC(aqT(n*p/100),aqNear(n*p/100,5,0),4))}
+  if(r<.6){const n=aqInt(4,15);return aqR()<.5?Q('What is √'+(n*n)+'?',[aqEN('What is the square root of '+(n*n)+'?')],aqMC(aqT(n),aqNear(n,2,1),4)):Q('What is '+n+'²?',[aqEN('What is '+n+' squared?')],aqMC(aqT(n*n),[n*n+n,n*n-n,2*n,(n+1)*(n+1)].map(aqT),4))}
+  if(r<.8){const a=aqInt(2,12),b=aqInt(2,9),c=aqInt(2,9);return aqR()<.5?Q(a+' + '+b+' × '+c+' = ?',[aqEN(a+' plus '+b+' times '+c)],aqMC(aqT(a+b*c),[(a+b)*c,a*b+c,a+b+c].filter(v=>v!==a+b*c).map(aqT).concat(aqNear(a+b*c,3,0)),4)):Q('('+a+' + '+b+') × '+c+' = ?',[aqEN(a+' plus '+b+', all times '+c)],aqMC(aqT((a+b)*c),[a+b*c,a*c+b,a+b+c].filter(v=>v!==(a+b)*c).map(aqT).concat(aqNear((a+b)*c,3,0)),4))}
+  const a=aqInt(2,12),b=aqInt(2,12);return aqR()<.5?Q('(-'+a+') × (-'+b+') = ?',[aqEN('negative '+a+' times negative '+b)],aqMC(aqT(a*b),[-a*b,a+b,-(a+b)].map(aqT).concat(aqNear(a*b,3,0)),4)):Q('-'+a+' + '+b+' = ?',[aqEN('negative '+a+' plus '+b)],aqMC(aqT(b-a),[a+b,a-b,-(a+b)].filter(v=>v!==b-a).map(aqT).concat(aqNear(b-a,3,-60)),4))}
+ if(cat==='words'){
+  if(r<.4){const w=aqDraw('teen-spell',TEEN_WORDS);const wr=[];for(let i=0;i<10;i++)wr.push(misspell(w));return Q('Which word is spelled right?',[aqEN('Which word is spelled right? '+w+'.')],aqMC(aqT(w),wr.filter(x=>x!==w).map(aqT),4))}
+  if(r<.75){const [w,a,b]=aqDraw('teen-vocab',TEEN_VOCAB);return Q('What does "'+w+'" mean?',null,aqMC(aqT(a),b.map(aqT),4))}
+  const [line,a,b]=aqDraw('teen-device',TEEN_DEVICES);return Object.assign(Q('Which writing device is this?  '+line,null,aqMC(aqT(a),b.map(aqT),4)),{layout:'list'})}
+ if(cat==='french'){
+  if(r<.5){const verb=aqPick(Object.keys(FR_CONJ)),forms=FR_CONJ[verb],i=aqInt(0,5),ans=forms[i];const pron=(i===0&&/^[aeéiou]/.test(ans))?'J’':FR_PRON[i];
+    return Q(pron+(pron.endsWith('’')?'':' ')+'___ ('+verb+')',[aqEN('Fill in the verb'),aqFR(verb)],aqMC(aqT(ans),forms.filter(f=>f!==ans).map(aqT),4))}
+  const [fr,en]=aqDraw('teen-fr-phrase',FR_TEEN);const others=FR_TEEN.filter(x=>x[1]!==en).map(x=>aqT(x[1]));return Object.assign(Q('What does "'+fr+'" mean?',[aqEN('What does'),aqFR(fr),aqEN('mean?')],aqMC(aqT(en),others,4)),{layout:'list'})}
+ if(cat==='nature'){const [q,a,w]=aqDraw('nature-teen',NAT_TEEN);return Q(q,null,aqMC(aqT(a),w.map(aqT),4))}
+ if(cat==='puzzles'){
+  if(r<.25){const [q,a,w]=aqDraw('teen-odds',TEEN_ODDS);return Q(q,null,aqMC(aqT(a),w.map(aqT),4))}
+  if(r<.5){const price=aqInt(4,20)*10,p=aqPick([10,20,25,50]),sale=price*(100-p)/100;const $=v=>'$'+(Number.isInteger(v)?v:v.toFixed(2));return Q('A $'+price+' jacket is '+p+'% off. What is the sale price?',null,aqMC(aqT($(sale)),[price*p/100,sale+10,sale-5,price-p,sale+5,sale-10].filter(v=>v>0&&v!==sale).map(v=>aqT($(v))),4))}
+  if(r<.75){const sp=aqPick([40,50,60,80,90,100]),h=aqInt(2,5);return Q('A car drives '+sp*h+' km in '+h+' hours. What is its average speed?',null,aqMC(aqT(sp+' km/h'),[sp+10,sp-10,sp*h,sp+20].filter(v=>v>0&&v!==sp).map(v=>aqT(v+' km/h')),4))}
+  if(aqR()<.5){const a=aqInt(1,5),b=aqInt(a,8);const seq=[a,b];while(seq.length<6)seq.push(seq[seq.length-1]+seq[seq.length-2]);const nxt=seq[4]+seq[5];return Q('What comes next?  '+seq.join(', ')+', ?',[aqEN('What comes next? '+seq.join(', '))],aqMC(aqT(nxt),aqNear(nxt,4,1),4))}
+  const st=aqInt(1,6);const sq=[0,1,2,3,4].map(i=>(st+i)*(st+i));const nxt=(st+5)*(st+5);return Q('What comes next?  '+sq.join(', ')+', ?',[aqEN('What comes next? '+sq.join(', '))],aqMC(aqT(nxt),[nxt+st,nxt-1,sq[4]+sq[3],nxt+10].filter(v=>v!==nxt).map(aqT),4))}
+ return null}
 function makeQuestionRaw(cat,lvl,k=0){const Q=(text,sayParts,res,vis)=>Object.assign({cat,text,say:sayParts||[aqEN(text)],vis:vis||null},res);
+ if(lvl==='teen'&&cat!=='morals'){const tq=teenQuestion(cat,k,Q);if(tq)return tq}
  if(cat==='math'){
   if(lvl==='little'){const n=aqInt(1,Math.min(8,4+k));return Q('How many apples?',null,aqMC(aqT(n),aqNear(n,2,1)),{apples:n})}
   if(lvl==='kid'){const hard=k>3;if(aqR()<.5){const a=aqInt(1,hard?15:10),b=aqInt(1,hard?10:9);return Q(`${a} + ${b} = ?`,[aqEN(`${a} plus ${b}`)],aqMC(aqT(a+b),aqNear(a+b,3)))}
-    const a=aqInt(5,hard?20:12),b=aqInt(1,a);return Q(`${a} − ${b} = ?`,[aqEN(`${a} minus ${b}`)],aqMC(aqT(a-b),aqNear(a-b,3)))}
+    const a=aqInt(5,hard?20:12),b=aqInt(1,a);return Q(`${a} - ${b} = ?`,[aqEN(`${a} minus ${b}`)],aqMC(aqT(a-b),aqNear(a-b,3)))}
   const r=aqR(),hi=k>4?12:9;
   if(r<.45){const a=aqInt(2,hi),b=aqInt(2,hi);return Q(`${a} × ${b} = ?`,[aqEN(`${a} times ${b}`)],aqMC(aqT(a*b),[a*(b+1),a*(b-1),(a+1)*b,a*b+2,a*b-2].filter(x=>x>0&&x!==a*b).map(aqT),4))}
   if(r<.75){const b=aqInt(2,hi),q=aqInt(2,hi);return Q(`${b*q} ÷ ${b} = ?`,[aqEN(`${b*q} divided by ${b}`)],aqMC(aqT(q),aqNear(q,2,1),4))}
@@ -1582,7 +1636,7 @@ function makeQuestionRaw(cat,lvl,k=0){const Q=(text,sayParts,res,vis)=>Object.as
     if(r<.75){const yes=aqDraw('little-fly',['owl','dragon','duckling']);return Q('Which one can fly?',null,aqMC({t:'pet',k:yes},['turtle','frog','crab','puppy','kitten','whale'].map(x=>({t:'pet',k:x}))))}
     const yes=aqDraw('little-water',['whale','shark','crab']);return Q('Which one lives in the water?',null,aqMC({t:'pet',k:yes},['puppy','kitten','bunny','owl','hamster','unicorn'].map(x=>({t:'pet',k:x}))))}
   const bank=lvl==='kid'?NAT_KID:NAT_BIG;const [q,a,w]=aqDraw('nature-'+lvl,bank);return Q(q,null,aqMC(aqT(a),w.map(aqT),lvl==='kid'?3:4))}
- if(cat==='morals'){const [q,a,w]=aqDraw('morals-'+lvl,MORALS[lvl]||MORALS.kid);const res=aqMC(aqT(a),w.map(aqT),lvl==='big'?4:3);
+ if(cat==='morals'){const [q,a,w]=aqDraw('morals-'+lvl,MORALS[lvl]||MORALS.kid);const res=aqMC(aqT(a),w.map(aqT),lvl==='big'||lvl==='teen'?4:3);
   const opts=res.choices.map(c=>c.v);const say=[aqEN(q),aqEN('Is it: '+opts.slice(0,-1).join('? Or, ')+'? Or, '+opts[opts.length-1]+'?')];
   return Object.assign({cat,text:q,say,vis:null,layout:'list'},res)}
  /* puzzles */

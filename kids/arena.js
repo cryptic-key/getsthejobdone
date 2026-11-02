@@ -1,6 +1,6 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=39";
+import { createChoreQuest } from "./chore-quest.js?v=40";
 
 let host = null;
 let quest = null;
@@ -10,6 +10,9 @@ let run = null;
 let pending = null;
 let current = null;
 let alive = false;
+
+const LEVEL_ORDER = ["little", "kid", "big", "teen"];
+const PERFECT_TO_LEVEL = 3;
 
 const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
@@ -84,7 +87,7 @@ function paintLobby(message = "") {
   const cats = Object.values(quest?.arena.categories || {}).map((cat) => cat.name).join(" · ");
   const locked = ctx.grounded();
   el.innerHTML = `<h2 class="page-title">Monster Arena</h2>
-    <p class="lede">Answer questions to beat the monsters. Each monster takes 3 hits. A wrong answer costs a heart, and the run ends when your 3 hearts are gone.</p>
+    <p class="lede">Answer questions to beat the monsters. Each monster takes 3 hits. A wrong answer costs a heart, and the run ends when your 3 hearts are gone. Beat 3 monsters in a row without losing a heart to level up to harder questions.</p>
     <div class="arena-facts">
       <span><b>${fee}</b> coin${fee === 1 ? "" : "s"} to enter</span>
       <span><b>+${per}</b> per monster</span>
@@ -115,7 +118,10 @@ function paintQuestion(q) {
   if (!el) return;
   const A = quest.arena;
   const cat = A.categories[q.cat]?.name || "";
-  el.innerHTML = `<div class="arena-q-head"><span class="chip">${esc(cat)}</span><span class="tiny muted">Monsters beaten: ${run?.kills || 0}</span></div>
+  const lvl = A.levels[run?.level] || {};
+  const next = LEVEL_ORDER[LEVEL_ORDER.indexOf(run?.level) + 1];
+  const streak = next ? ` · Perfect streak ${run?.streak || 0}/${PERFECT_TO_LEVEL}` : "";
+  el.innerHTML = `<div class="arena-q-head"><span class="chip">${esc(cat)}</span><span class="tiny muted">${esc(lvl.name || "")}${streak} · Beaten: ${run?.kills || 0}</span></div>
     <p class="arena-q">${esc(q.text)}</p>
     <div class="arena-vis"></div>
     <div class="arena-choices${q.layout === "list" ? " list" : q.choices.length > 3 ? " four" : ""}">${q.choices.map(choiceButton).join("")}</div>
@@ -157,12 +163,15 @@ function ask(q) {
   });
 }
 
-function paintSummary(kills, won) {
+function paintSummary(kills, won, topLevel, startLevel) {
   view = "summary";
   const el = panel();
   if (!el) return;
+  const top = quest?.arena.levels[topLevel];
+  const climbed = top && topLevel !== startLevel;
   el.innerHTML = `<h2 class="page-title">Out of hearts!</h2>
     <p class="arena-q">You beat ${kills} monster${kills === 1 ? "" : "s"} and won ${won} coin${won === 1 ? "" : "s"}.</p>
+    ${climbed ? `<p class="tiny muted">You leveled up to ${esc(top.name)} (${esc(top.ages)}) questions!</p>` : ""}
     <div class="row">
       <button class="btn sun" type="button" data-arena="again">Play again</button>
       <button class="btn ghost" type="button" data-arena="lobby">Done</button>
@@ -182,18 +191,24 @@ async function playRun() {
   run = { id: start.run_id, kills: 0, won: 0 };
   A.config.entry = Number(start.entry) || 0;
   A.config.perKill = Number(start.per_kill) || 0;
-  const level = A.levels[start.level] ? start.level : "kid";
+  run.level = A.levels[start.level] ? start.level : "kid";
+  run.streak = 0;
+  run.top = run.level;
   quest.setCoins(Number(start.points) || 0);
   ctx.setPoints(Number(start.points) || 0);
   A.begin();
   let last = null;
+  let levelUp = "";
   while (alive && A.hearts() > 0) {
     const cats = Object.keys(A.categories).filter((cat) => cat !== last);
     const cat = cats[Math.floor(Math.random() * cats.length)];
     last = cat;
-    if (panel()) panel().innerHTML = `<p class="arena-q">A monster enters the arena...</p>`;
+    if (panel()) panel().innerHTML = levelUp || `<p class="arena-q">A monster enters the arena...</p>`;
+    levelUp = "";
+    const heartsBefore = A.hearts();
     await A.spawn(A.categories[cat].monster);
     if (!alive) return;
+    const level = run.level;
     let beaten = false;
     while (alive && !beaten && A.hearts() > 0) {
       const q = A.makeQuestion(cat, level, run.kills);
@@ -220,6 +235,18 @@ async function playRun() {
       } catch {
         /* keep playing; the coin just isn't saved */
       }
+      run.streak = A.hearts() === heartsBefore ? run.streak + 1 : 0;
+      const next = LEVEL_ORDER[LEVEL_ORDER.indexOf(run.level) + 1];
+      if (run.streak >= PERFECT_TO_LEVEL && next && A.levels[next]) {
+        run.level = next;
+        run.top = next;
+        run.streak = 0;
+        const info = A.levels[next];
+        levelUp = `<p class="arena-q">Level up! ${PERFECT_TO_LEVEL} perfect monsters in a row.</p><p class="tiny muted">Harder questions now: ${esc(info.name)} · ${esc(info.ages)}</p>`;
+        A.speak([{ t: `Level up! ${info.name} questions now.`, lang: "en-CA" }]);
+      }
+    } else {
+      run.streak = 0;
     }
   }
   if (!alive) return;
@@ -227,6 +254,8 @@ async function playRun() {
   await A.ko();
   A.end();
   const id = run.id;
+  const topLevel = run.top;
+  const startLevel = A.levels[start.level] ? start.level : "kid";
   run = null;
   let result = { kills: 0, coins_won: 0 };
   try {
@@ -235,7 +264,7 @@ async function playRun() {
     /* summary still shows local counts */
   }
   alive = false;
-  paintSummary(Number(result?.kills) || 0, Number(result?.coins_won) || 0);
+  paintSummary(Number(result?.kills) || 0, Number(result?.coins_won) || 0, topLevel, startLevel);
   ctx.refresh();
 }
 
