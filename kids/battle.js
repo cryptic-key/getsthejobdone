@@ -3114,6 +3114,7 @@ async function playReviewApprove(token) {
   if (caster) {
     caster.cast = 1;
     say(`${caster.name} casts a power-up!`);
+    sfx("spell");
     if (!(await waitFor(0.25, token))) {
       reviewBusy = false;
       return;
@@ -3135,6 +3136,7 @@ async function playReviewApprove(token) {
     caster.cast = 0;
   }
   say(`${item.kidName} is powered up!`);
+  sfx("powerup");
   hero.pose = "idle";
   hero.power = 1.8;
   burst(heroX() + 8, G - 10, ["#e04a4a", "#f4862e", "#f4c542", "#5cc96a", "#4aa3ff", "#9b6ad6"], 22, 60);
@@ -3171,6 +3173,7 @@ async function playReviewDecline(token) {
   reviewBusy = true;
   setReviewActions(false);
   say(`Not yet. ${item.kidName} tries again.`);
+  sfx("decline");
   hero.pose = "block";
   hero.alert = 1;
   hero.kx = -8;
@@ -3219,6 +3222,7 @@ async function approach(item, token, showHp) {
   scroll = 0;
   scrollTarget = 0;
   hero.pose = "idle";
+  sfx(`voice:${normalizeSprite(item.sprite)}`);
   return true;
 }
 async function playFlee(item, token) {
@@ -3237,6 +3241,7 @@ async function playFlee(item, token) {
   if (!(await waitFor(0.4, token))) return;
   mon.idle = false;
   hardHit = true;
+  sfx(`attack:${normalizeSprite(item.sprite)}`);
   try {
     await def.attack(mon, apiFor(token));
   } finally {
@@ -3296,11 +3301,11 @@ async function playBattle(item, token) {
       if (!(await waitFor(0.3, token))) return;
       beamT = 0.45;
       mon.lungeT = -5;
-      sfx("swing");
+      sfx(`swing:${wk}`);
     } else {
       hero.pose = "windup";
       if (!(await waitFor(0.2 * (wpn.speed || 1), token))) return;
-      sfx("swing");
+      sfx(`swing:${wk}`);
       const reach = (wpn.mapLen || 14) - (wpn.grip?.[0] || 2);
       hero.oxT = mon.x - (reach > 15 ? 22 : 18) - 26;
       if (!(await waitFor(0.14, token))) return;
@@ -3309,7 +3314,7 @@ async function playBattle(item, token) {
       hero.smear = 0.12;
     }
     mon.hp -= 1;
-    sfx("hit");
+    sfx(`hit:${wk}`);
     mon.flash = 0.2;
     mon.shake = 0.25;
     mon.idle = false;
@@ -3325,7 +3330,7 @@ async function playBattle(item, token) {
     }
     if (i === 2) {
       special(wk, hx, hy);
-      sfx("special");
+      sfx(`special:${wk}`);
       petFollower.cheer(true);
       if (!(await waitFor(0.75, token))) return;
     } else {
@@ -3341,7 +3346,7 @@ async function playBattle(item, token) {
       say(`${def.name} fights back!`);
       hero.pose = "block";
       mon.idle = false;
-      sfx("enemy");
+      sfx(`attack:${normalizeSprite(item.sprite)}`);
       await def.attack(mon, fight);
       if (token !== runToken) return;
       if (!(await until(() => projectiles.length === 0, token))) return;
@@ -3367,7 +3372,7 @@ async function playBattle(item, token) {
   }
   burst(cx, cy, def.hit, 10, 50);
   mon.alive = false;
-  sfx("poof");
+  sfx(`defeat:${normalizeSprite(item.sprite)}`);
   const reward = Math.max(0, mon.points) + (wpn.bonus || 0);
   floats.push({ s: `+${reward}`, x: cx - 6, y: cy - 8, life: 1.3 });
   const bits = Math.min(8, reward);
@@ -3375,6 +3380,7 @@ async function playBattle(item, token) {
   say(`${item.title} is done. +${reward} coins`);
   hero.pose = "victory";
   sfx("victory");
+  if (scene.pet) sfx(`pet:${scene.pet}`);
   hero.vy = -80;
   petFollower.cheer(true);
   if (!(await waitFor(0.55, token))) return;
@@ -3441,6 +3447,7 @@ async function runParade() {
     mon.showHp = false;
     scrollTarget = reduce ? 0 : 22;
     say(front ? `${front.name} meets the ${def.name}.` : `${def.name} is on the trail.`);
+    if (mon?.def) sfx("appear");
     if (!(await until(() => !mon || mon.x <= def.tx + 6, token))) return;
     scrollTarget = 0;
     if (front && mon?.alive) {
@@ -3449,6 +3456,8 @@ async function runParade() {
       if (!(await waitFor(0.22, token))) return;
       front.pose = "swing";
       front.angT = POSE.swing;
+      sfx("swing");
+      sfx("hit");
       mon.flash = 0.2;
       mon.shake = 0.2;
       burst(mon.x + def.w / 2, G - def.h / 2, def.hit, 12, 50);
@@ -3616,6 +3625,7 @@ async function playParentWarn(token, info) {
     t: 0,
   };
   burst(spellBolt.x, spellBolt.y, ["#c77dff", "#fff3a8", "#ffffff"], 10, 40);
+  sfx("darkspell");
   if (!(await until(() => !spellBolt || spellBolt.t >= 1, token))) {
     warnBusy = false;
     return;
@@ -3626,6 +3636,7 @@ async function playParentWarn(token, info) {
   hero.kx = 8;
   if (!reduce) shake = 0.25;
   burst(heroX() + 10, G - 6, ["#e04a4a", "#ffffff", "#c77dff"], 16, 55);
+  sfx("heartbreak");
   say("The spell hits! A heart cracks!");
   const lost = Math.max(0, Math.min(2, Number(info.hearts) || 0));
   const cracking = crackHeart(lost);
@@ -3777,6 +3788,7 @@ async function playWarn(token) {
   const hy = G - 10;
   spellBolt = { x: slot + 2, y: G - stand + 6, tx: hx, ty: hy, t: 0 };
   burst(spellBolt.x, spellBolt.y, ["#c77dff", "#fff3a8", "#ffffff"], 10, 40);
+  sfx("darkspell");
   if (!(await until(() => !spellBolt || spellBolt.t >= 1, token))) {
     warnBusy = false;
     return;
@@ -3787,6 +3799,7 @@ async function playWarn(token) {
   hero.kx = -10;
   if (!reduce) shake = 0.25;
   burst(heroX() + 10, G - 6, ["#e04a4a", "#ffffff", "#c77dff"], 16, 55);
+  sfx("heartbreak");
   say("The spell hits! A heart cracks!");
   const lost = Math.max(0, Math.min(2, Number(info.hearts) || 0));
   const cracking = crackHeart(lost);
@@ -4238,6 +4251,7 @@ async function playMarketArrive(token) {
   scroll = reduce ? 0 : Math.max(scroll, 18);
   placeMarket(reduce ? MARKET_X : W + 24, !reduce);
   say("Heading to the Market...");
+  sfx("cart");
   if (!(await waitFor(0.35, token))) {
     marketBusy = false;
     return;
@@ -5222,8 +5236,14 @@ function drawCoin(x, y, ph) {
   rect(ctx, px0 - (w >> 1), py - 2, w, 5, "#f4c542");
   if (w > 1) px(ctx, px0 - (w >> 1), py - 2, "#fff3a8");
 }
+let projSeen = 0;
 function update(dt) {
   time += dt;
+  if (projectiles.length > projSeen) {
+    const p = projectiles[projectiles.length - 1];
+    sfx(`lob:${p?.k === "spr" ? "toss" : p?.k || "toss"}`);
+  }
+  projSeen = projectiles.length;
   updateStorm(dt);
   updateZap(dt);
   for (let i = timers.length - 1; i >= 0; i -= 1) {
