@@ -4,7 +4,7 @@ import { APP_VERSION } from "./version.js?v=40";
 import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=40";
 import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=40";
 import { createChoreQuest } from "./chore-quest.js?v=40";
-import { leaveArena, mountArena } from "./arena.js?v=40";
+import { arenaRevealed, leaveArena, mountArena, revealArena } from "./arena.js?v=40";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1019,12 +1019,22 @@ function paintStage() {
       : "arrive"
     : null;
   const playing = new Set(playChores.map((chore) => chore.id));
+  // Landmarks: Quests shows the Quest Board when no monsters are on the trail, My Hero walks to the
+  // treasure chest, and Arena walks through the colosseum gate before the arena opens.
+  const free = child && !locked && !warn;
+  const trailBusy = battleLine.length > 0 || playChores.length > 0;
+  const spot = !free ? null
+    : route.name === "today" && !trailBusy ? "board"
+    : route.name === "hero" ? "chest"
+    : route.name === "arena" && !arenaRevealed() ? "gate"
+    : null;
+  const atSpot = spot === "chest" || spot === "gate";
   const shownHearts = warn ? Math.min(3, (child?.hearts ?? 0) + 1) : child?.hearts ?? 3;
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
     hero: heroKey,
-    waiting: locked || warn || atMarket ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
-    plays: locked || warn || atMarket
+    waiting: locked || warn || atMarket || atSpot ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
+    plays: locked || warn || atMarket || atSpot
       ? []
       : playChores.map((chore) => ({
           ...actor(chore),
@@ -1038,6 +1048,13 @@ function paintStage() {
     lockup,
     lockKey,
     market,
+    spot,
+    onSpot: (kind, mode) => {
+      if (kind === "gate" && mode === "entered" && route.name === "arena") {
+        revealArena();
+        render();
+      }
+    },
     warn,
     onWarn: (info) => {
       const key = `${info?.seq || child?.warnSeq || ""}:${info?.parent || child?.warnParent || ""}`;
@@ -2678,7 +2695,7 @@ const views = {
 
   arena() {
     const child = kid();
-    return shell(child.name, "Monster Arena", `<div class="stack"><div class="arena-slot"></div></div>`, kidNav("arena"));
+    return shell(child.name, "Monster Arena", `<div class="stack">${arenaRevealed() ? "" : worldScene(child.color)}<div class="arena-slot"></div></div>`, kidNav("arena"));
   },
 
   hero() {

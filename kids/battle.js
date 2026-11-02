@@ -2259,6 +2259,11 @@ const FONT = {
   I: "111010010010111",
   N: "111101101101101",
   X: "101101010101101",
+  Q: "111101101111001",
+  U: "101101101101111",
+  E: "111100111100111",
+  T: "111010010010010",
+  R: "110101110101101",
 };
 
 export function drawMonsterIcon(target, type) {
@@ -3564,6 +3569,210 @@ function holdCage() {
   say("Locked in! Earn coins to break out.");
 }
 
+
+/* ---------- Landmarks: Quest Board (Quests), treasure chest (My Hero), arena gate (Arena) ----------
+   A landmark rides on the ground layer: it scrolls in while the hero walks, the world freezes when the
+   hero reaches it, and when the kid switches tabs the hero walks on while it scrolls off screen. */
+const SPOT_GOAL = { board: 54, chest: 44, gate: 58 };
+let spots = [];
+let spotHold = false;
+let gateFade = 0;
+
+function activeSpot() {
+  return spots.find((s) => s.state !== "out") || null;
+}
+
+function leaveSpots() {
+  let any = false;
+  for (const s of spots) {
+    if (s.state !== "out") {
+      s.state = "out";
+      any = true;
+    }
+  }
+  if (any) {
+    spotHold = false;
+    gateFade = 0;
+    hero.pose = "walk";
+    hero.oxT = 0;
+    scrollTarget = 18;
+    scroll = Math.max(scroll, 12);
+  }
+  return any;
+}
+
+function spotLine(kind) {
+  if (kind === "board") return "The Quest Board! Pick a quest and get it done.";
+  if (kind === "chest") return "Your treasure chest! Here is your hero's gear.";
+  return "The Monster Arena! Step inside...";
+}
+
+function arriveSpot(kind) {
+  const here = activeSpot();
+  if (here && here.kind === kind) return;
+  leaveSpots();
+  const s = { kind, x: reduce ? SPOT_GOAL[kind] : W + 12, state: "in", open: 0 };
+  spots.push(s);
+  mon = null;
+  hero.pose = "walk";
+  hero.oxT = 0;
+  scrollTarget = reduce ? 0 : 30;
+  scroll = reduce ? 0 : Math.max(scroll, 18);
+  if (kind === "board") say("Walking to the Quest Board...");
+  else if (kind === "chest") say("Walking to your treasure chest...");
+  else say("Walking to the Monster Arena...");
+}
+
+function reachSpot(s) {
+  s.x = SPOT_GOAL[s.kind];
+  s.state = "here";
+  spotHold = true;
+  scroll = 0;
+  scrollTarget = 0;
+  hero.pose = "idle";
+  hero.ang = POSE.idle;
+  if (s.kind === "chest") burst(s.x + 11, G - 14, ["#f4c542", "#fff3a8", "#ffffff"], 16, 45);
+  say(spotLine(s.kind));
+  if (s.kind === "gate") enterGate(s, runToken);
+  scene.onSpot?.(s.kind, "here");
+}
+
+async function enterGate(s, token) {
+  if (!(await waitFor(0.7, token))) return;
+  hero.pose = "walk";
+  hero.oxT = s.x + 15 - 26;
+  if (!(await waitFor(0.55, token))) return;
+  gateFade = 0.01;
+  if (!(await until(() => gateFade >= 1, token))) return;
+  scene.onSpot?.("gate", "entered");
+}
+
+function updateSpots(dt) {
+  for (const s of spots) {
+    // Arriving landmarks ride the ground; leaving ones always keep moving so they never get stuck when the world stops.
+    if (s.state === "in") s.x -= scroll * dt;
+    else if (s.state === "out") s.x -= Math.max(scroll, 24) * dt;
+    if (s.state === "in" && s.x <= SPOT_GOAL[s.kind]) reachSpot(s);
+    const want = s.kind === "chest" && s.state === "here" ? 1 : 0;
+    s.open += (want - s.open) * Math.min(1, dt * 7);
+  }
+  spots = spots.filter((s) => !(s.state === "out" && s.x < -60));
+  if (gateFade > 0 && gateFade < 1) gateFade = Math.min(1, gateFade + dt * 1.8);
+}
+
+function drawChest(x, open) {
+  const Y = G;
+  rect(ctx, x + 2, Y, 19, 1, scenery.shadow);
+  rect(ctx, x, Y - 11, 22, 11, K);
+  rect(ctx, x + 1, Y - 10, 20, 9, "#a0622a");
+  for (const yy of [Y - 7, Y - 4]) rect(ctx, x + 1, yy, 20, 1, "#7a4a26");
+  for (const bx of [x + 3, x + 17]) { rect(ctx, bx, Y - 10, 2, 9, "#f4c542"); rect(ctx, bx + 1, Y - 10, 1, 9, "#c99a1e"); }
+  rect(ctx, x + 9, Y - 10, 4, 5, K);
+  rect(ctx, x + 10, Y - 9, 2, 3, "#f4c542");
+  px(ctx, x + 10, Y - 8, K);
+  if (open > 0.5) {
+    rect(ctx, x + 1, Y - 12, 20, 2, "#3a2410");
+    for (let i = 0; i < 6; i += 1) px(ctx, x + 3 + i * 3, Y - 12 + (i % 2), i % 3 ? "#f4c542" : "#7fe0ff");
+    rect(ctx, x - 1, Y - 22, 24, 9, K);
+    rect(ctx, x, Y - 21, 22, 7, "#8a5228");
+    rect(ctx, x, Y - 21, 22, 1, "#b07840");
+    for (const bx of [x + 3, x + 17]) rect(ctx, bx, Y - 21, 2, 7, "#f4c542");
+    for (let i = 0; i < 5; i += 1) {
+      const a = -Math.PI / 2 + (i - 2) * 0.32;
+      const len = 7 + ((time * 6 + i) | 0) % 3;
+      for (let r = 2; r < len; r += 2) px(ctx, x + 11 + Math.cos(a) * r, Y - 13 + Math.sin(a) * r, i % 2 ? "#fff3a8" : "#f4c542");
+    }
+    if ((time * 4 | 0) % 2) { px(ctx, x + 4, Y - 26, "#ffffff"); px(ctx, x + 18, Y - 25, "#ffffff"); }
+  } else {
+    rect(ctx, x, Y - 16, 22, 5, K);
+    rect(ctx, x + 1, Y - 15, 20, 3, "#8a5228");
+    rect(ctx, x + 2, Y - 16, 18, 1, K);
+    rect(ctx, x + 1, Y - 15, 20, 1, "#b07840");
+    for (const bx of [x + 3, x + 17]) rect(ctx, bx, Y - 15, 2, 4, "#f4c542");
+  }
+}
+
+function drawBoard(x) {
+  const Y = G;
+  rect(ctx, x + 2, Y, 34, 1, scenery.shadow);
+  for (const px0 of [x + 3, x + 31]) { rect(ctx, px0, Y - 40, 4, 40, K); rect(ctx, px0 + 1, Y - 40, 2, 40, "#8a5a2a"); }
+  rect(ctx, x - 2, Y - 46, 42, 4, K);
+  for (let i = 0; i < 40; i += 1) px(ctx, x - 1 + i, Y - 45 + (i % 4 === 0 ? 0 : 1), i % 4 === 0 ? "#8a2e1e" : "#a83a24");
+  rect(ctx, x, Y - 42, 38, 28, K);
+  rect(ctx, x + 1, Y - 41, 36, 26, "#c08848");
+  for (const yy of [Y - 34, Y - 27, Y - 20]) rect(ctx, x + 1, yy, 36, 1, "#9a6a34");
+  rect(ctx, x + 6, Y - 40, 26, 7, K);
+  rect(ctx, x + 7, Y - 39, 24, 5, "#a83a24");
+  text("QUESTS", x + 8, Y - 39, "#fff0d0");
+  const notes = [[x + 3, Y - 31, "#fff8e6"], [x + 13, Y - 30, "#fff3b0"], [x + 24, Y - 31, "#fff8e6"], [x + 8, Y - 23, "#e6f4ff"], [x + 20, Y - 23, "#fff8e6"]];
+  notes.forEach(([nx, ny, col], i) => {
+    const flap = ((time * 2 + i * 1.7) | 0) % 5 === 0 ? 1 : 0;
+    rect(ctx, nx, ny, 10, 7, K);
+    rect(ctx, nx + 1, ny + 1, 8, 5, col);
+    rect(ctx, nx + 2, ny + 3, 6, 1, "#9aa4b6");
+    rect(ctx, nx + 2, ny + 5, 4 + (i % 2), 1, "#9aa4b6");
+    px(ctx, nx + 5, ny, "#e04a4a");
+    if (flap) px(ctx, nx + 9, ny + 6, K);
+    if (i === 1) { px(ctx, nx + 7, ny + 2, "#f4c542"); px(ctx, nx + 6, ny + 2, "#f4c542"); px(ctx, nx + 7, ny + 1, "#f4c542"); }
+  });
+}
+
+function drawGate(x) {
+  const Y = G;
+  const stone = "#9a8670", hi = "#c4b090", mort = "#6e5e4c";
+  rect(ctx, x, Y, 44, 1, scenery.shadow);
+  rect(ctx, x, Y - 40, 44, 40, K);
+  rect(ctx, x + 1, Y - 39, 42, 39, stone);
+  for (let row = 0; row < 13; row += 1) {
+    const yy = Y - 39 + row * 3;
+    rect(ctx, x + 1, yy + 2, 42, 1, mort);
+    for (let bx = (row % 2) * 3; bx < 42; bx += 6) px(ctx, x + 1 + bx, yy, mort);
+  }
+  rect(ctx, x + 1, Y - 39, 42, 1, hi);
+  for (let i = 0; i < 44; i += 6) { rect(ctx, x + i, Y - 44, 4, 4, K); rect(ctx, x + i + 1, Y - 43, 2, 3, stone); }
+  for (let yy = Y - 30; yy < Y; yy += 1) {
+    for (let xx = 0; xx < 22; xx += 1) {
+      const top = Y - 22 - Math.sqrt(Math.max(0, 121 - (xx - 10.5) ** 2));
+      if (yy >= top) px(ctx, x + 11 + xx, yy, yy > Y - 4 ? "#3a2e3e" : "#1a1420");
+    }
+  }
+  for (let xx = 0; xx < 24; xx += 1) {
+    const top = Math.round(Y - 22 - Math.sqrt(Math.max(0, 121 - (xx - 11.5) ** 2)));
+    px(ctx, x + 10 + xx, top - 1, hi);
+  }
+  rect(ctx, x + 10, Y - 39, 24, 7, K);
+  rect(ctx, x + 11, Y - 38, 22, 5, "#5a3a8a");
+  text("ARENA", x + 12, Y - 38, "#f4c542");
+  for (const bx of [x + 3, x + 36]) {
+    rect(ctx, bx, Y - 31, 5, 12, "#d63c3c");
+    rect(ctx, bx, Y - 27, 5, 2, "#f4c542");
+    px(ctx, bx, Y - 19, "#d63c3c"); px(ctx, bx + 4, Y - 19, "#d63c3c");
+  }
+  for (const tx of [x + 9, x + 34]) {
+    rect(ctx, tx, Y - 16, 1, 4, "#4e4238");
+    const f = ((time * 10 + tx) | 0) % 3;
+    px(ctx, tx, Y - 17, "#f4862e");
+    px(ctx, tx, Y - 18 - (f === 1 ? 1 : 0), "#f4c542");
+    if (f !== 2) px(ctx, tx + (f ? 1 : -1), Y - 18, "#e04a4a");
+  }
+}
+
+function drawSpots() {
+  for (const s of spots) {
+    const x = Math.round(s.x);
+    if (s.kind === "chest") drawChest(x, s.open);
+    else if (s.kind === "board") drawBoard(x);
+    else if (s.kind === "gate") drawGate(x);
+  }
+}
+
+function drawGateFade() {
+  if (gateFade <= 0) return;
+  ctx.globalAlpha = Math.min(1, gateFade);
+  rect(ctx, 0, 0, W, H, "#0b0d18");
+  ctx.globalAlpha = 1;
+}
+
 function freezeMarketBg() {
   if (marketWorldX == null) marketWorldX = worldX;
   scroll = 0;
@@ -3927,7 +4136,7 @@ function reconcile() {
     return;
   }
   if (scene.market === "shop") {
-    if (!marketStall) holdMarket();
+    if (!marketStall || marketStall.leaving) holdMarket();
     return;
   }
   if (scene.review) {
@@ -3949,6 +4158,7 @@ function reconcile() {
     presentIdle(waiting, token);
     return;
   }
+  if (activeSpot()) return;
   if (mon || hero.pose !== "walk") goTrail();
 }
 
@@ -4182,8 +4392,9 @@ export function setStageScene(next) {
     scene.market = market;
     scene.waiting = [];
     scene.plays = [];
-    if (market === lastMarket && (marketBusy || (market === "shop" && marketStall))) {
-      if (market === "shop" && !marketStall) holdMarket();
+    leaveSpots();
+    if (market === lastMarket && (marketBusy || (market === "shop" && marketStall && !marketStall.leaving))) {
+      if (market === "shop" && (!marketStall || marketStall.leaving)) holdMarket();
       return;
     }
     lastMarket = market;
@@ -4195,16 +4406,33 @@ export function setStageScene(next) {
     reconcile();
     return;
   }
-  if (scene.market || marketStall || shopKeeper || marketWorldX != null) {
+  if (scene.market || (marketStall && !marketStall.leaving) || marketWorldX != null) {
     scene.market = null;
     scene.onMarket = null;
     lastMarket = "";
     marketBusy = false;
-    marketStall = null;
-    shopKeeper = null;
     marketWorldX = null;
     marketGift = null;
     pendingGift = null;
+    if (marketStall && !marketStall.leaving) {
+      // Leaving the Market tab: walk on past the stall instead of making it vanish.
+      // Cancel any arrival/throw still running so it can't pin the stall back in place.
+      bumpRun();
+      marketStall.leaving = true;
+      marketStall.rolling = false;
+      marketStall.open = false;
+      marketStall.wave = 0;
+      hero.pose = "walk";
+      hero.oxT = 0;
+      scrollTarget = 18;
+      scroll = Math.max(scroll, 12);
+    }
+  }
+  // Landmarks for the Quests (board), My Hero (chest) and Arena (gate) tabs.
+  if (Object.prototype.hasOwnProperty.call(next, "spot")) {
+    scene.onSpot = next.onSpot || null;
+    if (next.spot) arriveSpot(next.spot);
+    else leaveSpots();
   }
   const sameLead = lead === lastLead;
   const sameFront = frontKey === lastFront;
@@ -4569,7 +4797,7 @@ function update(dt) {
       done.resolve(ok);
     }
   }
-  if (marketWorldX != null) {
+  if (marketWorldX != null || spotHold) {
     scroll = 0;
     scrollTarget = 0;
   } else {
@@ -4638,6 +4866,16 @@ function update(dt) {
       }
     }
     if (cage.lift) cage.y -= 90 * dt;
+  }
+  updateSpots(dt);
+  if (marketStall?.leaving) {
+    // Hero walks on past the stall; it rides off on the ground and is removed once off screen.
+    marketStall.x -= Math.max(scroll, 24) * dt;
+    if (shopKeeper) shopKeeper.x = marketStall.x + 14;
+    if (marketStall.x < -50) {
+      marketStall = null;
+      shopKeeper = null;
+    }
   }
   if (marketStall?.rolling) {
     // Move with the ground layer (drawn at worldX * 1) so the stall stays planted while the hero walks to it.
@@ -4741,6 +4979,7 @@ function draw() {
   drawLayer(scenery.midPines, bgX * 0.5);
   drawLayer(scenery.trees, bgX * 0.7);
   drawLayer(scenery.ground, bgX);
+  drawSpots();
   if (marketStall) drawMarket();
   if (paradeOn && parade.length) {
     const walking = scroll > 2;
@@ -4806,7 +5045,7 @@ function draw() {
   );
   const showHero = Boolean(
     scene.hero || scene.gear || scene.review || scene.warn || scene.lockup || scene.market
-      || cage || cops.length || marketStall || scene.plays.length || scene.waiting.length
+      || cage || cops.length || marketStall || spots.length || scene.plays.length || scene.waiting.length
   );
   if (!(paradeOn && parade.length) && showHero) {
   rect(ctx, x + 3, G, 8, 1, scenery.shadow);
@@ -4930,6 +5169,7 @@ function draw() {
   drawEffects();
   coins.forEach((c) => { if (c.t >= 0) drawCoin(c.x, c.y, time + c.x * 0.05); });
   drawMarketGift();
+  drawGateFade();
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
   drawLayer(scenery.fore, (marketWorldX != null ? marketWorldX : worldX) * 1.3, H - 12);
   drawHearts();

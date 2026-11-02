@@ -1707,15 +1707,16 @@ async function arenaHit(){const d=mon.def,wpn=WEAPONS[weapon];
 async function arenaMiss(){const d=mon.def;hero.pose='idle';mon.idle=false;hurtMode=true;await d.attack(mon);await until(()=>projectiles.length===0);hurtMode=false;mon.idle=true;
   if(hearts>0)hearts--;await wait(.3)}
 function arenaBegin(){setArenaScene(true);busy=true;thought=null;hearts=ARENA.heroHP;maxHearts=ARENA.heroHP}
-function arenaEnd(){busy=false;hearts=null;setArenaScene(false)}
+function arenaEnd(keep){busy=false;hearts=null;if(!keep)setArenaScene(false)}
 async function arenaKO(){hero.ko=true;effects.push({type:'orbit',t:0,dur:3,cx:heroX()+7,cy:heroY()+12});if(mon){mon.showHp=false;mon.idle=true}await wait(1.8);
   if(mon){mon.approach=false;const d=mon.def;for(let i=0;i<14;i++)particles.push({x:mon.x+d.w/2,y:G-d.h/2,vx:rnd(-30,30),vy:-rnd(20,50),g:60,life:.5,c:'#ffffff',s:2});mon=null}
-  hero.ko=false;hero.pose='walk';scrollTarget=18}
+  hero.ko=false;if(arenaScene){hero.pose='idle';scrollTarget=0}else{hero.pose='walk';scrollTarget=18}}
 
 
 /* ---------- arena backdrop: pixel colosseum at dusk ---------- */
 let arenaScene=false,sceneFade=0,crowdHype=0,SHC='#3e8c2c';
-function setArenaScene(on){if(arenaScene===on)return;arenaScene=on;sceneFade=1;SHC=on?'#b89058':'#3e8c2c'}
+function setArenaScene(on){if(arenaScene===on)return;arenaScene=on;sceneFade=1;SHC=on?'#b89058':'#3e8c2c';
+  if(!busy){if(on){scroll=0;scrollTarget=0;hero.pose='idle'}else{hero.pose='walk';scrollTarget=18}}}
 const colo=(()=>{const[c,g]=canvas(W,H);
   const SK=['#3a2a5c','#5c3468','#8e3e6a','#c4566a','#f08a5a'];
   for(let y=0;y<22;y++){const b=Math.min(4,Math.floor(y/4.5));g.fillStyle=SK[b];g.fillRect(0,y,W,1);if(y%5===4&&b<4){g.fillStyle=SK[b+1];for(let x=y%2;x<W;x+=2)g.fillRect(x,y,1,1)}}
@@ -1938,7 +1939,7 @@ return {
   isGrounded:()=>grounded,
   // Monster Arena (learning battles). See CURSOR_BRIEF.md for the run loop.
   arena:{config:ARENA,categories:ARENA_CATS,levels:ARENA_LEVELS,makeQuestion,begin:arenaBegin,spawn:arenaSpawn,hit:arenaHit,miss:arenaMiss,ko:arenaKO,end:arenaEnd,
-    hearts:()=>hearts,speak:speakParts,drawVis,choiceArt,choiceLabel},
+    hearts:()=>hearts,scene:on=>setArenaScene(!!on),speak:speakParts,drawVis,choiceArt,choiceLabel},
   // Market: hero walks up to the stall, the trail stops, purchases get thrown to the hero
   market:{open:marketOpen,buy:marketBuy,close:marketClose,isOpen:()=>!!mkt&&mkt.state==='open'},
   think:(type,text)=>think(type,text),   // approval screen: hero waits with a pixel thought cloud of that monster

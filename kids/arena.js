@@ -10,6 +10,18 @@ let run = null;
 let pending = null;
 let current = null;
 let alive = false;
+// The arena opens after the hero walks through the colosseum gate on the main stage.
+let revealed = false;
+
+export function arenaRevealed() {
+  return revealed;
+}
+
+export function revealArena() {
+  revealed = true;
+  if (host) host.hidden = false;
+  quest?.arena.scene?.(true);
+}
 
 const LEVEL_ORDER = ["little", "kid", "big", "teen"];
 const PERFECT_TO_LEVEL = 3;
@@ -22,6 +34,7 @@ function buildHost() {
   host.className = "arena-host stack";
   host.innerHTML = `<div class="arena-stage"><canvas class="arena-canvas" width="128" height="72" aria-label="Monster Arena"></canvas><div class="arena-dialog" aria-live="polite"></div></div><section class="card arena-panel" aria-live="polite"></section>`;
   host.addEventListener("click", onClick);
+  host.hidden = !revealed;
   return host;
 }
 
@@ -45,6 +58,8 @@ export function mountArena(slot, context) {
   slot.replaceWith(host);
   startEngine();
   quest.setCoins(ctx.points());
+  host.hidden = !revealed;
+  if (revealed) quest.arena.scene?.(true);
   if (view === "lobby") paintLobby();
 }
 
@@ -60,6 +75,7 @@ export function leaveArena() {
   }
   run = null;
   view = "lobby";
+  revealed = false;
   try { window.speechSynthesis?.cancel(); } catch { /* speech is optional */ }
   quest?.destroy();
   quest = null;
@@ -252,7 +268,7 @@ async function playRun() {
   if (!alive) return;
   if (panel()) panel().innerHTML = `<p class="arena-q">Out of hearts...</p>`;
   await A.ko();
-  A.end();
+  A.end(true);
   const id = run.id;
   const topLevel = run.top;
   const startLevel = A.levels[start.level] ? start.level : "kid";
