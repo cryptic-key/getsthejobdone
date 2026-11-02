@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=31";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=31";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=31";
-import { createChoreQuest } from "./chore-quest.js?v=31";
+import { APP_VERSION } from "./version.js?v=32";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=32";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=32";
+import { createChoreQuest } from "./chore-quest.js?v=32";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -746,6 +746,7 @@ function actor(chore) {
 
 const CAGE_SEEN = "chart-cage-seen";
 const CAGE_HELD = "chart-cage-held";
+const MARKET_SEEN = "chart-market-seen";
 const WARN_SEEN = "chart-warn-seen";
 const PARENT_WARN_SEEN = "chart-parent-warn-seen";
 const PARENT_WARN_PENDING = "chart-parent-warn-pending";
@@ -984,13 +985,21 @@ function paintStage() {
   } else if (!warn && sessionStorage.getItem(CAGE_HELD)) {
     lockup = "free";
   }
+  const atMarket = route.name === "kid-shop" && !locked && !warn;
+  if (!atMarket) sessionStorage.removeItem(MARKET_SEEN);
+  const marketVisit = child ? `${child.id}:market` : "";
+  const market = atMarket
+    ? sessionStorage.getItem(MARKET_SEEN) === marketVisit
+      ? "shop"
+      : "arrive"
+    : null;
   const playing = new Set(playChores.map((chore) => chore.id));
   const shownHearts = warn ? Math.min(3, (child?.hearts ?? 0) + 1) : child?.hearts ?? 3;
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
     hero: heroKey,
-    waiting: locked || warn ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
-    plays: locked || warn
+    waiting: locked || warn || atMarket ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
+    plays: locked || warn || atMarket
       ? []
       : playChores.map((chore) => ({
           ...actor(chore),
@@ -1003,6 +1012,7 @@ function paintStage() {
     hearts: shownHearts,
     lockup,
     lockKey,
+    market,
     warn,
     onWarn: (info) => {
       const key = `${info?.seq || child?.warnSeq || ""}:${info?.parent || child?.warnParent || ""}`;
@@ -1019,6 +1029,9 @@ function paintStage() {
         sessionStorage.removeItem(CAGE_HELD);
         sessionStorage.removeItem(CAGE_SEEN);
       }
+    },
+    onMarket: (mode) => {
+      if (mode === "shop" && marketVisit) sessionStorage.setItem(MARKET_SEEN, marketVisit);
     },
   });
 }

@@ -2184,6 +2184,8 @@ const scene = {
   onReviewDecline: null,
   guardian: null,
   pet: null,
+  market: null,
+  onMarket: null,
 };
 const petFollower = createPetFollower({
   heroX: () => heroX(),
@@ -2191,11 +2193,44 @@ const petFollower = createPetFollower({
   time: () => time,
   particles,
   G,
-  busy: () => Boolean(scene.plays?.length || reviewBusy || warnBusy || lockBusy),
+  busy: () => Boolean(scene.plays?.length || reviewBusy || warnBusy || lockBusy || marketBusy),
   grounded: () => Boolean(cage?.locked),
 });
 let parade = [];
 let paradeOn = false;
+let marketBusy = false;
+let lastMarket = "";
+let marketStall = null;
+let shopKeeper = null;
+const keeperPal = {
+  K,
+  H: "#c45c2a",
+  h: "#8a3a18",
+  S: "#f4c89c",
+  s: "#d39a6c",
+  A: "#f4e4b8",
+  a: "#d8c090",
+  B: "#6b4426",
+  Y: "#f4c542",
+  R: "#c0392b",
+  E: K,
+};
+const keeperTop = [
+  "....KKKKKK....",
+  "...KHHHHHHK...",
+  "..KHhHHHHHhK..",
+  "..KHSSSSSSHK..",
+  "..KHSEESSEHK..",
+  "...KSSSSSSK...",
+  "....KAAAAK....",
+  "...KAAAAAAK...",
+  "..KAARRAARAK..",
+  "..KAAAAAAAAK..",
+  "...KAAAAAAK...",
+  "....KBBBBK....",
+];
+const keeperA = sprite([...keeperTop, "...KBBK.KBBK..", "..KBBBK.KBBBK.", "..KKKKK.KKKKK."], keeperPal);
+const keeperB = sprite([...keeperTop, "....KBBKBBK...", "...KBBBKBBBK..", "...KKKKKKKKK.."], keeperPal);
 let warner = null;
 let spellBolt = null;
 let warnBusy = false;
@@ -3328,6 +3363,114 @@ function holdCage() {
   say("Locked in! Earn coins to break out.");
 }
 
+function placeMarket(x = 74, rolling = false) {
+  marketStall = { x, open: true, goal: 74, rolling };
+  shopKeeper = { x: x + 10, look: { a: keeperA, b: keeperB }, stand: 16 };
+}
+
+function holdMarket() {
+  placeMarket(74, false);
+  mon = null;
+  hero.down = false;
+  hero.hurt = 0;
+  hero.noWeapon = false;
+  hero.pose = "idle";
+  hero.ox = 6;
+  hero.oxT = 6;
+  hero.kx = 0;
+  hero.ang = POSE.idle;
+  scroll = 18;
+  scrollTarget = 18;
+  say("Welcome to the Market! Spend your coins here.");
+}
+
+async function playMarketArrive(token) {
+  if (marketBusy) return;
+  marketBusy = true;
+  mon = null;
+  projectiles.length = 0;
+  hero.down = false;
+  hero.hurt = 0;
+  hero.noWeapon = false;
+  hero.pose = "walk";
+  hero.ox = 0;
+  hero.oxT = 0;
+  hero.kx = 0;
+  hero.ang = POSE.walk;
+  scroll = 18;
+  scrollTarget = 28;
+  placeMarket(W + 24, true);
+  say("Heading to the Market...");
+  if (!(await waitFor(0.35, token))) {
+    marketBusy = false;
+    return;
+  }
+  if (!(await until(() => !marketStall || !marketStall.rolling, token))) {
+    marketBusy = false;
+    return;
+  }
+  placeMarket(74, false);
+  hero.oxT = 8;
+  if (!(await until(() => Math.abs(hero.ox - 8) < 0.6, token))) {
+    marketBusy = false;
+    return;
+  }
+  hero.pose = "idle";
+  hero.ox = 8;
+  hero.oxT = 8;
+  hero.ang = POSE.idle;
+  scrollTarget = 18;
+  burst(heroX() + 10, G - 8, ["#f4c542", "#fff3a8", "#ffffff"], 10, 40);
+  say("The shopkeeper waves hello!");
+  if (!(await waitFor(1.1, token))) {
+    marketBusy = false;
+    return;
+  }
+  say("Welcome to the Market! Spend your coins here.");
+  scene.market = "shop";
+  lastMarket = "shop";
+  marketBusy = false;
+  scene.onMarket?.("shop");
+}
+
+function drawMarket() {
+  if (!marketStall) return;
+  const sx = Math.round(marketStall.x);
+  const top = G - 28;
+  if (shopKeeper) {
+    const kx = Math.round(shopKeeper.x);
+    const ky = Math.round(G - ((shopKeeper.stand || 16) - 1));
+    const wave = ((time * 3) | 0) % 2 === 0;
+    rect(ctx, kx + 3, G, 8, 1, scenery.shadow);
+    ctx.drawImage(wave ? shopKeeper.look.b : shopKeeper.look.a, kx, ky);
+  }
+  // Awning posts
+  rect(ctx, sx + 2, top + 8, 2, 20, "#6b4426");
+  rect(ctx, sx + 28, top + 8, 2, 20, "#6b4426");
+  // Striped awning
+  for (let i = 0; i < 8; i += 1) {
+    rect(ctx, sx + i * 4, top, 4, 8, i % 2 ? "#c0392b" : "#fff3a8");
+  }
+  rect(ctx, sx - 1, top + 7, 34, 2, "#4a2e18");
+  // Counter covers the shopkeeper's legs
+  rect(ctx, sx, G - 12, 32, 8, "#8a5a30");
+  rect(ctx, sx, G - 12, 32, 2, "#b08a5a");
+  rect(ctx, sx + 1, G - 10, 30, 1, "#6b4426");
+  // Coin crates
+  rect(ctx, sx + 3, G - 16, 8, 4, "#6b4426");
+  rect(ctx, sx + 4, G - 15, 6, 2, "#f4c542");
+  rect(ctx, sx + 21, G - 16, 8, 4, "#6b4426");
+  px(ctx, sx + 24, G - 14, "#fff3a8");
+  px(ctx, sx + 26, G - 15, "#f4c542");
+  // Sign
+  rect(ctx, sx + 10, top - 6, 12, 7, "#fffdf8");
+  rect(ctx, sx + 10, top - 6, 12, 1, K);
+  rect(ctx, sx + 10, top, 12, 1, K);
+  px(ctx, sx + 14, top - 4, "#f4c542");
+  px(ctx, sx + 16, top - 3, "#f4c542");
+  px(ctx, sx + 18, top - 4, "#c0392b");
+}
+
 async function playLockup(token) {
   if (lockBusy) return;
   lockBusy = true;
@@ -3474,6 +3617,14 @@ function reconcile() {
     if (!cage || !cage.locked) holdCage();
     return;
   }
+  if (scene.market === "arrive") {
+    playMarketArrive(token);
+    return;
+  }
+  if (scene.market === "shop") {
+    if (!marketStall) holdMarket();
+    return;
+  }
   if (scene.review) {
     if (!reviewBusy) presentReview(token);
     return;
@@ -3537,12 +3688,15 @@ export function setStageScene(next) {
     scene.review = null;
     scene.onReviewApprove = null;
     scene.onReviewDecline = null;
+    scene.market = null;
+    scene.onMarket = null;
     scene.pet = null;
     petFollower.set(null);
     scene.guardian = null;
     lastLockup = "";
     lastWarn = "";
     lastReview = "";
+    lastMarket = "";
     cage = null;
     cops = [];
     flyWeapon = null;
@@ -3550,6 +3704,9 @@ export function setStageScene(next) {
     lockBusy = false;
     warnBusy = false;
     reviewBusy = false;
+    marketBusy = false;
+    marketStall = null;
+    shopKeeper = null;
     warner = null;
     clearReviewer();
     syncGuardian(null);
@@ -3610,6 +3767,7 @@ export function setStageScene(next) {
   scene.onDone = next.onDone;
   scene.onLockup = next.onLockup || null;
   scene.onWarn = next.onWarn || null;
+  scene.onMarket = next.onMarket || null;
   if (!reviewBusy || next.onReviewApprove) scene.onReviewApprove = next.onReviewApprove || null;
   if (!reviewBusy || next.onReviewDecline) scene.onReviewDecline = next.onReviewDecline || null;
   scene.guardian = next.guardian || null;
@@ -3617,6 +3775,7 @@ export function setStageScene(next) {
   const review = next.review || null;
   const warn = next.warn || null;
   const lockup = next.lockup || null;
+  const market = next.market || null;
   const color = next.color || "#3fa34d";
   const waiting = next.waiting || [];
   const plays = next.plays || [];
@@ -3634,6 +3793,9 @@ export function setStageScene(next) {
     scene.review = review;
     scene.warn = null;
     scene.lockup = null;
+    scene.market = null;
+    marketStall = null;
+    shopKeeper = null;
     setReviewActions(false);
     if (reviewKey === lastReview && (reviewBusy || hero.pose === "idle")) {
       if (!reviewBusy) presentReview(runToken);
@@ -3661,6 +3823,9 @@ export function setStageScene(next) {
     const warnKey = `${warn.seq || ""}:${warn.parent || ""}:${warn.hearts ?? ""}`;
     scene.warn = warn;
     scene.lockup = null;
+    scene.market = null;
+    marketStall = null;
+    shopKeeper = null;
     if (warnKey === lastWarn && (warnBusy || warner)) return;
     lastWarn = warnKey;
     bumpRun();
@@ -3681,6 +3846,9 @@ export function setStageScene(next) {
   if (lockup) {
     const lockKey = `${lockup}:${next.lockKey || ""}`;
     scene.lockup = lockup;
+    scene.market = null;
+    marketStall = null;
+    shopKeeper = null;
     if (lockKey === lastLockup && (lockBusy || (lockup === "held" && cage?.locked) || (lockup === "arrive" && cage))) return;
     lastLockup = lockKey;
     bumpRun();
@@ -3700,6 +3868,31 @@ export function setStageScene(next) {
     siren = false;
     lockBusy = false;
     hero.noWeapon = false;
+  }
+  if (market) {
+    scene.market = market;
+    scene.waiting = [];
+    scene.plays = [];
+    if (market === lastMarket && (marketBusy || (market === "shop" && marketStall))) {
+      if (market === "shop" && !marketStall) holdMarket();
+      return;
+    }
+    lastMarket = market;
+    bumpRun();
+    if (market === "shop") {
+      holdMarket();
+      return;
+    }
+    reconcile();
+    return;
+  }
+  if (scene.market || marketStall || shopKeeper) {
+    scene.market = null;
+    scene.onMarket = null;
+    lastMarket = "";
+    marketBusy = false;
+    marketStall = null;
+    shopKeeper = null;
   }
   const sameLead = lead === lastLead;
   const sameFront = frontKey === lastFront;
@@ -4129,6 +4322,14 @@ function update(dt) {
     }
     if (cage.lift) cage.y -= 90 * dt;
   }
+  if (marketStall?.rolling) {
+    marketStall.x -= 54 * dt;
+    if (marketStall.x <= marketStall.goal) {
+      marketStall.x = marketStall.goal;
+      marketStall.rolling = false;
+    }
+    if (shopKeeper) shopKeeper.x = marketStall.x + 10;
+  }
   if (cage?.locked && !lockBusy && R() < dt * 0.9) {
     particles.push({ x: heroX() + (R() < 0.5 ? 6 : 9), y: heroY() + 6, vx: 0, vy: 10, g: 80, life: 0.5, c: "#7fd0ff" });
   }
@@ -4238,7 +4439,7 @@ function draw() {
     const rHand = parentFig.hand ?? 10;
     const warnCast = scene.warn?.view === "parent" && parentFig.cast;
     const pointing = (Number(parentFig.point) || 0) > 0.05;
-    const alone = !scene.hero && !scene.gear && !scene.review && !scene.warn && !scene.lockup;
+    const alone = !scene.hero && !scene.gear && !scene.review && !scene.warn && !scene.lockup && !scene.market;
     if (alone && parentFig.pet) {
       const size = petSize(parentFig.pet);
       drawPetAt(ctx, parentFig.pet, rx - ((size?.w || 8) + 1), G, { time, moving: false, shadow: scenery.shadow });
@@ -4277,8 +4478,8 @@ function draw() {
       && hero.pose !== "walk"
   );
   const showHero = Boolean(
-    scene.hero || scene.gear || scene.review || scene.warn || scene.lockup || cage || cops.length
-      || scene.plays.length || scene.waiting.length
+    scene.hero || scene.gear || scene.review || scene.warn || scene.lockup || scene.market
+      || cage || cops.length || marketStall || scene.plays.length || scene.waiting.length
   );
   if (!(paradeOn && parade.length) && showHero) {
   rect(ctx, x + 3, G, 8, 1, scenery.shadow);
@@ -4356,6 +4557,7 @@ function draw() {
   }
   if (cage) drawCage();
   drawCops();
+  if (marketStall) drawMarket();
   }
   if (warner) {
     const wx = Math.round(warner.x);
