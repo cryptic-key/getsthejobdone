@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=46";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=46";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=46";
-import { createChoreQuest } from "./chore-quest.js?v=46";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=46";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=46";
+import { APP_VERSION } from "./version.js?v=47";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=47";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=47";
+import { createChoreQuest } from "./chore-quest.js?v=47";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=47";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=47";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1367,8 +1367,12 @@ function sortedHeroWeapons(quest, stats, weaponKey) {
       if (a.equipped !== b.equipped) return a.equipped ? -1 : 1;
       if (a.open !== b.open) return a.open ? -1 : 1;
       if (!a.open && !b.open) {
-        if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+        // Started weapons first, closest to done by percent; untouched ones last, easiest goal first.
+        const aStarted = a.ratio > 0;
+        const bStarted = b.ratio > 0;
+        if (aStarted !== bStarted) return aStarted ? -1 : 1;
         if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+        if (a.remaining !== b.remaining) return a.remaining - b.remaining;
       }
       return a.weapon.name.localeCompare(b.weapon.name);
     });
