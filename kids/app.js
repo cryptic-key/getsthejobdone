@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=29";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=29";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=29";
-import { createChoreQuest } from "./chore-quest.js?v=29";
+import { APP_VERSION } from "./version.js?v=30";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=30";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=30";
+import { createChoreQuest } from "./chore-quest.js?v=30";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1735,6 +1735,21 @@ function pickedKids(form) {
   return [...form.querySelectorAll('input[name="kids"]:checked')].map((input) => input.value);
 }
 
+function formError(form, message) {
+  if (!form.closest("dialog")) {
+    route = { ...route, error: message };
+    render();
+    return;
+  }
+  let note = form.querySelector(".form-error");
+  if (!note) {
+    note = document.createElement("p");
+    note.className = "error form-error";
+    form.appendChild(note);
+  }
+  note.textContent = message;
+}
+
 function collapsedSections() {
   try {
     const keys = JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS) || "[]");
@@ -2139,6 +2154,7 @@ const views = {
     const now = torontoMinute();
     const weekday = torontoWeekday();
     const collapsed = collapsedSections();
+    const scheduleCollapsed = collapsed.has("card:schedule");
     const kidChoices = `<option value="">Everybody</option>${db.kids.map((child) => `<option value="${esc(child.id)}">${esc(child.name)}</option>`).join("")}`;
     const sectionChoices = `<option value="">Anytime</option>${sections.map((section) => `<option value="${esc(section.id)}">${esc(section.title)}</option>`).join("")}`;
     const dailyRow = (chore) => {
@@ -2174,8 +2190,15 @@ const views = {
       `<div class="stack">
         <p class="lede">Finished tasks are paid on the Approve page, after a kid taps Done. Drag the dots to rearrange.</p>
         ${spriteLibrary()}
-        <section class="card">
-          <h2 class="page-title">Schedule sections</h2>
+        <section class="card collapsible-card${scheduleCollapsed ? " collapsed" : ""}">
+          <div class="card-head">
+            <h2 class="page-title">Schedule sections</h2>
+            <span class="card-head-tools">
+              ${scheduleCollapsed ? `<span class="tiny muted">${sections.length} section${sections.length === 1 ? "" : "s"}</span>` : ""}
+              <button class="btn small leaf" type="button" data-action="open-dialog" data-dialog="add-section-dialog">Add section</button>
+              <button type="button" class="section-toggle" data-action="toggle-task-section" data-key="card:schedule" aria-expanded="${scheduleCollapsed ? "false" : "true"}" aria-label="${scheduleCollapsed ? "Expand" : "Collapse"} schedule sections"><i aria-hidden="true"></i></button>
+            </span>
+          </div>
           <p class="lede">Kids only see a section on its days, during its hours (Toronto time), and only if they are picked under Who. Submitted tasks still stay visible.</p>
           <div class="section-list" data-drop-kind="sections">
             ${
@@ -2195,20 +2218,28 @@ const views = {
                       </form>`
                     )
                     .join("")
-                : `<p class="muted">No timed sections yet. Add Morning, After school, or Bedtime below.</p>`
+                : `<p class="muted">No timed sections yet. Tap Add section for Morning, After school, or Bedtime.</p>`
             }
           </div>
-          <form class="two" data-action="add-section" style="margin-top:12px">
+        </section>
+        <dialog class="balance-dialog add-section-dialog">
+          <form class="stack" data-action="add-section">
+            <div class="section-title"><h2>Add section</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
             <label>Section name<input name="title" required placeholder="Morning"></label>
-            <label>Starts<input name="start" type="time" step="60" required value="07:00"></label>
-            <label>Ends<input name="end" type="time" step="60" required value="09:00"></label>
+            <div class="two-up">
+              <label>Starts<input name="start" type="time" step="60" required value="07:00"></label>
+              <label>Ends<input name="end" type="time" step="60" required value="09:00"></label>
+            </div>
             ${dayPicker()}
             ${kidPicker()}
-            <button class="btn leaf" type="submit">Add section</button>
+            <span class="row"><button class="btn leaf" type="submit">Add section</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
           </form>
-        </section>
+        </dialog>
         <section class="card">
-          <h2 class="page-title">Special task board</h2>
+          <div class="card-head">
+            <h2 class="page-title">Special task board</h2>
+            <button class="btn small sun" type="button" data-action="open-dialog" data-dialog="add-special-dialog">Add bonus task</button>
+          </div>
           <p class="lede">Bonus chores, one time. Pick one kid or everybody. They stay until that kid finishes them or you remove them.</p>
           <div class="task-list" data-drop-kind="special" data-section="">
             ${
@@ -2222,17 +2253,23 @@ const views = {
                 : `<p class="muted">No bonus tasks yet.</p>`
             }
           </div>
-          <form class="two" id="add-special-form" data-action="add-special" style="margin-top:12px">
+        </section>
+        <dialog class="balance-dialog add-special-dialog">
+          <form class="stack" id="add-special-form" data-action="add-special">
+            <div class="section-title"><h2>Add bonus task</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
             <label>Bonus task<input name="title" required placeholder="Wash the car"></label>
             <label>Points<input name="points" type="number" min="0" value="5" required></label>
             <label>Who<select name="kidId">${kidChoices}</select></label>
             <input type="hidden" name="sprite" value="dust">
             ${monsterChoice("dust")}
-            <button class="btn sun" type="submit">Add once</button>
+            <span class="row"><button class="btn sun" type="submit">Add once</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
           </form>
-        </section>
+        </dialog>
         <section class="card">
-          <h2 class="page-title">Daily tasks</h2>
+          <div class="card-head">
+            <h2 class="page-title">Daily tasks</h2>
+            <button class="btn small leaf" type="button" data-action="open-dialog" data-dialog="add-daily-dialog">Add task</button>
+          </div>
           <p class="lede">Every kid can do these once a day. Drop a task into a section to move it. Turn one off to hide it from the daily board.</p>
           ${dailyGroups
             .map(
@@ -2248,15 +2285,18 @@ const views = {
               </div>`
             )
             .join("")}
-          <form class="two" id="add-daily-form" data-action="add-daily" style="margin-top:12px">
+        </section>
+        <dialog class="balance-dialog add-daily-dialog">
+          <form class="stack" id="add-daily-form" data-action="add-daily">
+            <div class="section-title"><h2>Add daily task</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
             <label>Task<input name="title" required placeholder="Make the bed"></label>
             <label>Points<input name="points" type="number" min="0" value="2" required></label>
             <label>Section<select name="sectionId">${sectionChoices}</select></label>
             <input type="hidden" name="sprite" value="dust">
             ${monsterChoice("dust")}
-            <button class="btn leaf" type="submit">Add daily task</button>
+            <span class="row"><button class="btn leaf" type="submit">Add daily task</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
           </form>
-        </section>
+        </dialog>
         ${monsterDialog()}
         ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
       </div>`,
@@ -2693,8 +2733,13 @@ app.addEventListener("click", (event) => {
     run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), caged ? "Approved. The coins went toward the cage, not the coin balance." : "Approved. Add any new device minutes in Screen Time.");
   }
   if (action === "give-heart") run(() => rpc("give_heart", { p_kid: btn.dataset.id }), "Heart given back.", "chart");
+  if (action === "open-dialog") {
+    const dialog = document.querySelector(`dialog.${btn.dataset.dialog}`);
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-dialog") btn.closest("dialog")?.close();
   if (action === "toggle-task-section") {
-    const zone = btn.closest(".daily-section");
+    const zone = btn.closest(".daily-section, .collapsible-card");
     const collapse = !zone.classList.contains("collapsed");
     setSectionCollapsed(btn.dataset.key, collapse);
     render();
@@ -3044,15 +3089,13 @@ app.addEventListener("submit", (event) => {
     const startMinute = minutesFromInput(form.querySelector('[name="start"]'));
     const endMinute = minutesFromInput(form.querySelector('[name="end"]'));
     if (startMinute == null || endMinute == null) {
-      route = { ...route, error: "Use times like 07:00 and 09:00." };
-      render();
+      formError(form, "Use times like 07:00 and 09:00.");
       return;
     }
     const days = pickedDays(form);
     const kids = pickedKids(form);
     if (!days.length) {
-      route = { ...route, error: "Pick at least one day for the section." };
-      render();
+      formError(form, "Pick at least one day for the section.");
       return;
     }
     if (action === "add-section") {

@@ -1392,6 +1392,29 @@ details.library .lede { margin-top: 8px; }
   align-items: baseline;
   margin-bottom: 8px;
 }
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.card-head .page-title { margin: 0; }
+.card-head-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.collapsible-card.collapsed > :not(.card-head) { display: none; }
+.collapsible-card.collapsed .card-head { margin-bottom: 0; }
+.collapsible-card.collapsed .section-toggle i { transform: rotate(-45deg); }
+.two-up {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
 .daily-section-meta {
   display: inline-flex;
   align-items: center;
