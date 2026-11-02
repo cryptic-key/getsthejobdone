@@ -3571,7 +3571,8 @@ function freezeMarketBg() {
 }
 
 function placeMarket(x = MARKET_X, rolling = false) {
-  freezeMarketBg();
+  // A rolling stall rides on the scrolling ground; the background only freezes once the hero has arrived.
+  if (!rolling) freezeMarketBg();
   marketStall = { x, open: true, goal: MARKET_X, rolling, throwT: 0, wave: rolling ? 0 : 1.4 };
   shopKeeper = { x: x + 14, look: { a: keeperA, b: keeperB } };
 }
@@ -3604,8 +3605,11 @@ async function playMarketArrive(token) {
   hero.oxT = 0;
   hero.kx = 0;
   hero.ang = POSE.walk;
-  freezeMarketBg();
-  placeMarket(W + 24, true);
+  // Hero walks the trail: unfreeze the forest and scroll it, the stall comes into view on the ground.
+  marketWorldX = null;
+  scrollTarget = reduce ? 0 : 30;
+  scroll = reduce ? 0 : Math.max(scroll, 18);
+  placeMarket(reduce ? MARKET_X : W + 24, !reduce);
   say("Heading to the Market...");
   if (!(await waitFor(0.35, token))) {
     marketBusy = false;
@@ -4636,10 +4640,12 @@ function update(dt) {
     if (cage.lift) cage.y -= 90 * dt;
   }
   if (marketStall?.rolling) {
-    marketStall.x -= 54 * dt;
+    // Move with the ground layer (drawn at worldX * 1) so the stall stays planted while the hero walks to it.
+    marketStall.x -= scroll * dt;
     if (marketStall.x <= marketStall.goal) {
       marketStall.x = marketStall.goal;
       marketStall.rolling = false;
+      freezeMarketBg();
     }
     if (shopKeeper) shopKeeper.x = marketStall.x + 14;
   }
