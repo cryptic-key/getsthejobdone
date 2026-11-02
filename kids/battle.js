@@ -2914,6 +2914,7 @@ function bumpRun() {
 
 function goTrail() {
   mon = null;
+  releaseBushes();
   hero.pose = "walk";
   hero.down = false;
   hero.oxT = 0;
@@ -3210,13 +3211,41 @@ async function approach(item, token, showHp) {
     mon.showHp = showHp;
     return true;
   }
+  releaseBushes();
   mon = makeMon(def, item);
   mon.showHp = showHp;
   say("...");
   scrollTarget = 30;
   hero.pose = "walk";
-  const arrived = await until(() => mon && mon.x <= def.tx, token);
-  if (!arrived || token !== runToken || !mon) return false;
+  if (reduce) {
+    const arrived = await until(() => mon && mon.x <= def.tx, token);
+    if (!arrived || token !== runToken || !mon) return false;
+  } else {
+    // Ambush: a bush rides in on the trail, the hero stops beside it, and the monster jumps out.
+    const bush = { x: W + 8, state: "in", rustle: 0, peek: false };
+    bushes.push(bush);
+    mon.bush = bush;
+    mon.hidden = true;
+    const there = await until(() => mon && bush.x <= BUSH_GOAL, token);
+    if (!there || token !== runToken || !mon) return false;
+    bush.x = BUSH_GOAL;
+    scroll = 0;
+    scrollTarget = 0;
+    hero.pose = "idle";
+    hero.alert = 1.4;
+    say("Something is rustling in the bush...");
+    sfx("rustle");
+    bush.rustle = 1.1;
+    bush.peek = true;
+    if (!(await waitFor(1.1, token)) || !mon) return false;
+    bush.peek = false;
+    mon.x = bush.x + 12 - def.w / 2;
+    mon.hidden = false;
+    mon.jump = { t: 0, dur: 0.55, from: mon.x, to: def.tx, h: 20 };
+    burst(bush.x + 12, G - 10, ["#a6e08a", "#6cc46a", "#3f9a4a"], 16, 55);
+    sfx("appear");
+    if (!(await until(() => !mon || !mon.jump, token)) || !mon) return false;
+  }
   mon.x = def.tx;
   mon.approach = false;
   scroll = 0;
@@ -3270,6 +3299,8 @@ async function playFlee(item, token) {
   hero.down = false;
   hero.hurt = 0;
   hero.pose = "walk";
+  scrollTarget = 18;
+  releaseBushes();
   say("Back on the trail.");
   if (!(await waitFor(0.35, token))) return;
   scene.onDone?.(item.id);
@@ -3394,6 +3425,7 @@ async function playBattle(item, token) {
   mon = null;
   hero.pose = "walk";
   scrollTarget = 18;
+  releaseBushes();
   scene.onDone?.(item.id);
 }
 async function presentIdle(item, token) {
@@ -3917,6 +3949,57 @@ function holdCage() {
 }
 
 
+/* ---------- Ambush bush: rides in on the ground, a monster hides inside and jumps out ----------
+   A planted bush keeps moving with the world; a released one always drifts off the left edge. */
+const BUSH_GOAL = 100;
+let bushes = [];
+
+function releaseBushes() {
+  for (const b of bushes) b.state = "out";
+}
+
+function updateBushes(dt) {
+  for (const b of bushes) {
+    b.x -= (b.state === "out" ? Math.max(scroll, 24) : scroll) * dt;
+    b.rustle = Math.max(0, (b.rustle || 0) - dt);
+  }
+  bushes = bushes.filter((b) => !(b.state === "out" && b.x < -40));
+}
+
+function bushInFront(b) {
+  return Boolean(mon && mon.bush === b && mon.jump && mon.jump.t < 0.2);
+}
+
+function drawBush(b) {
+  const sway = b.rustle > 0 ? Math.round(Math.sin(time * 55) * 1.4) : 0;
+  const x = Math.round(b.x) + sway;
+  const Y = G;
+  const dark = "#2c6e38";
+  const mid = "#3f9a4a";
+  const light = "#6cc46a";
+  rect(ctx, x + 1, Y, 22, 1, scenery.shadow);
+  const blobs = [[6, 6, 6], [12, 9, 8], [18, 6, 6]];
+  for (const [bx, by, r] of blobs) disc(ctx, x + bx, Y - by, r + 1, K);
+  for (const [bx, by, r] of blobs) disc(ctx, x + bx, Y - by, r, dark);
+  for (const [bx, by, r] of blobs) disc(ctx, x + bx - 1, Y - by - 1, r - 2, mid);
+  disc(ctx, x + 10, Y - 12, 3, light);
+  disc(ctx, x + 4, Y - 8, 2, light);
+  px(ctx, x + 17, Y - 9, light);
+  px(ctx, x + 18, Y - 9, light);
+  // berries
+  px(ctx, x + 7, Y - 4, "#e04a4a");
+  px(ctx, x + 15, Y - 3, "#e04a4a");
+  px(ctx, x + 20, Y - 7, "#e04a4a");
+  if (b.peek) {
+    const blink = ((time * 6) | 0) % 5 === 0;
+    rect(ctx, x + 9, Y - 8, 6, 3, K);
+    if (!blink) {
+      px(ctx, x + 10, Y - 7, "#ff5a5a");
+      px(ctx, x + 13, Y - 7, "#ff5a5a");
+    }
+  }
+}
+
 /* ---------- Landmarks: Quest Board (Quests), treasure chest (My Hero), arena gate (Arena) ----------
    A landmark rides on the ground layer: it scrolls in while the hero walks, the world freezes when the
    hero reaches it, and when the kid switches tabs the hero walks on while it scrolls off screen. */
@@ -3937,6 +4020,7 @@ function activeSpot() {
 
 // Another scene (welcome parade, review, warning, cage) takes over the stage: drop landmarks without a walk-off.
 function clearSpots() {
+  releaseBushes();
   spots = [];
   spotHold = false;
   gateFade = 0;
@@ -3975,6 +4059,7 @@ function arriveSpot(kind) {
   leaveSpots();
   const s = { kind, x: reduce ? SPOT_GOAL[kind] : W + 12, state: "in", open: 0 };
   spots.push(s);
+  releaseBushes();
   mon = null;
   hero.pose = "walk";
   hero.oxT = 0;
@@ -4844,6 +4929,7 @@ export function setStageScene(next) {
     scene.waiting = [];
     scene.plays = [];
     leaveSpots();
+    releaseBushes();
     if (market === lastMarket && (marketBusy || (market === "shop" && marketStall && !marketStall.leaving))) {
       if (market === "shop" && (!marketStall || marketStall.leaving)) holdMarket();
       return;
@@ -5333,6 +5419,7 @@ function update(dt) {
     if (cage.lift) cage.y -= 90 * dt;
   }
   updateSpots(dt);
+  updateBushes(dt);
   if (marketStall?.leaving) {
     // Hero walks on past the stall; it rides off on the ground and is removed once off screen.
     marketStall.x -= Math.max(scroll, 24) * dt;
@@ -5362,7 +5449,19 @@ function update(dt) {
   }
   if (mon) {
     mon.t += dt;
-    if (mon.approach) mon.x -= scroll * dt;
+    if (mon.jump) {
+      const j = mon.jump;
+      j.t += dt;
+      const p = Math.min(1, j.t / j.dur);
+      mon.x = j.from + (j.to - j.from) * p;
+      mon.hopY = -Math.sin(p * Math.PI) * j.h;
+      if (p >= 1) {
+        mon.x = j.to;
+        mon.hopY = 0;
+        mon.jump = null;
+      }
+    } else if (mon.bush && mon.hidden) mon.x = mon.bush.x + 12 - mon.def.w / 2;
+    else if (mon.approach) mon.x -= scroll * dt;
     if (mon.flee && mon.alive) mon.x += 78 * dt;
     let openTarget = mon.openT;
     if (mon.def.chomp && mon.idle && !mon.approach && mon.alive) openTarget = Math.max(openTarget, Math.sin(mon.t * 5) > 0.55 ? 0.6 : 0);
@@ -5447,6 +5546,7 @@ function draw() {
   drawLayer(scenery.ground, bgX);
   drawStormBack(bgX);
   drawSpots();
+  for (const b of bushes) if (!bushInFront(b)) drawBush(b);
   if (marketStall) drawMarket();
   if (paradeOn && parade.length) {
     const walking = scroll > 2;
@@ -5630,7 +5730,8 @@ function draw() {
     disc(ctx, sx + 1, sy, 1, "#ffffff");
     if (R() < 0.45) particles.push({ x: sx, y: sy, vx: rnd(-12, 12), vy: rnd(-12, 12), g: 0, life: 0.2, c: "#c77dff" });
   }
-  if (mon?.alive) drawMonster(mon);
+  if (mon?.alive && !mon.hidden) drawMonster(mon);
+  for (const b of bushes) if (bushInFront(b)) drawBush(b);
   if (!(paradeOn && parade.length)) petFollower.draw(ctx);
   projectiles.forEach(drawProj);
   particles.forEach((p) => (p.spr ? ctx.drawImage(p.spr, Math.round(p.x), Math.round(p.y)) : rect(ctx, p.x, p.y, p.s || 1, p.s || 1, p.c)));

@@ -186,6 +186,7 @@ const SFX = {
   heartbreak: () => { noise({ dur: 0.06, vol: 0.35, lp: 6000, hp: 1500 }); arp(["E5", "C5", "A4"], 0.12, { type: "square", vol: 0.16, at: 0.05 }); },
   decline: () => { tone({ type: "triangle", f: 520, f2: 260, dur: 0.14, vol: 0.3 }); arp(["E4", "C4"], 0.14, { type: "square", vol: 0.14, at: 0.12 }); },
   appear: () => { tone({ type: "square", f: 180, f2: 360, dur: 0.12, vol: 0.12 }); tone({ type: "square", f: 360, f2: 180, dur: 0.12, at: 0.12, vol: 0.12 }); },
+  rustle: () => { for (let i = 0; i < 7; i += 1) noise({ dur: 0.07, vol: 0.14, at: i * 0.14 + Math.random() * 0.03, lp: 5000, hp: 1200 }); },
   cart: () => { for (let i = 0; i < 6; i += 1) noise({ dur: 0.05, vol: 0.16, at: i * 0.1, lp: 900, hp: 100 }); tone({ type: "triangle", f: 1760, dur: 0.25, at: 0.6, vol: 0.14 }); tone({ type: "triangle", f: 2350, dur: 0.3, at: 0.72, vol: 0.12 }); },
   walk: () => noise({ dur: 0.04, vol: 0.1, lp: 1200, hp: 200 }),
   // Electric buzz while the cage is zapped.

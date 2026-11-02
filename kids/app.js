@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=55";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=55";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=55";
-import { createChoreQuest } from "./chore-quest.js?v=55";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=55";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=55";
+import { APP_VERSION } from "./version.js?v=56";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=56";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=56";
+import { createChoreQuest } from "./chore-quest.js?v=56";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=56";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=56";
 import { armAudio, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -535,6 +535,7 @@ async function loadKid() {
     week: snap.week || [],
     hero: await loadHeroBoard(token),
     gear: await loadGear(token),
+    fights: await loadFights(token),
     pets: Array.isArray(snap.pets) ? snap.pets.filter((key) => PET_CATALOG[key]) : [],
     petPrices: snap.pet_prices && typeof snap.pet_prices === "object" ? snap.pet_prices : {},
     session: { role: "kid", id: snap.kid.id },
@@ -559,6 +560,17 @@ async function loadGear(token) {
     owned: Array.isArray(data.owned) ? data.owned.filter((key) => GEAR[key]) : [],
     prices: data.prices && typeof data.prices === "object" ? data.prices : {},
   };
+}
+
+/* Chores a parent approved that this kid has not watched the monster fight for yet (see 20261102_fight_pending.sql). */
+async function loadFights(token) {
+  try {
+    const res = await supabase.rpc("kid_pending_fights", { p_token: token });
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data.filter((chore) => chore?.id);
+  } catch {
+    return [];
+  }
 }
 
 async function loadHeroBoard(token) {
@@ -1649,10 +1661,18 @@ function markFleeSeen(id) {
 function onFightDone(id) {
   finishedIds.add(id);
   const chore = (db.chores || []).find((item) => item.id === id);
+  if (db.session?.role === "kid") {
+    // The fight has been watched: tell the server so it does not replay on the next sign-in.
+    if (db.fights?.some((fight) => fight.id === id)) {
+      db.fights = db.fights.filter((fight) => fight.id !== id);
+      supabase.rpc("kid_ack_fight", { p_token: kidToken(), p_chore: id }).then(() => {}, () => {});
+    }
+  }
   if (chore?.verdict === "flee") {
     if (db.session?.role === "kid") {
       chore.verdict = "";
-      supabase.rpc("kid_ack_verdict", { p_token: kidToken(), p_chore: id });
+      // Supabase calls only run once awaited or chained.
+      supabase.rpc("kid_ack_verdict", { p_token: kidToken(), p_chore: id }).then(() => {}, () => {});
     } else {
       markFleeSeen(id);
     }
@@ -1669,7 +1689,7 @@ function syncBattles() {
     .map((chore) => ({ ...actor(chore), flee: true, approved: true }));
   const line = mergeBattleLine({
     order: lineIds,
-    stored: loadTracked(kidId).map(actor),
+    stored: [...loadTracked(kidId), ...(db.fights || [])].map(actor),
     memory: battleLine,
     submitted,
     finished: [...finishedIds],
@@ -3817,6 +3837,8 @@ async function submitPin() {
     document.querySelector(".pin-card")?.classList.add("shake");
     return;
   }
+  // Start this kid's trail fresh so fights another session finished (like a parent approving) cannot hide theirs.
+  resetBattleMemory();
   setKidToken(token);
   await loadKid();
   notice = "";
