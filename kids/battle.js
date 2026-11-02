@@ -1,6 +1,7 @@
 /* Pixel forest battles. Waiting chores idle on the trail. Approval plays the fight, hit bars, and defeat. */
 
 import { createPetFollower, drawPetAt, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet, petIcon, petSize } from "./pets.js";
+import { gearedLook } from "./gear.js";
 
 export { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, drawPetIcon, normalizePet };
 
@@ -304,6 +305,11 @@ function buildQueen(color) {
   };
 }
 const lookCache = new Map();
+/* The kid's hero as shown on the stage, wearing the equipped helmet and armour. */
+function kidLook() {
+  return gearedLook(heroLook(scene.hero, scene.color), scene.hero || "knight", scene.gear?.head, scene.gear?.body);
+}
+
 function heroLook(key, color) {
   const kind = key || "knight";
   const tint = color || (kind === "princess" ? "#ff8ac6" : kind === "queen" ? "#7a3fb0" : kind === "king" ? "#c0392b" : "#3fa34d");
@@ -1774,7 +1780,7 @@ function updateEffects(dt) {
     e.t += dt;
     if (e.type === "suck" && mon) {
       const tip = scene.gear?.weapon
-        ? weaponTipFromGear(scene.gear.weapon, heroX() + 11, heroY() + (heroLook(scene.hero, scene.color)?.hand || 10), hero.ang)
+        ? weaponTipFromGear(scene.gear.weapon, heroX() + 11, heroY() + (kidLook()?.hand || 10), hero.ang)
         : [heroX() + 25, heroY() + 10];
       const [tx, ty] = tip;
       for (let k = 0; k < 3; k += 1) {
@@ -2289,8 +2295,8 @@ export function drawHeroIcon(target, color) {
   g.drawImage(src, 0, 0, target.width, target.height);
 }
 
-export function paintHeroBadge(target, heroKey, weapon, color, petKey) {
-  const look = heroLook(heroKey, color);
+export function paintHeroBadge(target, heroKey, weapon, color, petKey, headKey, bodyKey) {
+  const look = gearedLook(heroLook(heroKey, color), heroKey || "knight", headKey, bodyKey);
   const src = look.a;
   const pet = normalizePet(petKey);
   const buddy = pet ? petSize(pet) : null;
@@ -5049,7 +5055,7 @@ function draw() {
     // Parent stands on the left and points right at the kid.
     drawPointingArm(parentFig, false);
   }
-  const look = scene.hero ? heroLook(scene.hero, scene.color) : null;
+  const look = scene.hero ? kidLook() : null;
   const x = Math.round(heroX());
   const walking = (scroll > 2 || hero.oxT > 2) && hero.pose === "walk";
   const fr = walking && ((time * 8) | 0) % 2;

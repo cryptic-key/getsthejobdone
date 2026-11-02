@@ -1,10 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=43";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=43";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=43";
-import { createChoreQuest } from "./chore-quest.js?v=43";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=43";
+import { APP_VERSION } from "./version.js?v=44";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=44";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=44";
+import { createChoreQuest } from "./chore-quest.js?v=44";
+import { GEAR, normalizeGear } from "./gear.js?v=44";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=44";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -522,6 +523,7 @@ async function loadKid() {
     })),
     week: snap.week || [],
     hero: await loadHeroBoard(token),
+    gear: await loadGear(token),
     pets: Array.isArray(snap.pets) ? snap.pets.filter((key) => PET_CATALOG[key]) : [],
     petPrices: snap.pet_prices && typeof snap.pet_prices === "object" ? snap.pet_prices : {},
     session: { role: "kid", id: snap.kid.id },
@@ -533,6 +535,19 @@ async function loadKid() {
   if (db.kids[0]) db.kids[0].pet = equippedPet;
   if (db.hero) db.hero.pet = equippedPet || null;
   return true;
+}
+
+/* Armour: owned helmets/armour, what is equipped, and household prices (see gear.js + 20261102_armour_gear.sql). */
+async function loadGear(token) {
+  const res = await supabase.rpc("kid_gear", { p_token: token });
+  if (res.error || !res.data) return { head: null, body: null, owned: [], prices: {} };
+  const data = res.data;
+  return {
+    head: normalizeGear(data.head, "head"),
+    body: normalizeGear(data.body, "body"),
+    owned: Array.isArray(data.owned) ? data.owned.filter((key) => GEAR[key]) : [],
+    prices: data.prices && typeof data.prices === "object" ? data.prices : {},
+  };
 }
 
 async function loadHeroBoard(token) {
@@ -1099,6 +1114,7 @@ function arenaContext() {
     hero: () => kidHero(db.hero?.hero || kid()?.hero),
     weapon: () => db.hero?.weapon || kid()?.weapon || "broom",
     pet: () => normalizePet(kid()?.pet || db.hero?.pet) || null,
+    gear: () => ({ head: db.gear?.head || null, body: db.gear?.body || null }),
     refresh: () => run(async () => {}, ""),
   };
 }
@@ -1118,7 +1134,7 @@ function heroGear() {
   const quest = questCatalog();
   const weaponKey = quest.weapons[db.hero.weapon] ? db.hero.weapon : "broom";
   const pet = normalizePet(db.hero.pet || kid()?.pet) || null;
-  return { weapon: quest.weaponSprite(weaponKey), pet };
+  return { weapon: quest.weaponSprite(weaponKey), pet, head: db.gear?.head || null, body: db.gear?.body || null };
 }
 
 function ownedPets() {

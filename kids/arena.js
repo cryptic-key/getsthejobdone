@@ -1,6 +1,7 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=43";
+import { createChoreQuest } from "./chore-quest.js?v=44";
+import { gearSpecials, gearedLook } from "./gear.js?v=44";
 
 let host = null;
 let quest = null;
@@ -59,11 +60,24 @@ function startEngine() {
   });
 }
 
+/* Show the kid's helmet and armour on the arena hero. */
+function dressHero() {
+  if (!quest) return;
+  const kind = ctx.hero?.() || "knight";
+  const gear = ctx.gear?.() || {};
+  const base = quest.heroFrames(kind);
+  if (!base) return;
+  const tall = kind === "king" || kind === "queen";
+  const look = gearedLook({ ...base, h: tall ? 20 : 16, hand: tall ? 13 : 10 }, kind, gear.head, gear.body);
+  quest.setHeroLook(look === base ? null : look);
+}
+
 export function mountArena(slot, context) {
   ctx = context;
   if (!host) buildHost();
   slot.replaceWith(host);
   startEngine();
+  dressHero();
   quest.setCoins(ctx.points());
   host.hidden = !revealed;
   if (revealed) quest.arena.scene?.(true);
@@ -145,6 +159,7 @@ function paintQuestion(q) {
   const next = LEVEL_ORDER[LEVEL_ORDER.indexOf(run?.level) + 1];
   const streak = next ? ` · Perfect streak ${run?.streak || 0}/${PERFECT_TO_LEVEL}` : "";
   el.innerHTML = `<div class="arena-q-head"><span class="chip">${esc(cat)}</span><span class="tiny muted">${esc(lvl.name || "")}${streak} · Beaten: ${run?.kills || 0}</span></div>
+    ${specialsBar()}
     <p class="arena-q">${esc(q.text)}</p>
     <div class="arena-vis"></div>
     <div class="arena-choices${q.layout === "list" ? " list" : q.choices.length > 3 ? " four" : ""}">${q.choices.map(choiceButton).join("")}</div>
@@ -164,6 +179,59 @@ function paintQuestion(q) {
       slot.appendChild(art);
     }
   });
+}
+
+
+/* ---------- Gear specials: one use each per arena run ---------- */
+function specialsBar() {
+  const list = (run?.specials || []).filter((sp) => !sp.used);
+  if (!list.length) return "";
+  const hurt = quest.arena.hearts() < quest.arena.config.heroHP;
+  return `<div class="arena-specials">${list
+    .map((sp) => {
+      const off = sp.ability === "heal" && !hurt;
+      const title = off ? "Use this after you lose a heart" : `${sp.gearName}: ${sp.desc}`;
+      return `<button class="arena-special" type="button" data-arena="special" data-ab="${esc(sp.ability)}" title="${esc(title)}"${off ? " disabled" : ""}>Use Special <b>${esc(sp.name)}</b></button>`;
+    })
+    .join("")}</div>`;
+}
+
+function hideWrong(count) {
+  const el = panel();
+  if (!el || !current) return;
+  const wrong = [...el.querySelectorAll("[data-arena='pick']:not(.gone)")].filter((btn) => Number(btn.dataset.i) !== current.answer);
+  for (let i = wrong.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [wrong[i], wrong[j]] = [wrong[j], wrong[i]];
+  }
+  wrong.slice(0, count).forEach((btn) => {
+    btn.classList.add("gone");
+    btn.disabled = true;
+  });
+}
+
+function useSpecial(ability) {
+  const sp = run?.specials?.find((item) => item.ability === ability && !item.used);
+  if (!sp || view !== "question" || !current) return;
+  if (ability === "heal" && !quest.arena.heal()) return;
+  sp.used = true;
+  const left = () => panel()?.querySelectorAll("[data-arena='pick']:not(.gone)").length || 0;
+  if (ability === "fifty") hideWrong(Math.max(0, left() - 2));
+  if (ability === "sniff") hideWrong(left() > 2 ? 1 : 0);
+  if (ability === "shield") run.shield = true;
+  if (ability === "power") run.power = true;
+  if (ability === "lucky") run.lucky = true;
+  if (ability === "swap") {
+    // Same category and level, brand new question. The loop reads `current` when the answer comes in.
+    const next = quest.arena.makeQuestion(current.cat, run.level, run.kills);
+    if (quest.arena.levels[run.level]?.readAloud) quest.arena.speak(next.say);
+    current = next;
+    paintQuestion(next);
+    return;
+  }
+  const bar = panel()?.querySelector(".arena-specials");
+  if (bar) bar.outerHTML = specialsBar() || "";
+  quest.arena.speak([{ t: `${sp.name}!`, lang: "en-CA" }]);
 }
 
 function lockChoices(answer, picked) {
@@ -217,6 +285,9 @@ async function playRun() {
   run.level = A.levels[start.level] ? start.level : "kid";
   run.streak = 0;
   run.top = run.level;
+  const worn = ctx.gear?.() || {};
+  run.specials = gearSpecials(worn.head, worn.body).map((sp) => ({ ...sp, used: false }));
+  dressHero();
   quest.setCoins(Number(start.points) || 0);
   ctx.setPoints(Number(start.points) || 0);
   A.begin();
@@ -228,7 +299,7 @@ async function playRun() {
     last = cat;
     if (panel()) panel().innerHTML = levelUp || `<p class="arena-q">A monster enters the arena...</p>`;
     levelUp = "";
-    const heartsBefore = A.hearts();
+    run.missed = false;
     await A.spawn(A.categories[cat].monster);
     if (!alive) return;
     const level = run.level;
@@ -239,12 +310,22 @@ async function playRun() {
       const picked = await ask(q);
       pending = null;
       if (!alive) return;
-      lockChoices(q.answer, picked);
-      if (picked === q.answer) {
-        beaten = await A.hit();
+      const asked = current || q;
+      lockChoices(asked.answer, picked);
+      if (picked === asked.answer) {
+        const dmg = run.power ? 2 : 1;
+        run.power = false;
+        beaten = await A.hit(dmg, run.lucky ? 1 : 0);
+        if (beaten && run.lucky) {
+          run.lucky = false;
+          run.luckyPaid = true;
+        }
       } else {
-        A.speak([{ t: `The answer is ${A.choiceLabel(q.choices[q.answer])}`, lang: "en-CA" }]);
-        await A.miss();
+        A.speak([{ t: `The answer is ${A.choiceLabel(asked.choices[asked.answer])}`, lang: "en-CA" }]);
+        run.missed = true;
+        const blocked = Boolean(run.shield);
+        run.shield = false;
+        await A.miss(blocked);
       }
       if (!alive) return;
     }
@@ -253,12 +334,23 @@ async function playRun() {
       try {
         const paid = await ctx.rpc("kid_arena_kill", { p_token: ctx.token(), p_run: run.id });
         run.won += Number(paid?.reward) || 0;
-        quest.setCoins(Number(paid?.points) || 0);
-        ctx.setPoints(Number(paid?.points) || 0);
+        let points = Number(paid?.points) || 0;
+        if (run.luckyPaid) {
+          // Lucky Coin: the server checks the equipped gear and pays the extra coin once per run.
+          run.luckyPaid = false;
+          const bonus = await ctx.rpc("kid_arena_lucky", { p_token: ctx.token(), p_run: run.id }).catch(() => null);
+          if (bonus) {
+            run.won += Number(bonus.reward) || 0;
+            points = Number(bonus.points) || points;
+          }
+        }
+        quest.setCoins(points);
+        ctx.setPoints(points);
       } catch {
         /* keep playing; the coin just isn't saved */
       }
-      run.streak = A.hearts() === heartsBefore ? run.streak + 1 : 0;
+      // Perfect = no wrong answers on this monster (a Shield or Heal doesn't make a miss perfect).
+      run.streak = run.missed ? 0 : run.streak + 1;
       const next = LEVEL_ORDER[LEVEL_ORDER.indexOf(run.level) + 1];
       if (run.streak >= PERFECT_TO_LEVEL && next && A.levels[next]) {
         run.level = next;
@@ -306,4 +398,5 @@ function onClick(event) {
     resolve(Number(btn.dataset.i));
   }
   if (action === "hear" && view === "question" && current) quest.arena.speak(current.say);
+  if (action === "special") useSpecial(btn.dataset.ab);
 }

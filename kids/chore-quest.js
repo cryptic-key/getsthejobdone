@@ -113,6 +113,7 @@ const queenB=sprite([...queenTop,"..KPpPPpPPpPK.",".KPPpPPpPPpPPK","KYYYYYYYYYYY
 const HEROES={knight:{name:'Adventurer',a:heroA,b:heroB,h:16,hand:10},princess:{name:'Princess',a:prinA,b:prinB,h:16,hand:10},
  king:{name:'King',a:kingA,b:kingB,h:20,hand:13},queen:{name:'Queen',a:queenA,b:queenB,h:20,hand:13}};
 let heroKey=HEROES[opts.hero]?opts.hero:'knight';
+let heroLookOverride=null;const curLook=()=>heroLookOverride||HEROES[heroKey];
 /* ---------- pets: follow the hero, cheer on hits ---------- */
 const P_=(rows,pal)=>sprite(rows,pal);
 const petDefs={
@@ -732,7 +733,7 @@ const timers=[],conds=[];
 const wait=s=>new Promise(r=>timers.push({t:s,r}));
 const until=fn=>new Promise(r=>conds.push({fn,r}));
 const heroX=()=>26+hero.ox+hero.kx;
-const heroY=()=>G-(HEROES[heroKey].h-1)+hero.jy;
+const heroY=()=>G-(curLook().h-1)+hero.jy;
 
 let full='',shown=0;
 function say(t){full=t;shown=0;if(live)live.textContent=t;if(opts.onSay)opts.onSay(t)}
@@ -1295,7 +1296,7 @@ async function groundHero(reason,by='king'){
   await until(()=>royal.x<=heroX()+27);royal.vx=0;cops.forEach(c=>c.vx=0);cops[0].x=royal.x+16;cops[1].x=royal.x+30;
   royal.pointT=1;hero.alert=1;say(reason?`${HEROES[royal.who].name}: "You're GROUNDED for ${reason}!"`:`${HEROES[royal.who].name}: "You're GROUNDED!"`);
   await wait(1.6);royal.pointT=0;
-  const hx=heroX()+11,hy=heroY()+HEROES[heroKey].hand;flyWeapon={x:hx,y:hy,tx:cops[0].x+1,ty:G-6,t:0};hero.noWeapon=true;
+  const hx=heroX()+11,hy=heroY()+curLook().hand;flyWeapon={x:hx,y:hy,tx:cops[0].x+1,ty:G-6,t:0};hero.noWeapon=true;
   say('The Chore Patrol confiscates your weapon!');await until(()=>flyWeapon.t>=1);
   cage={y:-60,vy:0,drop:true,locked:false};await until(()=>!cage.drop);
   if(!reduce)shake=.3;burst(heroX()+7,G,['#b4b4c4','#8890a8','#ffffff'],18,60);
@@ -1418,7 +1419,7 @@ function special(wk,cx,cy){const sp=SPECIALS[wk]||{name:'Power Strike',fx:'burst
    case 'orbit':effects.push({type:'orbit',t:0,dur:1.4,cx,cy});break;
   }}
 function updateEffects(dt){for(let i=effects.length-1;i>=0;i--){const e=effects[i];e.t+=dt;
-  if(e.type==='suck'&&mon){const[tx,ty]=weaponTip(WEAPONS[weapon],heroX()+11,heroY()+HEROES[heroKey].hand,hero.ang);for(let k=0;k<3;k++){const a=R()*Math.PI*2,r=rnd(10,20),x=e.cx+Math.cos(a)*r,y=e.cy+Math.sin(a)*r;
+  if(e.type==='suck'&&mon){const[tx,ty]=weaponTip(WEAPONS[weapon],heroX()+11,heroY()+curLook().hand,hero.ang);for(let k=0;k<3;k++){const a=R()*Math.PI*2,r=rnd(10,20),x=e.cx+Math.cos(a)*r,y=e.cy+Math.sin(a)*r;
     particles.push({x,y,vx:(tx-x)/.35,vy:(ty-y)/.35,g:0,life:.35,c:e.cols[k%e.cols.length]})}}
   if(e.type==='bubble'&&e.t>=e.dur){for(let k=0;k<20;k++){const a=k/20*Math.PI*2;particles.push({x:e.cx+Math.cos(a)*14,y:e.cy+Math.sin(a)*12,vx:Math.cos(a)*50,vy:Math.sin(a)*50,g:60,life:.4,c:e.cols[k%e.cols.length]})}}
   if(e.t>=e.dur)effects.splice(i,1)}}
@@ -1690,22 +1691,28 @@ async function arenaSpawn(type){thought=null;const d=MON[type];
   mon={def:d,x:W+6,hp:ARENA.monsterHP,open:0,openT:0,tongue:0,tongueT:0,lunge:0,lungeT:0,flash:0,shake:0,t:0,idle:true,approach:true,alive:true,showHp:false,lift:0};
   scrollTarget=30;scroll=Math.max(scroll,18);hero.pose=arenaScene?'idle':'walk';if(arenaScene)crowdHype=.6;await until(()=>mon.x<=d.tx);
   mon.x=d.tx;mon.approach=false;scroll=0;scrollTarget=0;hero.pose='idle';hero.alert=.6;mon.showHp=true}
-async function arenaHit(){const d=mon.def,wpn=WEAPONS[weapon];
+async function arenaHit(dmg=1,bonus=0){const d=mon.def,wpn=WEAPONS[weapon];
   if(wpn.beam){hero.pose='aim';hero.oxT=-2;await wait(.3);beamT=.45;mon.lungeT=-5}
   else{hero.pose='windup';await wait(.2*(wpn.speed||1));const reach=wpn.map[0].length-wpn.grip[0];hero.oxT=mon.x-(reach>15?22:18)-26;await wait(.14);hero.pose='swing';hero.ang=POSE.swing;hero.smear=.12}
-  mon.hp--;mon.flash=.2;mon.shake=.25;mon.idle=false;if(!reduce)shake=wpn.heavy?.3:.15;
+  mon.hp=Math.max(0,mon.hp-dmg);mon.flash=.2;mon.shake=.25;mon.idle=false;if(!reduce)shake=dmg>1?.4:wpn.heavy?.3:.15;
   const hx=mon.x+d.w/2,hy=G-d.h/2+d.yoff(mon);burst(hx,hy,d.hit,12,70);
+  if(dmg>1){say('POWER STRIKE! Double damage!');burst(hx,hy,['#f4c542','#fff3a8','#ffffff'],24,90);effects.push({type:'ring',t:0,dur:.5,cx:hx,cy:hy,cols:['#f4c542','#ffffff']})}
   for(let k=0;k<10;k++){const a=R()*Math.PI*2,v=rnd(20,60);particles.push({x:hx,y:hy,vx:Math.cos(a)*v,vy:Math.sin(a)*v-15,g:wpn.fxG??120,life:rnd(.3,.7),c:wpn.fx[k%wpn.fx.length]})}
   petCheer(mon.hp<=0);const last=mon.hp<=0;if(arenaScene)crowdHype=last?2.2:.9;if(last){special(weapon,hx,hy);await wait(.6)}
   await wait(wpn.beam?.45:.25);mon.lungeT=0;hero.oxT=0;hero.pose='idle';await wait(.25);mon.idle=true;
   if(!last)return false;
   mon.idle=false;mon.showHp=false;mon.flash=.6;await wait(.5);const cx=mon.x+d.w/2,cy=G-d.h/2;
   for(let i=0;i<22;i++){const a=R()*Math.PI*2,v=rnd(10,45);particles.push({x:cx+rnd(-4,4),y:cy+rnd(-4,4),vx:Math.cos(a)*v,vy:Math.sin(a)*v-10,g:-15,life:rnd(.4,.8),c:['#ffffff','#e6e6ee','#c8c8d4'][i%3],s:2})}
-  burst(cx,cy,d.hit,10,50);mon.alive=false;if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});floats.push({s:'+'+ARENA.perKill,x:cx-4,y:cy-8,life:1.2});
-  for(let i=0;i<ARENA.perKill;i++)coins.push({x:cx,y:cy,vx:rnd(-30,30),vy:rnd(-70,-45),t:-i*.06});
+  burst(cx,cy,d.hit,10,50);mon.alive=false;if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});const drop=ARENA.perKill+bonus;floats.push({s:'+'+drop,x:cx-4,y:cy-8,life:1.2});if(bonus)say('Lucky Coin! +'+bonus+' extra');
+  for(let i=0;i<drop;i++)coins.push({x:cx,y:cy,vx:rnd(-30,30),vy:rnd(-70,-45),t:-i*.06});
   await until(()=>coins.length===0);await wait(.3);mon=null;return true}
-async function arenaMiss(){const d=mon.def;hero.pose='idle';mon.idle=false;hurtMode=true;await d.attack(mon);await until(()=>projectiles.length===0);hurtMode=false;mon.idle=true;
-  if(hearts>0)hearts--;await wait(.3)}
+async function arenaMiss(blocked=false){const d=mon.def;hero.pose=blocked?'block':'idle';mon.idle=false;hurtMode=!blocked;
+  if(blocked){say('SHIELD UP! No heart lost.');effects.push({type:'bubble',t:0,dur:1.1,cx:heroX()+7,cy:heroY()+8,cols:['#7fe0ff','#ffffff']})}
+  await d.attack(mon);await until(()=>projectiles.length===0);hurtMode=false;mon.idle=true;hero.pose='idle';
+  if(!blocked&&hearts>0)hearts--;await wait(.3)}
+/* Heal special: get back one lost heart. */
+function arenaHeal(){if(hearts==null||hearts>=maxHearts)return false;hearts++;say('Healed! +1 heart.');
+  for(let i=0;i<14;i++)particles.push({x:heroX()+7+rnd(-5,5),y:heroY()+rnd(0,12),vx:rnd(-6,6),vy:-rnd(18,36),g:-6,life:rnd(.6,1),c:i%3?'#ff6b8a':'#ffffff'});return true}
 function arenaBegin(){setArenaScene(true);busy=true;thought=null;hearts=ARENA.heroHP;maxHearts=ARENA.heroHP}
 function arenaEnd(keep){busy=false;hearts=null;if(!keep)setArenaScene(false)}
 async function arenaKO(){hero.ko=true;effects.push({type:'orbit',t:0,dur:3,cx:heroX()+7,cy:heroY()+12});if(mon){mon.showHp=false;mon.idle=true}await wait(1.8);
@@ -1841,7 +1848,7 @@ function update(dt){
   for(const c of cops)c.x+=c.vx*dt;if(royal){royal.x+=royal.vx*dt;royal.point+=((royal.pointT||0)-royal.point)*Math.min(1,dt*14)}
   if(flyWeapon)flyWeapon.t+=dt*1.6;
   if(cage){if(cage.drop){cage.vy+=420*dt;cage.y+=cage.vy*dt;if(cage.y>=0){cage.y=0;cage.drop=false}}if(cage.lift)cage.y-=90*dt}
-  if(grounded&&cage&&!busy&&R()<dt*.9)particles.push({x:heroX()+(R()<.5?6:9),y:heroY()+HEROES[heroKey].hand-4,vx:0,vy:10,g:80,life:.5,c:'#7fd0ff'});
+  if(grounded&&cage&&!busy&&R()<dt*.9)particles.push({x:heroX()+(R()<.5?6:9),y:heroY()+curLook().hand-4,vx:0,vy:10,g:80,life:.5,c:'#7fd0ff'});
   if(!banner&&!busy&&achQueue.length){const a=achQueue.shift();banner={a,t:0};say(`${a.title} ${a.name}: ${a.desc}`);burst(64,40,['#f4c542','#fff3a8','#ffffff'],24,70)}
   if(banner){banner.t+=dt;if(banner.t>3)banner=null}hero.alert=Math.max(0,hero.alert-dt);
   shake=Math.max(0,shake-dt);hudPop=Math.max(0,hudPop-dt);
@@ -1872,14 +1879,14 @@ function draw(){
   drawLayer(midPines,worldX*.5);drawLayer(trees,worldX*.7);drawLayer(ground,worldX);}
   drawStall();
   // hero
-  const HY=HEROES[heroKey].hand;const x=Math.round(heroX()),walking=scroll>2&&hero.pose==='walk';const fr=walking&&(time*8|0)%2;
+  const HY=curLook().hand;const x=Math.round(heroX()),walking=scroll>2&&hero.pose==='walk';const fr=walking&&(time*8|0)%2;
   const y=Math.round(heroY())-(fr?1:0);
   drawPet();
   rect(ctx,x+3,G,8,1,SHC);
   if(hero.smear>0){const W_=WEAPONS[weapon],L=W_.map[0].length-W_.grip[0]-2;let k=0;for(let a=-160;a<=35;a+=7,k++){const r=a*Math.PI/180;const c1=W_.smear==='rainbow'?RAINBOW[k%6]:W_.smear[0],c2=W_.smear==='rainbow'?RAINBOW[(k+1)%6]:W_.smear[1];
     px(ctx,x+11+Math.cos(r)*L,y+HY+Math.sin(r)*L,c1);px(ctx,x+11+Math.cos(r)*(L-1),y+HY+Math.sin(r)*(L-1),c2)}}
-  if(hero.ko){ctx.save();ctx.translate(x+7,G);ctx.rotate(-Math.PI/2);ctx.drawImage(HEROES[heroKey].a,0,-7);ctx.restore()}
-  else if(!(hero.hurt>0&&(time*20|0)%2))ctx.drawImage(fr?HEROES[heroKey].b:HEROES[heroKey].a,x,y);
+  if(hero.ko){ctx.save();ctx.translate(x+7,G);ctx.rotate(-Math.PI/2);ctx.drawImage(curLook().a,0,-7);ctx.restore()}
+  else if(!(hero.hurt>0&&(time*20|0)%2))ctx.drawImage(fr?curLook().b:curLook().a,x,y);
   if(!hero.noWeapon&&!hero.ko)drawWeapon(WEAPONS[weapon],x+11,y+HY,hero.ang);
   if(beamT>0&&mon){const[bx,by]=weaponTip(WEAPONS[weapon],x+11,y+HY,hero.ang);const ex=mon.x+mon.def.w/2;
     for(let i=0;bx+i<ex;i++){const BC=WEAPONS[weapon].beamCol||['#7fe0ff','#ffffff','#bfefff','#4aa3ff'];const c=((i+time*60|0)%4)<2?BC[0]:BC[1];const w=1+((i+time*30|0)%5===0);px(ctx,bx+i,by,c);if(w)px(ctx,bx+i,by-1,BC[2]);px(ctx,bx+i,by+1,BC[3])}
@@ -1939,7 +1946,7 @@ return {
   isGrounded:()=>grounded,
   // Monster Arena (learning battles). See CURSOR_BRIEF.md for the run loop.
   arena:{config:ARENA,categories:ARENA_CATS,levels:ARENA_LEVELS,makeQuestion,begin:arenaBegin,spawn:arenaSpawn,hit:arenaHit,miss:arenaMiss,ko:arenaKO,end:arenaEnd,
-    hearts:()=>hearts,scene:on=>setArenaScene(!!on),speak:speakParts,drawVis,choiceArt,choiceLabel},
+    hearts:()=>hearts,heal:arenaHeal,scene:on=>setArenaScene(!!on),speak:speakParts,drawVis,choiceArt,choiceLabel},
   // Market: hero walks up to the stall, the trail stops, purchases get thrown to the hero
   market:{open:marketOpen,buy:marketBuy,close:marketClose,isOpen:()=>!!mkt&&mkt.state==='open'},
   think:(type,text)=>think(type,text),   // approval screen: hero waits with a pixel thought cloud of that monster
@@ -1947,6 +1954,8 @@ return {
   setHearts:(n,max)=>{hearts=n;if(max)maxHearts=max},   // pixel hearts HUD; null hides it
   icon(type,scale=3){const d=MON[type];if(!d)return null;const hr=(d.headroom||0)+1;const[c,g]=canvas(d.w+(d.headroom?2:0),d.h+hr);d.draw(g,0,hr,{open:0,t:0,idle:false,shake:0,flash:0});return pixelCanvas(c,scale)},
   weaponSprite(key){const w=WEAPONS[key];return w?{key,name:w.name,image:pixelCanvas(w.icon,1),grip:w.grip,mapLen:w.map[0].length,smear:w.smear,fx:w.fx,fxG:w.fxG,beam:!!w.beam,beamCol:w.beamCol,heavy:!!w.heavy,speed:w.speed||1,bonus:w.bonus||0}:null},
+  /** Override the drawn hero (e.g. the kid's hero wearing helmet and armour): {a,b,h,hand} or null. */
+  setHeroLook:look=>{heroLookOverride=look&&look.a?look:null},
   heroFrames(key){const h=HEROES[key];return h?{a:pixelCanvas(h.a,1),b:pixelCanvas(h.b,1)}:null},
   weaponIcon(key,scale=4){const w=WEAPONS[key];return w?pixelCanvas(w.icon,scale):null},
   setPet:k=>{petKey=PETS[k]?k:null},   // pet that follows the hero; null for none

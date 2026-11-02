@@ -922,6 +922,24 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
 .arena-choice:disabled { cursor: default; opacity: 0.7; }
 .arena-choice.right { background: #c9f0c8; border-color: var(--leaf); opacity: 1; }
 .arena-choice.wrong { background: #f8d0c8; border-color: var(--clay); opacity: 1; }
+/* Gear specials: one-use buttons above the question; answers removed by 50/50 or Pet Sniff fade out. */
+.arena-specials { display: flex; flex-wrap: wrap; gap: 6px; }
+.arena-special {
+  font-family: "Press Start 2P", monospace;
+  font-size: clamp(0.5rem, 2vw, 0.68rem);
+  line-height: 1.4;
+  padding: 7px 9px;
+  color: #1a1c2c;
+  background: #f4c542;
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: pointer;
+}
+.arena-special b { font-weight: inherit; color: #6a2e9e; }
+.arena-special:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.arena-special:disabled { opacity: 0.5; cursor: default; }
+.arena-choice.gone { visibility: hidden; }
 .arena-swatch {
   width: 44px;
   height: 44px;
