@@ -3042,7 +3042,7 @@ function parentFigure(info, x = 18) {
   if (!info) return null;
   const heroKey = info.hero || info.parentHero || "knight";
   const tint = info.color || info.parentColor || "#2a9d8f";
-  const look = heroLook(heroKey, tint);
+  const look = gearedLook(heroLook(heroKey, tint), heroKey, info.head ?? info.parentHead, info.body ?? info.parentBody);
   return {
     x,
     look,
@@ -3070,6 +3070,8 @@ function setupReviewer(item) {
       color: item.parentColor,
       weapon: item.parentWeapon,
       name: item.parentName,
+      head: item.parentHead,
+      body: item.parentBody,
     },
     18,
   );

@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=53";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=53";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=53";
-import { createChoreQuest } from "./chore-quest.js?v=53";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=53";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=53";
+import { APP_VERSION } from "./version.js?v=54";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=54";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=54";
+import { createChoreQuest } from "./chore-quest.js?v=54";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=54";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=54";
 import { armAudio, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -416,7 +416,7 @@ async function loadParent() {
   await rpc("ensure_today");
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
-    supabase.from("parents").select("id,name,email,color,hero,weapon,pet").order("created_at"),
+    supabase.from("parents").select("id,name,email,color,hero,weapon,pet,helmet,armor").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet,birth_date").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority").order("sort_order").order("created_at"),
@@ -447,6 +447,8 @@ async function loadParent() {
       hero: parentLook(person.hero, person.name),
       weapon: person.weapon || "broom",
       pet: normalizePet(person.pet) || "",
+      helmet: normalizeGear(person.helmet, "head"),
+      armor: normalizeGear(person.armor, "body"),
       hasPin: readyPins.has(person.id),
     })),
     kids: kids.data.map(mapKid),
@@ -928,6 +930,8 @@ function parentGuardian() {
     color: COLOR_HEX[me?.color] || COLOR_HEX.teal,
     weapon: heldWeapon(me?.weapon || "broom"),
     pet: normalizePet(me?.pet) || null,
+    head: me?.helmet || null,
+    body: me?.armor || null,
   };
 }
 
@@ -989,6 +993,8 @@ function paintStage() {
         parentHero: guardian.hero,
         parentColor: guardian.color,
         parentWeapon: guardian.weapon,
+        parentHead: guardian.head,
+        parentBody: guardian.body,
       };
       setStageScene({
         color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
@@ -1268,13 +1274,23 @@ function weaponSlotCard(weapons) {
 }
 
 function heroGearBoard(child, weapons = []) {
-  const owned = db.gear?.owned || [];
+  return gearCard({
+    weapons,
+    worn: { head: db.gear?.head || null, body: db.gear?.body || null },
+    owned: db.gear?.owned || [],
+    look: kidHero(db.hero?.hero || child?.hero),
+    weaponKey: db.hero?.weapon || "broom",
+    lede: "Tap a slot to swap. Weapons unlock as you do chores. Helmets and armour each give one special per Monster Arena run.",
+  });
+}
+
+function gearCard({ weapons = [], worn = {}, owned = [], look, weaponKey, lede }) {
   const slots = [
     { slot: "head", label: "Helmet" },
     { slot: "body", label: "Armour" },
   ];
   const cards = slots.map(({ slot, label }) => {
-    const current = normalizeGear(db.gear?.[slot], slot);
+    const current = normalizeGear(worn[slot], slot);
     const open = Boolean(heroExpand[`gear-${slot}`]);
     const mine = owned.filter((key) => GEAR[key]?.slot === slot);
     const options = open
@@ -1303,13 +1319,12 @@ function heroGearBoard(child, weapons = []) {
       ${options}
     </div>`;
   }).join("");
-  const look = kidHero(db.hero?.hero || child?.hero);
   const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
   return `<section class="card stack">
     <h2 class="page-title">Gear</h2>
-    <p class="lede">Tap a slot to swap. Weapons unlock as you do chores. Helmets and armour each give one special per Monster Arena run.</p>
+    <p class="lede">${esc(lede)}</p>
     <div class="gear-board">
-      <canvas class="hero-icon gear-preview" data-look="${esc(look)}" data-weapon="${esc(db.hero?.weapon || "broom")}" data-color="${esc(tint)}" data-head="${esc(db.gear?.head || "")}" data-body="${esc(db.gear?.body || "")}" width="40" height="34" aria-hidden="true"></canvas>
+      <canvas class="hero-icon gear-preview" data-look="${esc(look)}" data-weapon="${esc(weaponKey)}" data-color="${esc(tint)}" data-head="${esc(worn.head || "")}" data-body="${esc(worn.body || "")}" width="40" height="34" aria-hidden="true"></canvas>
       <div class="gear-slots">${weapons.length ? weaponSlotCard(weapons) : ""}${cards}</div>
     </div>
   </section>`;
@@ -1535,19 +1550,18 @@ function parentHeroBoard() {
     </button>`
     )
     .join("");
+  // Parents keep every weapon, helmet and piece of armour unlocked.
   const weapons = Object.entries(quest.weapons)
-    .map(([key, weapon]) => {
-      const equipped = key === weaponKey;
-      return `<article class="armory-card open${equipped ? " equipped" : ""}">
-      <canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas>
-      <div>
-        <strong>${esc(weapon.name)}</strong>
-        <p class="tiny muted">${esc(weapon.perk || "Ready for the door parade.")}</p>
-        ${equipped ? `<span class="chip">Equipped</span>` : `<button class="btn small leaf" type="button" data-action="set-weapon" data-weapon="${esc(key)}">Equip</button>`}
-      </div>
-    </article>`;
-    })
-    .join("");
+    .map(([key, weapon]) => ({ key, weapon, open: true, equipped: key === weaponKey, progress: { value: 1, goal: 1 } }))
+    .sort((a, b) => (a.equipped !== b.equipped ? (a.equipped ? -1 : 1) : a.weapon.name.localeCompare(b.weapon.name)));
+  const gear = gearCard({
+    weapons,
+    worn: { head: me?.helmet || null, body: me?.armor || null },
+    owned: GEAR_KEYS,
+    look: heroKey,
+    weaponKey,
+    lede: "Parents keep all gear unlocked. Tap a slot to swap your weapon, helmet or armour.",
+  });
   const pets = PET_KEYS.map((key) => {
     const info = PET_CATALOG[key];
     const active = key === equippedPet;
@@ -1568,11 +1582,7 @@ function parentHeroBoard() {
         <div class="swatches hero-swatches">${colorSwatches(color)}</div>
       </div>
     </section>
-    <section class="card stack">
-      <h2 class="page-title">Weapons</h2>
-      <p class="lede">Parents keep the whole armory unlocked.</p>
-      <div class="armory">${weapons}</div>
-    </section>
+    ${gear}
     <section class="card stack">
       <h2 class="page-title">Pets</h2>
       <p class="lede">Parents keep every buddy unlocked for the door parade.</p>
@@ -1591,7 +1601,8 @@ function paintQuestArt(root) {
     slot.replaceWith(art);
   };
   const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
-  const kidGear = db.session?.role === "kid" ? db.gear : null;
+  const me = db.session?.role === "parent" ? parent() : null;
+  const kidGear = db.session?.role === "kid" ? db.gear : me ? { head: me.helmet, body: me.armor } : null;
   root.querySelectorAll("canvas[data-quest-hero]").forEach((slot) => {
     paintHeroBadge(slot, slot.dataset.questHero, null, tint, null, kidGear?.head || null, kidGear?.body || null);
     slot.style.width = "42px";
@@ -3317,10 +3328,13 @@ app.addEventListener("click", (event) => {
     const slot = btn.dataset.slot;
     const key = btn.dataset.gear || null;
     heroExpand[`gear-${slot}`] = false;
+    const asParent = db.session?.role === "parent";
     run(
-      () => rpc("kid_set_gear", { p_token: kidToken(), p_slot: slot, p_gear: key }),
+      () => (asParent
+        ? rpc("parent_set_gear", { p_slot: slot, p_gear: key })
+        : rpc("kid_set_gear", { p_token: kidToken(), p_slot: slot, p_gear: key })),
       key ? `${GEAR[key]?.name || "Gear"} on.` : `${slot === "head" ? "Helmet" : "Armour"} off.`,
-      "hero"
+      asParent ? "parent-hero" : "hero"
     );
   }
   if (action === "buy-pet") {
