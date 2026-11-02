@@ -113,7 +113,9 @@ const queenB=sprite([...queenTop,"..KPpPPpPPpPK.",".KPPpPPpPPpPPK","KYYYYYYYYYYY
 const HEROES={knight:{name:'Adventurer',a:heroA,b:heroB,h:16,hand:10},princess:{name:'Princess',a:prinA,b:prinB,h:16,hand:10},
  king:{name:'King',a:kingA,b:kingB,h:20,hand:13},queen:{name:'Queen',a:queenA,b:queenB,h:20,hand:13}};
 let heroKey=HEROES[opts.hero]?opts.hero:'knight';
-let heroLookOverride=null;const curLook=()=>heroLookOverride||HEROES[heroKey];
+let heroLookOverride=null;
+/* Optional sound hook: opts.sound(name) is called for game events (hit, swing, coin, ...). */
+const sfx=n=>{try{if(typeof opts.sound==='function')opts.sound(n)}catch(e){}};const curLook=()=>heroLookOverride||HEROES[heroKey];
 /* ---------- pets: follow the hero, cheer on hits ---------- */
 const P_=(rows,pal)=>sprite(rows,pal);
 const petDefs={
@@ -739,7 +741,7 @@ let full='',shown=0;
 function say(t){full=t;shown=0;if(live)live.textContent=t;if(opts.onSay)opts.onSay(t)}
 
 function burst(x,y,cols,n=12,sp=50){for(let i=0;i<n;i++){const a=R()*Math.PI*2,v=rnd(sp*.3,sp);particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-20,g:120,life:rnd(.25,.5),c:cols[i%cols.length]})}}
-function block(x,y,cols){if(hurtMode){burst(x,y,['#e04a4a','#ff9a9a','#ffffff'],14,60);hero.kx=-6;hero.hurt=.7;if(!reduce)shake=.2;return}burst(x,y,['#ffffff',...cols],14,60);hero.kx=-3;if(!reduce)shake=.12}
+function block(x,y,cols){sfx(hurtMode?'hurt':'block');if(hurtMode){burst(x,y,['#e04a4a','#ff9a9a','#ffffff'],14,60);hero.kx=-6;hero.hurt=.7;if(!reduce)shake=.2;return}burst(x,y,['#ffffff',...cols],14,60);hero.kx=-3;if(!reduce)shake=.12}
 
 /* ---------- monsters ---------- */
 const MON={
@@ -1692,30 +1694,30 @@ async function arenaSpawn(type){thought=null;const d=MON[type];
   scrollTarget=30;scroll=Math.max(scroll,18);hero.pose=arenaScene?'idle':'walk';if(arenaScene)crowdHype=.6;await until(()=>mon.x<=d.tx);
   mon.x=d.tx;mon.approach=false;scroll=0;scrollTarget=0;hero.pose='idle';hero.alert=.6;mon.showHp=true}
 async function arenaHit(dmg=1,bonus=0){const d=mon.def,wpn=WEAPONS[weapon];
-  if(wpn.beam){hero.pose='aim';hero.oxT=-2;await wait(.3);beamT=.45;mon.lungeT=-5}
-  else{hero.pose='windup';await wait(.2*(wpn.speed||1));const reach=wpn.map[0].length-wpn.grip[0];hero.oxT=mon.x-(reach>15?22:18)-26;await wait(.14);hero.pose='swing';hero.ang=POSE.swing;hero.smear=.12}
-  mon.hp=Math.max(0,mon.hp-dmg);mon.flash=.2;mon.shake=.25;mon.idle=false;if(!reduce)shake=dmg>1?.4:wpn.heavy?.3:.15;
+  if(wpn.beam){hero.pose='aim';hero.oxT=-2;await wait(.3);beamT=.45;mon.lungeT=-5;sfx('swing')}
+  else{hero.pose='windup';await wait(.2*(wpn.speed||1));sfx('swing');const reach=wpn.map[0].length-wpn.grip[0];hero.oxT=mon.x-(reach>15?22:18)-26;await wait(.14);hero.pose='swing';hero.ang=POSE.swing;hero.smear=.12}
+  mon.hp=Math.max(0,mon.hp-dmg);sfx(dmg>1?'power':'hit');mon.flash=.2;mon.shake=.25;mon.idle=false;if(!reduce)shake=dmg>1?.4:wpn.heavy?.3:.15;
   const hx=mon.x+d.w/2,hy=G-d.h/2+d.yoff(mon);burst(hx,hy,d.hit,12,70);
   if(dmg>1){say('POWER STRIKE! Double damage!');burst(hx,hy,['#f4c542','#fff3a8','#ffffff'],24,90);effects.push({type:'ring',t:0,dur:.5,cx:hx,cy:hy,cols:['#f4c542','#ffffff']})}
   for(let k=0;k<10;k++){const a=R()*Math.PI*2,v=rnd(20,60);particles.push({x:hx,y:hy,vx:Math.cos(a)*v,vy:Math.sin(a)*v-15,g:wpn.fxG??120,life:rnd(.3,.7),c:wpn.fx[k%wpn.fx.length]})}
-  petCheer(mon.hp<=0);const last=mon.hp<=0;if(arenaScene)crowdHype=last?2.2:.9;if(last){special(weapon,hx,hy);await wait(.6)}
+  petCheer(mon.hp<=0);const last=mon.hp<=0;if(arenaScene)crowdHype=last?2.2:.9;if(last){special(weapon,hx,hy);sfx('special');await wait(.6)}
   await wait(wpn.beam?.45:.25);mon.lungeT=0;hero.oxT=0;hero.pose='idle';await wait(.25);mon.idle=true;
   if(!last)return false;
   mon.idle=false;mon.showHp=false;mon.flash=.6;await wait(.5);const cx=mon.x+d.w/2,cy=G-d.h/2;
   for(let i=0;i<22;i++){const a=R()*Math.PI*2,v=rnd(10,45);particles.push({x:cx+rnd(-4,4),y:cy+rnd(-4,4),vx:Math.cos(a)*v,vy:Math.sin(a)*v-10,g:-15,life:rnd(.4,.8),c:['#ffffff','#e6e6ee','#c8c8d4'][i%3],s:2})}
-  burst(cx,cy,d.hit,10,50);mon.alive=false;if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});const drop=ARENA.perKill+bonus;floats.push({s:'+'+drop,x:cx-4,y:cy-8,life:1.2});if(bonus)say('Lucky Coin! +'+bonus+' extra');
+  burst(cx,cy,d.hit,10,50);mon.alive=false;sfx('poof');if(arenaScene){sfx('cheer')};if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});const drop=ARENA.perKill+bonus;floats.push({s:'+'+drop,x:cx-4,y:cy-8,life:1.2});if(bonus)say('Lucky Coin! +'+bonus+' extra');
   for(let i=0;i<drop;i++)coins.push({x:cx,y:cy,vx:rnd(-30,30),vy:rnd(-70,-45),t:-i*.06});
   await until(()=>coins.length===0);await wait(.3);mon=null;return true}
 async function arenaMiss(blocked=false){const d=mon.def;hero.pose=blocked?'block':'idle';mon.idle=false;hurtMode=!blocked;
   if(blocked){say('SHIELD UP! No heart lost.');effects.push({type:'bubble',t:0,dur:1.1,cx:heroX()+7,cy:heroY()+8,cols:['#7fe0ff','#ffffff']})}
-  await d.attack(mon);await until(()=>projectiles.length===0);hurtMode=false;mon.idle=true;hero.pose='idle';
+  sfx(d===MON.robber?'grumble':'enemy');await d.attack(mon);await until(()=>projectiles.length===0);hurtMode=false;mon.idle=true;hero.pose='idle';
   if(!blocked&&hearts>0)hearts--;await wait(.3)}
 /* Heal special: get back one lost heart. */
-function arenaHeal(){if(hearts==null||hearts>=maxHearts)return false;hearts++;say('Healed! +1 heart.');
+function arenaHeal(){if(hearts==null||hearts>=maxHearts)return false;hearts++;sfx('heal');say('Healed! +1 heart.');
   for(let i=0;i<14;i++)particles.push({x:heroX()+7+rnd(-5,5),y:heroY()+rnd(0,12),vx:rnd(-6,6),vy:-rnd(18,36),g:-6,life:rnd(.6,1),c:i%3?'#ff6b8a':'#ffffff'});return true}
 function arenaBegin(){setArenaScene(true);busy=true;thought=null;hearts=ARENA.heroHP;maxHearts=ARENA.heroHP}
 function arenaEnd(keep){busy=false;hearts=null;if(!keep)setArenaScene(false)}
-async function arenaKO(){hero.ko=true;effects.push({type:'orbit',t:0,dur:3,cx:heroX()+7,cy:heroY()+12});if(mon){mon.showHp=false;mon.idle=true}await wait(1.8);
+async function arenaKO(){hero.ko=true;sfx('ko');effects.push({type:'orbit',t:0,dur:3,cx:heroX()+7,cy:heroY()+12});if(mon){mon.showHp=false;mon.idle=true}await wait(1.8);
   if(mon){mon.approach=false;const d=mon.def;for(let i=0;i<14;i++)particles.push({x:mon.x+d.w/2,y:G-d.h/2,vx:rnd(-30,30),vy:-rnd(20,50),g:60,life:.5,c:'#ffffff',s:2});mon=null}
   hero.ko=false;if(arenaScene){hero.pose='idle';scrollTarget=0}else{hero.pose='walk';scrollTarget=18}}
 
@@ -1865,7 +1867,7 @@ function update(dt){
   for(let i=coins.length-1;i>=0;i--){const c=coins[i];c.t+=dt;if(c.t<0)continue;
     if(c.t<.5){c.x+=c.vx*dt;c.y+=c.vy*dt;c.vy+=200*dt}
     else{const tx=W-23,ty=hudCoinY();c.x+=(tx-c.x)*Math.min(1,dt*9);c.y+=(ty-c.y)*Math.min(1,dt*9);
-      if(Math.abs(c.x-tx)<2&&Math.abs(c.y-ty)<2){coins.splice(i,1);coinsTotal++;hudPop=.15;burst(tx,ty,['#f4c542','#fff3a8'],5,30)}}}
+      if(Math.abs(c.x-tx)<2&&Math.abs(c.y-ty)<2){coins.splice(i,1);sfx('coin');coinsTotal++;hudPop=.15;burst(tx,ty,['#f4c542','#fff3a8'],5,30)}}}
   for(let i=floats.length-1;i>=0;i--){const f=floats[i];f.y-=12*dt;f.life-=dt;if(f.life<=0)floats.splice(i,1)}
   if(shown<full.length){shown+=dt*48;if(dlg)dlg.textContent=full.slice(0,shown|0)}
 }

@@ -2,6 +2,7 @@
 
 import { createPetFollower, drawPetAt, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet, petIcon, petSize } from "./pets.js";
 import { gearedLook } from "./gear.js";
+import { music, play as sfx } from "./sound.js";
 
 export { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, drawPetIcon, normalizePet };
 
@@ -2541,6 +2542,7 @@ function burst(x, y, cols, n = 12, sp = 50) {
 }
 let hardHit = false;
 function block(x, y, cols) {
+  sfx(hardHit ? "knockdown" : "block");
   burst(x, y, ["#ffffff", ...cols], hardHit ? 18 : 14, hardHit ? 70 : 60);
   hero.kx = hardHit ? -12 : -3;
   if (hardHit) {
@@ -2931,12 +2933,14 @@ async function playFlee(item, token) {
     hero.hurt = Math.max(hero.hurt, 1.4);
   }
   say("Knocked down!");
+  sfx("knockdown");
   if (!(await waitFor(0.55, token))) return;
   if (token !== runToken || !mon) return;
   mon.approach = false;
   mon.idle = false;
   mon.flee = true;
   say(`${def.name} runs away.`);
+  sfx("flee");
   if (!(await until(() => !mon || mon.x > W + 16, token))) return;
   mon = null;
   if (!(await waitFor(0.55, token))) return;
@@ -2975,9 +2979,11 @@ async function playBattle(item, token) {
       if (!(await waitFor(0.3, token))) return;
       beamT = 0.45;
       mon.lungeT = -5;
+      sfx("swing");
     } else {
       hero.pose = "windup";
       if (!(await waitFor(0.2 * (wpn.speed || 1), token))) return;
+      sfx("swing");
       const reach = (wpn.mapLen || 14) - (wpn.grip?.[0] || 2);
       hero.oxT = mon.x - (reach > 15 ? 22 : 18) - 26;
       if (!(await waitFor(0.14, token))) return;
@@ -2986,6 +2992,7 @@ async function playBattle(item, token) {
       hero.smear = 0.12;
     }
     mon.hp -= 1;
+    sfx("hit");
     mon.flash = 0.2;
     mon.shake = 0.25;
     mon.idle = false;
@@ -3001,6 +3008,7 @@ async function playBattle(item, token) {
     }
     if (i === 2) {
       special(wk, hx, hy);
+      sfx("special");
       petFollower.cheer(true);
       if (!(await waitFor(0.75, token))) return;
     } else {
@@ -3016,6 +3024,7 @@ async function playBattle(item, token) {
       say(`${def.name} fights back!`);
       hero.pose = "block";
       mon.idle = false;
+      sfx("enemy");
       await def.attack(mon, fight);
       if (token !== runToken) return;
       if (!(await until(() => projectiles.length === 0, token))) return;
@@ -3041,12 +3050,14 @@ async function playBattle(item, token) {
   }
   burst(cx, cy, def.hit, 10, 50);
   mon.alive = false;
+  sfx("poof");
   const reward = Math.max(0, mon.points) + (wpn.bonus || 0);
   floats.push({ s: `+${reward}`, x: cx - 6, y: cy - 8, life: 1.3 });
   const bits = Math.min(8, reward);
   for (let i = 0; i < bits; i += 1) coins.push({ x: cx, y: cy, vx: rnd(-35, 35), vy: rnd(-75, -45), t: -i * 0.06 });
   say(`${item.title} is done. +${reward} coins`);
   hero.pose = "victory";
+  sfx("victory");
   hero.vy = -80;
   petFollower.cheer(true);
   if (!(await waitFor(0.55, token))) return;
@@ -3650,7 +3661,11 @@ function reachSpot(s) {
   scrollTarget = 0;
   hero.pose = "idle";
   hero.ang = POSE.idle;
-  if (s.kind === "chest") burst(s.x + 11, G - 14, ["#f4c542", "#fff3a8", "#ffffff"], 16, 45);
+  if (s.kind === "chest") {
+    burst(s.x + 11, G - 14, ["#f4c542", "#fff3a8", "#ffffff"], 16, 45);
+    sfx("chest");
+  }
+  if (s.kind === "board") sfx("board");
   say(spotLine(s.kind));
   if (s.kind === "gate") enterGate(s, runToken);
   scene.onSpot?.(s.kind, "here");
@@ -3662,6 +3677,7 @@ async function enterGate(s, token) {
   hero.oxT = s.x + 15 - 26;
   if (!(await waitFor(0.55, token))) return;
   gateFade = 0.01;
+  sfx("gate");
   if (!(await until(() => gateFade >= 1, token))) return;
   scene.onSpot?.("gate", "entered");
 }
@@ -3862,6 +3878,7 @@ async function playMarketArrive(token) {
   freezeMarketBg();
   marketStall.wave = 1.4;
   say("The shopkeeper waves hello!");
+  sfx("shop");
   if (!(await waitFor(1.1, token))) {
     marketBusy = false;
     return;
@@ -3897,6 +3914,7 @@ async function playMarketGift(item, token) {
   const done = () => { marketBusy = false; marketGift = null; };
   say(item.text || "Here you go!");
   marketStall.throwT = 0.5;
+  sfx("throw");
   marketStall.wave = 0;
   if (!(await waitFor(0.25, token))) return done();
   const { img, spin } = giftImage(item);
@@ -3906,6 +3924,7 @@ async function playMarketGift(item, token) {
   marketGift = { img, spin, t: 0, dur: 0.75, x0: marketStall.x + 14, y0: G - 26, x1: hx, y1: hy, arc: pet ? 26 : 20 };
   if (!(await until(() => !marketGift || marketGift.t >= marketGift.dur, token))) return done();
   marketGift = null;
+  sfx("catch");
   burst(hx, hy, pet ? ["#ff8ac6", "#ffffff", "#f4c542"] : ["#f4c542", "#ffffff", "#fff3a8"], 14, 55);
   if (item.label) floats.push({ s: item.label, x: hx - item.label.length * 2, y: hy - 10, life: 1.6 });
   hero.pose = "victory";
@@ -4014,6 +4033,7 @@ async function playLockup(token) {
   hero.down = false;
   hero.noWeapon = false;
   siren = true;
+  sfx("siren");
   say("WEE-OOO! The Chore Patrol is on the way!");
   scrollTarget = 0;
   if (!(await waitFor(0.5, token))) { lockBusy = false; return; }
@@ -4035,6 +4055,7 @@ async function playLockup(token) {
   cage = { y: -60, vy: 0, drop: true, locked: false, lift: false };
   if (!(await until(() => cage && !cage.drop, token))) { lockBusy = false; return; }
   if (!reduce) shake = 0.3;
+  sfx("cage");
   burst(heroX() + 7, G, ["#b4b4c4", "#8890a8", "#ffffff"], 18, 60);
   if (!(await waitFor(0.35, token))) { lockBusy = false; return; }
   cage.locked = true;
@@ -4055,6 +4076,7 @@ async function playRelease(token) {
   lockBusy = true;
   if (!cage) holdCage();
   say("The lock pops open!");
+  sfx("unlock");
   cage.locked = false;
   particles.push({ x: heroX() + 10, y: G - 5, vx: 30, vy: -70, g: 220, life: 0.9, c: "#f4c542", s: 3 });
   if (!(await waitFor(0.6, token))) { lockBusy = false; return; }
@@ -4066,6 +4088,7 @@ async function playRelease(token) {
   hero.vy = -80;
   burst(heroX() + 7, G - 8, ["#f4c542", "#fff3a8", "#ffffff"], 16, 60);
   say("FREE! Back to the quest!");
+  sfx("victory");
   if (!(await waitFor(0.55, token))) { lockBusy = false; return; }
   hero.vy = -80;
   if (!(await waitFor(1, token))) { lockBusy = false; return; }
@@ -4213,6 +4236,9 @@ export function stageElement() {
 export function setStageScene(next) {
   stageElement();
   applySeasonTheme();
+  // Background music follows the scene: grounded tune in the cage, shop tune at the Market, trail theme otherwise.
+  const locked = next.lockup && next.lockup !== "free";
+  music(locked ? "grounded" : next.market ? "market" : "trail");
   if (Object.prototype.hasOwnProperty.call(next, "hearts")) paintHearts(next.hearts);
   if (Array.isArray(next.parade)) {
     scene.gear = null;
@@ -4976,6 +5002,7 @@ function update(dt) {
       c.x += (tx - c.x) * Math.min(1, dt * 9);
       c.y += (ty - c.y) * Math.min(1, dt * 9);
       if (Math.abs(c.x - tx) < 2 && Math.abs(c.y - ty) < 2) {
+        sfx("coin");
         coins.splice(i, 1);
         burst(tx, ty, ["#f4c542", "#fff3a8"], 5, 30);
       }
