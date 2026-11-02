@@ -59,6 +59,10 @@ export function unlock() {
   if (!a) return;
   if (a.state === "suspended") a.resume();
   if (musicOn && wanted && playing !== wanted) startMusic(wanted);
+  if (wantedWeather) {
+    if (a.state === "running") startWeather();
+    else a.resume().then(startWeather).catch(() => {});
+  }
 }
 
 let armed = false;
@@ -85,6 +89,7 @@ export function setSfx(on) {
   sfxOn = Boolean(on);
   write(STORE.sfx, sfxOn);
   if (sfxOn) { unlock(); play("tap"); }
+  else stopWeather();
   changed();
 }
 export function setMusicOn(on) {
@@ -168,7 +173,78 @@ const SFX = {
   cage: () => { tone({ type: "square", f: 120, f2: 60, dur: 0.3, vol: 0.35 }); noise({ dur: 0.25, vol: 0.3, lp: 2000 }); tone({ type: "triangle", f: 1800, dur: 0.12, vol: 0.12, at: 0.05 }); },
   unlock: () => { tone({ type: "square", f: 1500, dur: 0.04, vol: 0.15 }); arp(["C6", "G6"], 0.06, { at: 0.06, vol: 0.18 }); },
   grumble: () => { tone({ type: "sawtooth", f: 140, f2: 90, dur: 0.18, vol: 0.18 }); tone({ type: "sawtooth", f: 120, f2: 160, dur: 0.16, vol: 0.16, at: 0.16 }); },
+  // Lightning: a sharp electric crack, then a rolling thunder rumble.
+  lightning: () => {
+    noise({ dur: 0.12, vol: 0.55, lp: 12000, hp: 2500 });
+    noise({ dur: 0.35, vol: 0.4, at: 0.04, lp: 5000, hp: 600 });
+    tone({ type: "square", f: 1800, f2: 200, dur: 0.1, vol: 0.12 });
+  },
+  thunder: () => {
+    noise({ dur: 2.2, vol: 0.7, lp: 260, hp: 25 });
+    noise({ dur: 1.4, vol: 0.45, at: 0.35, lp: 160, hp: 20 });
+    noise({ dur: 0.9, vol: 0.35, at: 0.9, lp: 220, hp: 30 });
+    tone({ type: "sine", f: 70, f2: 32, dur: 1.6, vol: 0.5, attack: 0.03 });
+  },
 };
+
+/* ---------- weather ambience ----------
+   "storm": a looping, gusting wind (filtered noise with slow wobbles). Follows the Sound FX switch. */
+let wantedWeather = null;
+let weatherNodes = null;
+
+function startWeather() {
+  const a = ctx();
+  if (!a || a.state !== "running" || weatherNodes || wantedWeather !== "storm" || !sfxOn) return;
+  const src = a.createBufferSource();
+  src.buffer = noiseBuf;
+  src.loop = true;
+  const band = a.createBiquadFilter();
+  band.type = "bandpass";
+  band.frequency.value = 420;
+  band.Q.value = 0.9;
+  const low = a.createBiquadFilter();
+  low.type = "lowpass";
+  low.frequency.value = 1400;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.0001, a.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.5, a.currentTime + 1.5);
+  // Slow LFOs make the wind howl up and down in gusts.
+  const lfo = a.createOscillator();
+  lfo.frequency.value = 0.17;
+  const lfoAmt = a.createGain();
+  lfoAmt.gain.value = 260;
+  lfo.connect(lfoAmt).connect(band.frequency);
+  const gust = a.createOscillator();
+  gust.frequency.value = 0.31;
+  const gustAmt = a.createGain();
+  gustAmt.gain.value = 0.28;
+  gust.connect(gustAmt).connect(g.gain);
+  src.connect(band).connect(low).connect(g).connect(sfxBus);
+  src.start();
+  lfo.start();
+  gust.start();
+  weatherNodes = { src, lfo, gust, g };
+}
+
+function stopWeather() {
+  if (!weatherNodes || !ac) return;
+  const { src, lfo, gust, g } = weatherNodes;
+  weatherNodes = null;
+  const t = ac.currentTime;
+  try {
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    for (const node of [src, lfo, gust]) node.stop(t + 0.85);
+  } catch { /* already stopped */ }
+}
+
+/* Ask for weather sound: "storm" or null for calm. */
+export function weather(name) {
+  wantedWeather = name === "storm" ? "storm" : null;
+  if (wantedWeather) startWeather();
+  else stopWeather();
+}
 
 /* Play a sound effect by name. Rapid repeats (like a shower of coins) are thinned out. */
 export function play(name) {

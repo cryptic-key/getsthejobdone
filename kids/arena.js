@@ -1,7 +1,7 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=49";
-import { gearSpecials, gearedLook } from "./gear.js?v=49";
+import { createChoreQuest } from "./chore-quest.js?v=50";
+import { gearSpecials, gearedLook } from "./gear.js?v=50";
 import { music, play as sfx } from "./sound.js";
 
 let host = null;
@@ -127,6 +127,7 @@ function paintLobby(message = "") {
   const level = levelInfo();
   const cats = Object.values(quest?.arena.categories || {}).map((cat) => cat.name).join(" · ");
   const locked = ctx.grounded();
+  const priority = !locked && Boolean(ctx.priority?.());
   el.innerHTML = `<h2 class="page-title">Monster Arena</h2>
     <p class="lede">Answer questions to beat the monsters. Each monster takes 3 hits. A wrong answer costs a heart, and the run ends when your 3 hearts are gone. Beat 3 monsters in a row without losing a heart to level up to harder questions.</p>
     <div class="arena-facts">
@@ -138,6 +139,8 @@ function paintLobby(message = "") {
     ${message ? `<p class="error">${esc(message)}</p>` : ""}
     ${locked
       ? `<div class="banner">The arena is closed while you are grounded.</div>`
+      : priority
+      ? `<div class="banner">CLOSED until your Priority Quest is done.</div><button class="btn sun wide" type="button" disabled>Enter the arena</button>`
       : `<button class="btn sun wide" type="button" data-arena="enter" ${coins >= fee ? "" : "disabled"}>${coins >= fee ? `Enter the arena (${fee} coin${fee === 1 ? "" : "s"})` : `You need ${fee} coins to enter`}</button>`}`;
 }
 

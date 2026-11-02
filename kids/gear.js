@@ -85,6 +85,12 @@ const BODY = {
 
 const PAD = 6;
 
+/* Row of the eyes on a (possibly helmeted) hero look, for framing portraits. */
+export function heroEyeRow(kind, head) {
+  const a = ANCHOR[kind] || ANCHOR.knight;
+  return (normalizeGear(head, "head") ? PAD : 0) + a.eye;
+}
+
 function hexAt(data, i) {
   return `#${[data[i], data[i + 1], data[i + 2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }

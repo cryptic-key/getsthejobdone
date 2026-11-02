@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=49";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=49";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=49";
-import { createChoreQuest } from "./chore-quest.js?v=49";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=49";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=49";
+import { APP_VERSION } from "./version.js?v=50";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=50";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=50";
+import { createChoreQuest } from "./chore-quest.js?v=50";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=50";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=50";
 import { armAudio, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -280,6 +280,7 @@ function nice(error) {
   if (/hearts are full/i.test(msg)) return "All three hearts are already full.";
   if (/pick a real birthday/i.test(msg)) return "Pick a real birthday.";
   if (/arena run over/i.test(msg)) return "That arena run already ended.";
+  if (/priority first/i.test(msg)) return "Finish your Priority Quest first!";
   if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
   if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
   if (/photo required/i.test(msg)) return "Take or choose a photo to mark it done.";
@@ -418,7 +419,7 @@ async function loadParent() {
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet,birth_date").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
-    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
+    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
@@ -462,6 +463,7 @@ async function loadParent() {
       sectionId: row.section_id || null,
       sortOrder: Number(row.sort_order) || 0,
       active: row.active !== false,
+      priority: Boolean(row.priority),
     })),
     sections: (sections.data || []).map((row) => ({
       id: row.id,
@@ -514,6 +516,7 @@ async function loadKid() {
       sectionStart: chore.section_start,
       sectionEnd: chore.section_end,
       sortOrder: Number(chore.sort_order) || 0,
+      priority: Boolean(chore.priority),
     })),
     items: snap.items,
     requests: snap.requests.map((req) => ({ ...req, kidId: snap.kid.id, itemId: req.item_id })),
@@ -590,6 +593,21 @@ function mark() {
 
 const BRAND_TITLE = "Family Adventure Tasks";
 const BRAND_TAGLINE = "Work together to defeat the task monsters";
+
+/* Header avatar: the kid's hero in a gold pixel frame, wearing their helmet, with the pet peeking in. */
+function heroPortrait(child) {
+  const pet = normalizePet(db.hero?.pet || child?.pet) || "";
+  return `<span class="portrait" aria-hidden="true"><canvas class="portrait-frame" width="20" height="20" data-portrait></canvas>${pet ? `<canvas class="portrait-pet" width="14" height="12" data-portrait-pet="${esc(pet)}"></canvas>` : ""}</span>`;
+}
+
+function paintPortraits(root) {
+  const child = db.session?.role === "kid" ? kid() : null;
+  if (!child) return;
+  root.querySelectorAll("canvas[data-portrait]").forEach((canvas) =>
+    paintHeroPortrait(canvas, kidHero(db.hero?.hero || child.hero), COLOR_HEX[heroColorName()] || COLOR_HEX.leaf, db.gear?.head || null, db.gear?.body || null)
+  );
+  root.querySelectorAll("canvas[data-portrait-pet]").forEach((canvas) => drawPetIcon(canvas, canvas.dataset.portraitPet));
+}
 
 function face(color) {
   const fill = COLOR_HEX[color] || COLOR_HEX.leaf;
@@ -1072,6 +1090,8 @@ function paintStage() {
     lockKey,
     market,
     spot,
+    priority: Boolean(child && openPriority(child).length),
+    gateClosed: Boolean(child && priorityLocked(child)),
     onSpot: (kind, mode) => {
       if (kind === "gate" && mode === "entered" && route.name === "arena") {
         revealArena();
@@ -1117,6 +1137,7 @@ function arenaContext() {
     perKill: () => Number(db.family?.arenaPerKill ?? 1),
     level: () => kid()?.arenaLevel || "kid",
     grounded: () => Boolean(grounded(kid())),
+    priority: () => priorityLocked(),
     hero: () => kidHero(db.hero?.hero || kid()?.hero),
     weapon: () => db.hero?.weapon || kid()?.weapon || "broom",
     pet: () => normalizePet(kid()?.pet || db.hero?.pet) || null,
@@ -1719,7 +1740,7 @@ function shell(title, sub, body, nav) {
   return `
     <header class="top${play ? " hud" : ""}">
       <button class="brand" data-action="home">
-        ${child ? face(child.color) : mark()}
+        ${child ? heroPortrait(child) : mark()}
         <span><h1>${esc(title)}</h1><p>${esc(sub)} <span class="ver-tag">v${APP_VERSION}</span></p></span>
       </button>
       <span class="top-actions">
@@ -2025,11 +2046,26 @@ function specialTemplates() {
     .sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.title).localeCompare(String(b.title)));
 }
 
+function priorityToggle(chore) {
+  const on = Boolean(chore.priority);
+  return `<button type="button" class="btn small priority-toggle${on ? " on" : ""}" data-action="toggle-priority" data-id="${esc(chore.id)}" aria-pressed="${on ? "true" : "false"}" title="A Priority task must be done before any other task or the arena">${on ? "★ Priority" : "☆ Priority"}</button>`;
+}
+
 function dragHandle() {
   return `<button type="button" class="drag-handle" draggable="true" aria-label="Drag to rearrange">⋮⋮</button>`;
 }
 
-function questBlock(list, empty) {
+/* Open Priority Tasks for the signed-in kid. While any are open, every other Done button and the arena are locked. */
+function openPriority(child = kid()) {
+  if (!child) return [];
+  return (db.chores || []).filter((chore) => chore.kidId === child.id && chore.priority && chore.status === "open");
+}
+
+function priorityLocked(child = kid()) {
+  return db.session?.role === "kid" && openPriority(child).length > 0;
+}
+
+function questBlock(list, empty, locked = false) {
   if (!list.length) return `<p class="muted">${empty}</p>`;
   return list
     .map((chore) => {
@@ -2041,13 +2077,25 @@ function questBlock(list, empty) {
         <div class="quest-lane" aria-hidden="true">
           <canvas data-quest-walker="${esc(sprite)}" width="96" height="44"></canvas>
         </div>
-        ${waiting ? `<span class="chip">Waiting</span>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`}
+        ${waiting ? `<span class="chip">Waiting</span>` : locked ? `<button class="btn small leaf locked-done" type="button" disabled title="Finish your Priority Quest first">Done</button>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`}
       </div>`;
     })
     .join("");
 }
 
-function kidDailyBoard(list) {
+/* The Priority Quest card: always above every other section, with a marching pixel border. */
+function kidPriorityBoard(list) {
+  const top = list.filter((chore) => chore.priority);
+  if (!top.length) return "";
+  const open = top.some((chore) => chore.status === "open");
+  return `<section class="card priority-card${open ? " is-open" : ""}">
+    <div class="priority-head"><span class="priority-bang" aria-hidden="true">!</span><h2 class="page-title">Priority Quest</h2></div>
+    <p class="lede">${open ? "Do this first! Your other quests and the arena unlock when it's done." : "Nice! Waiting for a parent to check it. Your other quests are unlocked."}</p>
+    ${questBlock(top, "")}
+  </section>`;
+}
+
+function kidDailyBoard(list, locked = false) {
   const dailies = list.filter((chore) => !isSpecial(chore));
   if (!dailies.length) return `<section class="card"><h2 class="page-title">Daily tasks</h2><p class="muted">No daily tasks right now. They come back each day.</p></section>`;
   const groups = new Map();
@@ -2075,7 +2123,7 @@ function kidDailyBoard(list) {
       return `<section class="card">
         <h2 class="page-title">${esc(title)}</h2>
         <p class="lede">${esc(window)}</p>
-        ${questBlock(chores, "Nothing in this window right now.")}
+        ${questBlock(chores, "Nothing in this window right now.", locked)}
       </section>`;
     })
     .join("");
@@ -2172,6 +2220,7 @@ function render() {
   }
   paintSpriteIcons(app);
   paintQuestArt(app);
+  paintPortraits(app);
   mountQuestWalkers(app);
   app.querySelectorAll("canvas[data-look]").forEach((icon) =>
     paintHeroBadge(
@@ -2421,8 +2470,9 @@ const views = {
         <div class="daily-tools">
           <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
           <button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button>
+          ${priorityToggle(chore)}
         </div>
-        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${on ? "" : " · Hidden from the daily board"}</div></div>
+        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${chore.priority ? " · Priority: do this first" : ""}${on ? "" : " · Hidden from the daily board"}</div></div>
         ${monsterChoice(sprite, chore.id)}
         <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
         <button class="btn small leaf" type="submit">Save</button>
@@ -2502,7 +2552,7 @@ const views = {
                 ? specials
                     .map((chore) => {
                       const sprite = taskSprite(chore);
-                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}</div></div><button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
+                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}${chore.priority ? " · Priority" : ""}</div></div>${priorityToggle(chore)}<button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
                     })
                     .join("")
                 : `<p class="muted">No bonus tasks yet.</p>`
@@ -2795,21 +2845,24 @@ const views = {
   today() {
     const child = kid();
     const mine = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "approved");
+    const rest = mine.filter((chore) => !chore.priority);
+    const locked = priorityLocked(child);
     return shell(
       child.name,
       "Quest board",
       `<div class="stack">
         ${worldScene(child.color)}
+        ${kidPriorityBoard(mine)}
         ${kidCharts(child)}
         ${
           grounded(child)
             ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Earn ${(Number(db.family.ungroundPoints) || 0) > 0 ? `${child.groundProgress}/${db.family.ungroundPoints} coins` : "approved coins"} to break out and get three hearts back. Chore coins go to the cage until then.</div>`
             : ""
         }
-        ${kidDailyBoard(mine)}
+        ${kidDailyBoard(rest, locked)}
         <section class="card">
           <h2 class="page-title">Special board</h2>
-          ${questBlock(mine.filter((chore) => isSpecial(chore)), "No bonus tasks right now.")}
+          ${questBlock(rest.filter((chore) => isSpecial(chore)), "No bonus tasks right now.", locked)}
         </section>
       </div>`,
       kidNav("today")
@@ -2864,7 +2917,16 @@ const views = {
 
   arena() {
     const child = kid();
-    return shell(child.name, "Monster Arena", `<div class="stack">${arenaRevealed() ? "" : worldScene(child.color)}<div class="arena-slot"></div></div>`, kidNav("arena"));
+    const closed = priorityLocked(child) && !grounded(child) && !arenaRevealed();
+    const closedCard = closed
+      ? `<section class="card stack arena-closed">
+          <h2 class="page-title">Monster Arena</h2>
+          <div class="banner">CLOSED until your Priority Quest is done.</div>
+          <button class="btn sun wide" type="button" disabled>Enter the arena</button>
+          <button class="btn ghost" type="button" data-action="goto" data-to="today">Go to my Priority Quest</button>
+        </section>`
+      : "";
+    return shell(child.name, "Monster Arena", `<div class="stack">${arenaRevealed() ? "" : worldScene(child.color)}${closedCard}<div class="arena-slot"></div></div>`, kidNav("arena"));
   },
 
   hero() {
@@ -3110,6 +3172,14 @@ app.addEventListener("click", (event) => {
       if (label) label.textContent = spriteName(sprite);
       if (choice) paintSpriteIcons(choice);
     }
+  }
+  if (action === "toggle-priority") {
+    const turningOn = btn.getAttribute("aria-pressed") !== "true";
+    run(
+      () => rpc("set_chore_priority", { p_id: btn.dataset.id, p_on: turningOn }),
+      turningOn ? "Priority on. Kids must finish it before other tasks or the arena." : "Priority off.",
+      "chores"
+    );
   }
   if (action === "toggle-daily") {
     const turningOn = btn.getAttribute("aria-pressed") !== "true";

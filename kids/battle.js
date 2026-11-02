@@ -1,8 +1,8 @@
 /* Pixel forest battles. Waiting chores idle on the trail. Approval plays the fight, hit bars, and defeat. */
 
 import { createPetFollower, drawPetAt, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet, petIcon, petSize } from "./pets.js";
-import { gearedLook } from "./gear.js";
-import { music, play as sfx } from "./sound.js";
+import { heroEyeRow, gearedLook } from "./gear.js";
+import { music, play as sfx, weather } from "./sound.js";
 
 export { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, drawPetIcon, normalizePet };
 
@@ -1948,6 +1948,12 @@ const SKY_LOOK = {
     cloud: ["#ffd0b8", "#e89888"],
     sun: { x: 108, y: 42, r: 9, core: "#ffb040", glow: "#ff6a40" },
   },
+  // Grounded: a dark, stormy sky (the scene gets rain, wind and lightning on top).
+  storm: {
+    sky: ["#121419", "#1b1e25", "#262a33", "#323742"],
+    cloud: ["#3e434f", "#23262e"],
+    storm: true,
+  },
   night: {
     sky: ["#10141f", "#171f33", "#1f2a44", "#2a3654"],
     cloud: ["#3a4868", "#2a354c"],
@@ -2010,8 +2016,9 @@ function buildScenery(season, skyPeriod = "day") {
   const skyPal = SKY_LOOK[skyPeriod] || SKY_LOOK.day;
   const night = skyPeriod === "night";
   const dusk = skyPeriod === "evening" || skyPeriod === "morning";
-  const shade = night ? 0.48 : dusk ? 0.18 : 0;
-  const nightTone = "#10141f";
+  const storm = skyPeriod === "storm";
+  const shade = storm ? 0.64 : night ? 0.48 : dusk ? 0.18 : 0;
+  const nightTone = storm ? "#1c1f26" : "#10141f";
   const pal = {
     ...base,
     sky: skyPal.sky || base.sky,
@@ -2029,7 +2036,7 @@ function buildScenery(season, skyPeriod = "day") {
   };
   const rand = mulberry(
     ({ spring: 21, summer: 11, fall: 33, winter: 47 }[season] || 11) +
-      ({ morning: 3, day: 0, evening: 7, night: 13 }[skyPeriod] || 0)
+      ({ morning: 3, day: 0, evening: 7, night: 13, storm: 17 }[skyPeriod] || 0)
   );
   const roll = (a, b) => a + rand() * (b - a);
   const pick = (list) => list[(rand() * list.length) | 0];
@@ -2053,6 +2060,16 @@ function buildScenery(season, skyPeriod = "day") {
     if (skyPal.moon) paintMoon(g, skyPal.moon);
   });
   const clouds = layer(256, 30, (g, w, h, wrap) => {
+    if (skyPal.storm) {
+      // A thick, lumpy ceiling of storm clouds.
+      for (let x = 0; x < 256; x += 9) wrap((o) => {
+        const y = 4 + ((x * 7) % 5);
+        disc(g, x + o, y, 6 + (x % 3), pal.cloud[1]);
+        disc(g, x + o + 4, y - 2, 5, pal.cloud[0]);
+      });
+      rect(g, 0, 0, 256, 4, pal.cloud[1]);
+      return;
+    }
     [[20, 8], [90, 14], [150, 6], [210, 12]].forEach(([x, y]) => wrap((o) => {
       disc(g, x + o, y, 4, pal.cloud[0]);
       disc(g, x + o + 5, y - 2, 5, pal.cloud[0]);
@@ -2191,6 +2208,171 @@ function buildScenery(season, skyPeriod = "day") {
 let scenery = buildScenery(currentSeason(), currentSkyPeriod());
 let themeKey = "";
 
+/* ---------- Grounded storm: dark sky, wind-bent trees, rain and lightning while the kid is in the cage ---------- */
+let stormOn = false;
+let stormAmt = 0;
+let stormScenery = null;
+let rain = [];
+let leaves = [];
+let bolt = null;
+let flash = 0;
+let nextBolt = 2;
+let thunderAt = -1;
+
+function stormLook() {
+  if (!stormScenery || stormScenery.season !== scenery.season) stormScenery = buildScenery(scenery.season, "storm");
+  return stormScenery;
+}
+
+function setStorm(on) {
+  if (stormOn === on) return;
+  stormOn = on;
+  weather(on ? "storm" : null);
+  if (on) {
+    nextBolt = 1.2;
+    if (reduce) stormAmt = 1;
+  }
+}
+
+function makeBolt() {
+  const pts = [];
+  let x = 20 + Math.random() * (W - 40);
+  let y = 0;
+  const end = Math.random() < 0.5 ? G - 2 : 24 + Math.random() * 18;
+  while (y < end) {
+    pts.push([x, y]);
+    y += 3 + Math.random() * 5;
+    x += (Math.random() - 0.5) * 10;
+  }
+  pts.push([x, Math.min(y, end)]);
+  // A short side fork.
+  const at = pts[1 + ((Math.random() * (pts.length - 2)) | 0)] || pts[0];
+  const fork = [at];
+  let fx = at[0];
+  let fy = at[1];
+  for (let i = 0; i < 3; i += 1) { fx += (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 4); fy += 3 + Math.random() * 4; fork.push([fx, fy]); }
+  return { pts, fork, life: 0.28, ground: end >= G - 2 };
+}
+
+function updateStorm(dt) {
+  const want = stormOn ? 1 : 0;
+  stormAmt += (want - stormAmt) * Math.min(1, dt * (stormOn ? 1.2 : 2));
+  if (Math.abs(stormAmt - want) < 0.005) stormAmt = want;
+  if (stormAmt <= 0) {
+    rain = [];
+    leaves = [];
+    bolt = null;
+    flash = 0;
+    return;
+  }
+  const drops = Math.round(90 * stormAmt);
+  while (rain.length < drops) rain.push({ x: Math.random() * (W + 30), y: Math.random() * H, v: 110 + Math.random() * 50 });
+  if (rain.length > drops) rain.length = drops;
+  for (const d of rain) {
+    d.y += d.v * dt;
+    d.x -= d.v * 0.35 * dt;
+    if (d.y > G + 2) {
+      if (Math.random() < 0.25) particles.push({ x: d.x, y: G - 1, vx: Math.random() * 16 - 8, vy: -18, g: 120, life: 0.15, c: "#9fb4cc" });
+      d.y = -4 - Math.random() * 10;
+      d.x = Math.random() * (W + 30);
+    }
+  }
+  if (stormOn && leaves.length < 5 && Math.random() < dt * 1.5) {
+    leaves.push({ x: W + 4, y: 14 + Math.random() * 36, vx: -(50 + Math.random() * 40), ph: Math.random() * 6, c: ["#8a6a2a", "#5a7a3a", "#a0522a"][(Math.random() * 3) | 0] });
+  }
+  for (const l of leaves) { l.x += l.vx * dt; l.ph += dt * 9; }
+  leaves = leaves.filter((l) => l.x > -6);
+  if (bolt) { bolt.life -= dt; if (bolt.life <= 0) bolt = null; }
+  flash = Math.max(0, flash - dt * 3.2);
+  if (thunderAt > 0) { thunderAt -= dt; if (thunderAt <= 0) { sfx("thunder"); thunderAt = -1; } }
+  if (stormOn && stormAmt > 0.6 && !reduce) {
+    nextBolt -= dt;
+    if (nextBolt <= 0) {
+      bolt = makeBolt();
+      flash = 1;
+      shake = Math.max(shake, bolt.ground ? 0.25 : 0.12);
+      sfx("lightning");
+      thunderAt = 0.25 + Math.random() * 0.5;
+      nextBolt = 3 + Math.random() * 4;
+    }
+  }
+}
+
+/* Trees bend in the wind: each horizontal strip shifts more the higher it is. */
+function drawSwayLayer(c, off, amount) {
+  const w = c.width;
+  const base = -((((Math.round(off)) % w) + w) % w);
+  for (let y = 0; y < G; y += 3) {
+    const lift = (G - y) / G;
+    const gust = Math.sin(time * 1.3) * 0.6 + 0.8;
+    const dx = Math.round((Math.sin(time * 6 + y * 0.35) * 0.8 - gust) * lift * amount);
+    for (const x of [base, base + w]) ctx.drawImage(c, 0, y, w, 3, x + dx, y, w, 3);
+  }
+  ctx.drawImage(c, 0, G, w, H - G, base, G, w, H - G);
+  ctx.drawImage(c, 0, G, w, H - G, base + w, G, w, H - G);
+}
+
+function drawStormBack(bgX) {
+  if (stormAmt <= 0) return;
+  const look = stormLook();
+  ctx.globalAlpha = stormAmt;
+  ctx.drawImage(look.sky, 0, 0);
+  if (flash > 0.4) { ctx.globalAlpha = stormAmt * (flash - 0.4); rect(ctx, 0, 0, W, 40, "#5a6070"); ctx.globalAlpha = stormAmt; }
+  drawLayer(look.clouds, bgX * 0.08 + time * 9, 0);
+  drawLayer(look.clouds, bgX * 0.1 + time * 15 + 60, 5);
+  if (bolt && !bolt.ground) drawBolt();
+  drawLayer(look.hills, bgX * 0.15);
+  drawSwayLayer(look.farPines, bgX * 0.3, 1);
+  drawSwayLayer(look.midPines, bgX * 0.5, 2);
+  drawSwayLayer(look.trees, bgX * 0.7, 3);
+  drawLayer(look.ground, bgX);
+  ctx.globalAlpha = 1;
+}
+
+function drawBolt() {
+  const line = (pts, col) => {
+    for (let i = 1; i < pts.length; i += 1) {
+      const [x0, y0] = pts[i - 1];
+      const [x1, y1] = pts[i];
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) | 0;
+      for (let k = 0; k <= n; k += 1) {
+        const x = Math.round(x0 + ((x1 - x0) * k) / (n || 1));
+        const y = Math.round(y0 + ((y1 - y0) * k) / (n || 1));
+        px(ctx, x + 1, y, "#8fb8ff");
+        px(ctx, x, y, col);
+      }
+    }
+  };
+  line(bolt.pts, "#ffffff");
+  line(bolt.fork, "#dff0ff");
+}
+
+function drawStormFront() {
+  if (stormAmt <= 0) return;
+  ctx.globalAlpha = stormAmt;
+  if (bolt && bolt.ground) drawBolt();
+  for (const d of rain) {
+    const x = Math.round(d.x);
+    const y = Math.round(d.y);
+    px(ctx, x, y, "#9fb4cc");
+    px(ctx, x + 1, y - 1, "#7f93ad");
+    px(ctx, x + 1, y - 2, "#5f7290");
+  }
+  for (const l of leaves) {
+    const y = Math.round(l.y + Math.sin(l.ph) * 3);
+    px(ctx, Math.round(l.x), y, l.c);
+    if (((l.ph * 2) | 0) % 2) px(ctx, Math.round(l.x) + 1, y, l.c);
+  }
+  // A cold, dim wash over everything, and the white flash when lightning strikes.
+  ctx.globalAlpha = stormAmt * 0.18;
+  rect(ctx, 0, 0, W, H, "#0b0d18");
+  if (flash > 0) {
+    ctx.globalAlpha = Math.min(0.75, flash * 0.75);
+    rect(ctx, 0, 0, W, H, "#e8f0ff");
+  }
+  ctx.globalAlpha = 1;
+}
+
 export function applySeasonTheme(at = new Date()) {
   const season = currentSeason(at);
   const sky = currentSkyPeriod(at);
@@ -2271,6 +2453,13 @@ const FONT = {
   E: "111100111100111",
   T: "111010010010010",
   R: "110101110101101",
+  L: "100100100100111",
+  D: "110101101101110",
+  Y: "101101010010010",
+  F: "111100110100100",
+  G: "011100101101011",
+  K: "101101110101101",
+  "!": "010010010000010",
 };
 
 export function drawMonsterIcon(target, type) {
@@ -2294,6 +2483,44 @@ export function drawHeroIcon(target, color) {
   g.imageSmoothingEnabled = false;
   g.clearRect(0, 0, target.width, target.height);
   g.drawImage(src, 0, 0, target.width, target.height);
+}
+
+/* Header portrait: the hero's head and shoulders (with the equipped helmet) in a gold pixel frame. */
+export function paintHeroPortrait(target, heroKey, color, headKey, bodyKey) {
+  if (!target) return;
+  const kind = heroKey || "knight";
+  const look = gearedLook(heroLook(kind, color), kind, headKey, bodyKey);
+  const src = look.a;
+  const S = 20;
+  const IN = 14;
+  target.width = S;
+  target.height = S;
+  const g = target.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, S, S);
+  g.fillStyle = K;
+  g.fillRect(0, 0, S, S);
+  g.fillStyle = "#f4c542";
+  g.fillRect(1, 1, S - 2, S - 2);
+  g.fillStyle = "#c99a1e";
+  g.fillRect(2, S - 3, S - 4, 1);
+  g.fillRect(S - 3, 2, 1, S - 4);
+  g.fillStyle = K;
+  g.fillRect(2, 2, S - 4, S - 4);
+  g.fillStyle = "#cfe8ff";
+  g.fillRect(3, 3, IN, IN);
+  g.fillStyle = "#e6f4ff";
+  g.fillRect(3, 3, IN, 5);
+  g.save();
+  g.beginPath();
+  g.rect(3, 3, IN, IN);
+  g.clip();
+  const top = heroEyeRow(kind, headKey) - 8;
+  g.drawImage(src, 3 + Math.round((IN - src.width) / 2), 3 - top);
+  g.restore();
+  // Corner rivets.
+  g.fillStyle = "#fff3a8";
+  for (const [x, y] of [[1, 1], [S - 2, 1], [1, S - 2], [S - 2, S - 2]]) g.fillRect(x, y, 1, 1);
 }
 
 export function paintHeroBadge(target, heroKey, weapon, color, petKey, headKey, bodyKey) {
@@ -3632,7 +3859,9 @@ function leaveSpots() {
 }
 
 function spotLine(kind) {
+  if (kind === "board" && scene.priority) return "A Priority Quest! Do that one first.";
   if (kind === "board") return "The Quest Board! Pick a quest and get it done.";
+  if (kind === "gate" && scene.gateClosed) return "CLOSED! Finish your Priority Quest first.";
   if (kind === "chest") return "Your treasure chest! Here is your hero's gear.";
   return "The Monster Arena! Step inside...";
 }
@@ -3667,6 +3896,11 @@ function reachSpot(s) {
   }
   if (s.kind === "board") sfx("board");
   say(spotLine(s.kind));
+  if (s.kind === "gate" && scene.gateClosed) {
+    sfx("hit");
+    scene.onSpot?.("gate", "closed");
+    return;
+  }
   if (s.kind === "gate") enterGate(s, runToken);
   scene.onSpot?.(s.kind, "here");
 }
@@ -3753,6 +3987,58 @@ function drawBoard(x) {
   });
 }
 
+/* The Priority Board: a smaller royal-red notice board with a flashing "!" scroll, beside the Quest Board. */
+function drawPriorityBoard(x) {
+  const Y = G;
+  const blink = ((time * 3) | 0) % 2 === 0;
+  rect(ctx, x + 2, Y, 28, 1, scenery.shadow);
+  for (const px0 of [x + 3, x + 26]) { rect(ctx, px0, Y - 34, 3, 34, K); px(ctx, px0 + 1, Y - 34, "#8a5a2a"); rect(ctx, px0 + 1, Y - 33, 1, 33, "#8a5a2a"); }
+  // Banner across the top, trimmed with gold.
+  rect(ctx, x - 2, Y - 42, 35, 9, K);
+  rect(ctx, x - 1, Y - 41, 33, 7, "#d63c3c");
+  for (let i = 0; i < 33; i += 2) px(ctx, x - 1 + i, Y - 41, "#f4c542");
+  text("PRIORITY", x, Y - 40, "#fff0d0");
+  // Board.
+  rect(ctx, x, Y - 33, 32, 20, K);
+  rect(ctx, x + 1, Y - 32, 30, 18, "#7a2e3e");
+  for (let i = 0; i < 30; i += 1) if ((i + ((time * 8) | 0)) % 4 === 0) { px(ctx, x + 1 + i, Y - 32, "#f4c542"); px(ctx, x + 30 - i, Y - 15, "#f4c542"); }
+  // Scroll with a big "!" and a wax seal.
+  rect(ctx, x + 7, Y - 30, 18, 14, K);
+  rect(ctx, x + 8, Y - 29, 16, 12, "#fff3d0");
+  rect(ctx, x + 7, Y - 31, 18, 2, "#e8d4a0");
+  rect(ctx, x + 7, Y - 17, 18, 2, "#e8d4a0");
+  const bang = blink ? "#e04a4a" : "#f4862e";
+  rect(ctx, x + 15, Y - 28, 2, 6, bang);
+  rect(ctx, x + 15, Y - 20, 2, 2, bang);
+  rect(ctx, x + 19, Y - 21, 4, 4, "#c0392b");
+  px(ctx, x + 20, Y - 20, "#f47a6a");
+  // Sparkles so it catches the eye.
+  if (blink) { px(ctx, x - 3, Y - 38, "#fff3a8"); px(ctx, x + 34, Y - 30, "#fff3a8"); }
+  else { px(ctx, x + 33, Y - 44, "#ffffff"); px(ctx, x - 2, Y - 26, "#ffffff"); }
+}
+
+/* Boards nailed across the arena doorway with a hanging CLOSED sign. */
+function drawClosedSign(x) {
+  const Y = G;
+  const wood = "#a0622a", dark = "#6e4020";
+  // Two planks in an X across the arch.
+  for (let i = 0; i < 20; i += 1) {
+    const yy = Y - 20 + i;
+    rect(ctx, x + 12 + i, yy, 3, 2, i % 5 === 0 ? dark : wood);
+    rect(ctx, x + 31 - i, yy, 3, 2, i % 5 === 0 ? dark : wood);
+  }
+  for (const [nx, ny] of [[x + 13, Y - 19], [x + 32, Y - 19], [x + 13, Y - 2], [x + 32, Y - 2]]) px(ctx, nx, ny, "#c8d0dc");
+  // Hanging sign, swaying a little.
+  const sway = Math.round(Math.sin(time * 2.5));
+  const sx = x + 8 + sway;
+  px(ctx, x + 14, Y - 31, K); px(ctx, x + 30, Y - 31, K);
+  rect(ctx, x + 14, Y - 30, 1, 2, K); rect(ctx, x + 30, Y - 30, 1, 2, K);
+  rect(ctx, sx, Y - 28, 29, 9, K);
+  rect(ctx, sx + 1, Y - 27, 27, 7, "#f4efdc");
+  rect(ctx, sx + 1, Y - 21, 27, 1, "#c8b890");
+  text("CLOSED", sx + 3, Y - 26, "#d63c3c");
+}
+
 function drawGate(x) {
   const Y = G;
   const stone = "#9a8670", hi = "#c4b090", mort = "#6e5e4c";
@@ -3797,8 +4083,13 @@ function drawSpots() {
   for (const s of spots) {
     const x = Math.round(s.x);
     if (s.kind === "chest") drawChest(x, s.open);
-    else if (s.kind === "board") drawBoard(x);
-    else if (s.kind === "gate") drawGate(x);
+    else if (s.kind === "board") {
+      drawBoard(x);
+      if (scene.priority) drawPriorityBoard(x + 41);
+    } else if (s.kind === "gate") {
+      drawGate(x);
+      if (scene.gateClosed) drawClosedSign(x);
+    }
   }
 }
 
@@ -4239,6 +4530,9 @@ export function setStageScene(next) {
   // Background music follows the scene: grounded tune in the cage, shop tune at the Market, trail theme otherwise.
   const locked = next.lockup && next.lockup !== "free";
   music(locked ? "grounded" : next.market ? "market" : "trail");
+  // Grounded kids get a storm over the cage; it clears when they break out.
+  if (!Array.isArray(next.parade) && !next.review) setStorm(Boolean(locked));
+  else setStorm(false);
   if (Object.prototype.hasOwnProperty.call(next, "hearts")) paintHearts(next.hearts);
   if (Array.isArray(next.parade)) {
     scene.gear = null;
@@ -4479,6 +4773,12 @@ export function setStageScene(next) {
       scroll = Math.max(scroll, 12);
     }
   }
+  // Priority Board beside the Quest Board, and a CLOSED sign on the arena gate while a Priority Task is open.
+  scene.priority = Boolean(next.priority);
+  const wasClosed = scene.gateClosed;
+  scene.gateClosed = Boolean(next.gateClosed);
+  const gateHere = spots.find((sp) => sp.kind === "gate" && sp.state === "here");
+  if (gateHere && wasClosed && !scene.gateClosed) enterGate(gateHere, runToken);
   // Landmarks for the Quests (board), My Hero (chest) and Arena (gate) tabs.
   if (Object.prototype.hasOwnProperty.call(next, "spot")) {
     scene.onSpot = next.onSpot || null;
@@ -4832,6 +5132,7 @@ function drawCoin(x, y, ph) {
 }
 function update(dt) {
   time += dt;
+  updateStorm(dt);
   for (let i = timers.length - 1; i >= 0; i -= 1) {
     timers[i].t -= dt;
     if (timers[i].t <= 0 || timers[i].token !== runToken) {
@@ -5031,6 +5332,7 @@ function draw() {
   drawLayer(scenery.midPines, bgX * 0.5);
   drawLayer(scenery.trees, bgX * 0.7);
   drawLayer(scenery.ground, bgX);
+  drawStormBack(bgX);
   drawSpots();
   if (marketStall) drawMarket();
   if (paradeOn && parade.length) {
@@ -5224,6 +5526,8 @@ function draw() {
   drawGateFade();
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
   drawLayer(scenery.fore, (marketWorldX != null ? marketWorldX : worldX) * 1.3, H - 12);
+  if (stormAmt > 0) { ctx.globalAlpha = stormAmt; drawLayer(stormLook().fore, (marketWorldX != null ? marketWorldX : worldX) * 1.3, H - 12); ctx.globalAlpha = 1; }
+  drawStormFront();
   drawHearts();
   if (siren) {
     const on = (time * 6 | 0) % 2;

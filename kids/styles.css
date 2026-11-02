@@ -1866,3 +1866,58 @@ body.play .loot strong::before { content: "★ "; color: var(--sun); }
     transition: none !important;
   }
 }
+
+/* ---------- Priority Quest: a marching gold-and-red pixel border, always the first section ---------- */
+body.play .card.priority-card,
+.card.priority-card {
+  position: relative;
+  border: 8px solid transparent;
+  border-radius: 6px;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    conic-gradient(#f4c542 0 25%, #d63c3c 0 50%, #f4c542 0 75%, #d63c3c 0) border-box;
+  background-size: auto, 16px 16px;
+  box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px rgba(36, 49, 44, 0.16);
+  animation: priority-march 0.8s steps(4) infinite;
+}
+.card.priority-card:not(.is-open) { animation: none; filter: saturate(0.6); }
+@keyframes priority-march {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, 16px 0; }
+}
+.priority-head { display: flex; align-items: center; gap: 10px; }
+.priority-head .page-title { margin: 0; color: #a3222a; }
+.priority-bang {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  background: #d63c3c;
+  color: #fff3d0;
+  font-weight: 900;
+  font-size: 1.3rem;
+  border: 3px solid var(--ink);
+  border-radius: 4px;
+  animation: priority-blink 1s steps(2) infinite;
+}
+@keyframes priority-blink { 50% { background: #f4c542; color: #a3222a; } }
+.btn.locked-done:disabled {
+  background: #b9b9b0;
+  border-color: #8c8c84;
+  color: #f4f4ee;
+  box-shadow: none;
+  filter: grayscale(1);
+  opacity: 0.75;
+}
+.arena-closed .btn:disabled { background: #b9b9b0; color: #f4f4ee; filter: grayscale(1); }
+.priority-toggle { background: var(--sun-soft); color: #7a5200; border: 2px solid var(--sun); }
+.priority-toggle.on { background: #d63c3c; color: #fff; border-color: #8a1f1f; }
+@media (prefers-reduced-motion: reduce) {
+  .card.priority-card, .priority-bang { animation: none; }
+}
+
+/* ---------- Header: pixel hero portrait with the pet peeking in ---------- */
+.portrait { position: relative; display: inline-block; width: 60px; height: 60px; flex: none; margin-right: 10px; }
+.portrait canvas.portrait-frame { width: 60px; height: 60px; image-rendering: pixelated; display: block; }
+.portrait canvas.portrait-pet { position: absolute; right: -12px; bottom: -6px; width: 28px; height: 24px; image-rendering: pixelated; }
+body.play .brand .portrait { animation: bob 2.2s ease-in-out infinite; }
