@@ -1392,6 +1392,87 @@ details.library .lede { margin-top: 8px; }
   align-items: baseline;
   margin-bottom: 8px;
 }
+.daily-section-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  text-align: right;
+}
+.section-toggle {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fffdf8;
+  cursor: pointer;
+  padding: 0;
+}
+.section-toggle i {
+  width: 8px;
+  height: 8px;
+  border-right: 3px solid var(--ink);
+  border-bottom: 3px solid var(--ink);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+.daily-section.collapsed .section-toggle i { transform: rotate(-45deg); }
+.daily-section.collapsed { min-height: 0; }
+.daily-section.collapsed .daily-section-head { margin-bottom: 0; align-items: center; }
+.daily-section.collapsed > :not(.daily-section-head) { display: none; }
+.daily-section-head { align-items: center; }
+.picks {
+  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+.picks legend {
+  width: 100%;
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.schedule-row .picks label.pick,
+.picks label.pick {
+  display: inline-flex;
+  margin: 0;
+  cursor: pointer;
+}
+.pick input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.pick span {
+  min-width: 36px;
+  padding: 6px 10px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: #fffdf8;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-align: center;
+}
+.pick input:checked + span {
+  background: var(--leaf);
+  border-color: var(--leaf);
+  color: #fff;
+}
+.pick input:focus-visible + span { outline: 3px solid var(--sun); outline-offset: 2px; }
 .drop-empty { margin: 0; padding: 12px 0; }
 .chore.off .chore-copy strong,
 .chore.off .chore-copy .tiny { opacity: 0.45; }

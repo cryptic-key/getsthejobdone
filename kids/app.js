@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=28";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=28";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=28";
-import { createChoreQuest } from "./chore-quest.js?v=28";
+import { APP_VERSION } from "./version.js?v=29";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=29";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=29";
+import { createChoreQuest } from "./chore-quest.js?v=29";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -72,6 +72,7 @@ const LOG_TYPES = [
   ["reward", "Reward"],
   ["deduct", "Deduct"],
   ["warn", "Warn"],
+  ["heart", "Heart back"],
   ["ground", "Ground"],
   ["lift", "Lift"],
   ["shop", "Shop"],
@@ -89,6 +90,7 @@ function activityType(text) {
   if (/ got a reward/.test(t)) return "reward";
   if (/ is grounded until /.test(t)) return "ground";
   if (/ warned /.test(t)) return "warn";
+  if (/ gave .+ a heart back\./.test(t)) return "heart";
   if (/ is free\. Three hearts/.test(t)) return "lift";
   if (/ was reset/.test(t)) return "reset";
   if (/ asked for | points went back to | bought 30 device| cashed .+ points for \$1/.test(t)) return "shop";
@@ -264,6 +266,9 @@ function nice(error) {
   if (/pick a color/i.test(msg)) return "Pick one of the colors under your hero.";
   if (/unknown weapon/i.test(msg)) return "That weapon is not in the armory.";
   if (/section name required/i.test(msg)) return "Give the section a name.";
+  if (/pick at least one day/i.test(msg)) return "Pick at least one day for the section.";
+  if (/use Lift to open the cage/i.test(msg)) return "That hero is in the cage. Use Lift to free them.";
+  if (/hearts are full/i.test(msg)) return "All three hearts are already full.";
   if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
   if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
   if (/photo required/i.test(msg)) return "Take or choose a photo to mark it done.";
@@ -386,7 +391,7 @@ async function loadParent() {
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
-    supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order").order("sort_order").order("created_at"),
+    supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
     supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(200),
@@ -434,6 +439,8 @@ async function loadParent() {
       startMinute: Number(row.start_minute) || 0,
       endMinute: Number(row.end_minute) || 0,
       sortOrder: Number(row.sort_order) || 0,
+      days: Array.isArray(row.days) ? row.days : ALL_DAYS,
+      kidIds: Array.isArray(row.kid_ids) ? row.kid_ids : [],
     })),
     items: items.data,
     requests: requests.data.map((req) => ({ ...req, kidId: req.kid_id, itemId: req.item_id })),
@@ -1666,6 +1673,84 @@ function torontoMinute() {
   return hour * 60 + minute;
 }
 
+const DAY_LABELS = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const COLLAPSED_SECTIONS = "tasks-collapsed-sections";
+
+function torontoWeekday() {
+  const day = new Intl.DateTimeFormat("en-US", { timeZone: "America/Toronto", weekday: "short" }).format(new Date());
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(day);
+}
+
+function sectionDays(section) {
+  const days = Array.isArray(section?.days) ? section.days.map(Number).filter((day) => day >= 0 && day <= 6) : [];
+  return days.length ? [...new Set(days)].sort() : ALL_DAYS;
+}
+
+function sectionToday(section, weekday = torontoWeekday()) {
+  return sectionDays(section).includes(weekday);
+}
+
+function daysLabel(days) {
+  const key = days.join(",");
+  if (days.length === 7) return "Every day";
+  if (key === "1,2,3,4,5") return "Weekdays";
+  if (key === "0,6") return "Weekends";
+  return days.map((day) => DAY_LABELS[day]).join(" ");
+}
+
+function sectionKidIds(section) {
+  return (section?.kidIds || []).filter((id) => kidById(id));
+}
+
+function sectionKidsLabel(section) {
+  const names = sectionKidIds(section).map((id) => kidById(id).name);
+  return names.length ? names.join(", ") : "All kids";
+}
+
+function sectionStatus(section, nowMinute, weekday) {
+  if (!sectionToday(section, weekday)) return "Off today";
+  return sectionOpen(section, nowMinute) ? "Open now" : "Closed now";
+}
+
+function dayPicker(days = ALL_DAYS) {
+  return `<fieldset class="picks"><legend>Days</legend>${DAY_LABELS.map(
+    (label, day) => `<label class="pick"><input type="checkbox" name="days" value="${day}" ${days.includes(day) ? "checked" : ""}><span>${label}</span></label>`
+  ).join("")}</fieldset>`;
+}
+
+function kidPicker(kidIds = []) {
+  const picked = new Set(kidIds);
+  return `<fieldset class="picks"><legend>Who</legend><label class="pick"><input type="checkbox" name="allKids" value="1" ${picked.size ? "" : "checked"}><span>All kids</span></label>${db.kids
+    .map((child) => `<label class="pick"><input type="checkbox" name="kids" value="${esc(child.id)}" ${picked.has(child.id) ? "checked" : ""}><span>${esc(child.name)}</span></label>`)
+    .join("")}</fieldset>`;
+}
+
+function pickedDays(form) {
+  return [...form.querySelectorAll('input[name="days"]:checked')].map((input) => Number(input.value));
+}
+
+function pickedKids(form) {
+  if (form.querySelector('input[name="allKids"]')?.checked) return [];
+  return [...form.querySelectorAll('input[name="kids"]:checked')].map((input) => input.value);
+}
+
+function collapsedSections() {
+  try {
+    const keys = JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS) || "[]");
+    return new Set(Array.isArray(keys) ? keys : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function setSectionCollapsed(key, collapsed) {
+  const keys = collapsedSections();
+  if (collapsed) keys.add(key);
+  else keys.delete(key);
+  localStorage.setItem(COLLAPSED_SECTIONS, JSON.stringify([...keys]));
+}
+
 function sortedSections() {
   return [...(db.sections || [])].sort((a, b) => (a.sortOrder - b.sortOrder) || a.title.localeCompare(b.title));
 }
@@ -2052,6 +2137,8 @@ const views = {
     const specials = specialTemplates();
     const sections = sortedSections();
     const now = torontoMinute();
+    const weekday = torontoWeekday();
+    const collapsed = collapsedSections();
     const kidChoices = `<option value="">Everybody</option>${db.kids.map((child) => `<option value="${esc(child.id)}">${esc(child.name)}</option>`).join("")}`;
     const sectionChoices = `<option value="">Anytime</option>${sections.map((section) => `<option value="${esc(section.id)}">${esc(section.title)}</option>`).join("")}`;
     const dailyRow = (chore) => {
@@ -2076,11 +2163,11 @@ const views = {
       ...sections.map((section) => ({
         id: section.id,
         title: section.title,
-        hint: `${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)}${sectionOpen(section, now) ? " · Open now" : " · Closed now"}`,
-        open: sectionOpen(section, now),
+        hint: `${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)} · ${daysLabel(sectionDays(section))} · ${sectionKidsLabel(section)} · ${sectionStatus(section, now, weekday)}`,
+        open: sectionToday(section, weekday) && sectionOpen(section, now),
         chores: templatesInSection(section.id),
       })),
-    ];
+    ].map((group) => ({ ...group, key: group.id || "anytime", collapsed: collapsed.has(group.id || "anytime") }));
     return shell(
       db.family.name,
       "Tasks",
@@ -2089,7 +2176,7 @@ const views = {
         ${spriteLibrary()}
         <section class="card">
           <h2 class="page-title">Schedule sections</h2>
-          <p class="lede">Kids only see a section during its hours (Toronto time). Submitted tasks still stay visible.</p>
+          <p class="lede">Kids only see a section on its days, during its hours (Toronto time), and only if they are picked under Who. Submitted tasks still stay visible.</p>
           <div class="section-list" data-drop-kind="sections">
             ${
               sections.length
@@ -2100,7 +2187,9 @@ const views = {
                         <label class="schedule-name">Name<input name="title" required value="${esc(section.title)}"></label>
                         <label>Starts<input name="start" type="time" step="60" required value="${esc(clockLabel(section.startMinute))}"></label>
                         <label>Ends<input name="end" type="time" step="60" required value="${esc(clockLabel(section.endMinute))}"></label>
-                        <span class="tiny muted schedule-status">${sectionOpen(section, now) ? "Open now" : "Closed now"}</span>
+                        ${dayPicker(sectionDays(section))}
+                        ${kidPicker(sectionKidIds(section))}
+                        <span class="tiny muted schedule-status">${sectionStatus(section, now, weekday)}</span>
                         <button class="btn small leaf" type="submit">Save</button>
                         <button class="btn small ghost" type="button" data-action="remove-section" data-id="${esc(section.id)}">Remove</button>
                       </form>`
@@ -2113,6 +2202,8 @@ const views = {
             <label>Section name<input name="title" required placeholder="Morning"></label>
             <label>Starts<input name="start" type="time" step="60" required value="07:00"></label>
             <label>Ends<input name="end" type="time" step="60" required value="09:00"></label>
+            ${dayPicker()}
+            ${kidPicker()}
             <button class="btn leaf" type="submit">Add section</button>
           </form>
         </section>
@@ -2145,8 +2236,14 @@ const views = {
           <p class="lede">Every kid can do these once a day. Drop a task into a section to move it. Turn one off to hide it from the daily board.</p>
           ${dailyGroups
             .map(
-              (group) => `<div class="daily-section${group.open ? "" : " closed"}" data-drop-kind="daily" data-section="${esc(group.id)}">
-                <div class="daily-section-head"><strong>${esc(group.title)}</strong><span class="tiny muted">${esc(group.hint)}</span></div>
+              (group) => `<div class="daily-section${group.open ? "" : " closed"}${group.collapsed ? " collapsed" : ""}" data-drop-kind="daily" data-section="${esc(group.id)}">
+                <div class="daily-section-head">
+                  <strong>${esc(group.title)}</strong>
+                  <span class="daily-section-meta">
+                    <span class="tiny muted">${esc(group.hint)}${group.collapsed ? ` · ${group.chores.length} task${group.chores.length === 1 ? "" : "s"}` : ""}</span>
+                    <button type="button" class="section-toggle" data-action="toggle-task-section" data-key="${esc(group.key)}" aria-expanded="${group.collapsed ? "false" : "true"}" aria-label="${group.collapsed ? "Expand" : "Collapse"} ${esc(group.title)}"><i aria-hidden="true"></i></button>
+                  </span>
+                </div>
                 ${group.chores.length ? group.chores.map(dailyRow).join("") : `<p class="muted drop-empty">Drop tasks here</p>`}
               </div>`
             )
@@ -2214,6 +2311,7 @@ const views = {
                     <div class="kid-column-head">
                       <div class="who"><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div>
                       <button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button>
+                      <button class="btn small ghost" type="button" data-action="give-heart" data-id="${child.id}" ${child.hearts >= 3 || grounded(child) ? "disabled" : ""} title="${grounded(child) ? "Use Lift to open the cage" : "Give one heart back"}">Give heart</button>
                     </div>
                     <div class="kid-column-balances">${balances(child)}</div>
                     ${
@@ -2274,7 +2372,7 @@ const views = {
             </form>
           </dialog>
           <h2 class="page-title">Cage release</h2>
-          <p class="lede">When the last heart is gone, the hero is locked up. Approved chore coins count toward this goal. Hitting the goal frees them for good and restores three hearts. Set 0 if only a parent can lift.</p>
+          <p class="lede">When the last heart is gone, the hero is locked up. While locked, approved chore coins go to this goal instead of the coin balance. Hitting the goal frees them for good and restores three hearts. Set 0 if only a parent can lift.</p>
           <form class="two" data-action="save-cage-goal">
             <label>Coins to free the cage<input name="points" type="number" min="0" value="${Number(db.family.ungroundPoints) || 0}" required></label>
             <button class="btn leaf" type="submit">Save cage goal</button>
@@ -2401,7 +2499,7 @@ const views = {
         ${kidCharts(child)}
         ${
           grounded(child)
-            ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Earn ${(Number(db.family.ungroundPoints) || 0) > 0 ? `${child.groundProgress}/${db.family.ungroundPoints} coins` : "approved coins"} to break out and get three hearts back.</div>`
+            ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Earn ${(Number(db.family.ungroundPoints) || 0) > 0 ? `${child.groundProgress}/${db.family.ungroundPoints} coins` : "approved coins"} to break out and get three hearts back. Chore coins go to the cage until then.</div>`
             : ""
         }
         ${kidDailyBoard(mine)}
@@ -2507,6 +2605,19 @@ app.addEventListener("toggle", (event) => {
 });
 
 app.addEventListener("change", (event) => {
+  if (event.target.name === "allKids" || event.target.name === "kids") {
+    const picks = event.target.closest(".picks");
+    const all = picks?.querySelector('input[name="allKids"]');
+    const kids = [...(picks?.querySelectorAll('input[name="kids"]') || [])];
+    if (!all) return;
+    if (event.target === all) {
+      if (all.checked) kids.forEach((input) => { input.checked = false; });
+      else if (!kids.some((input) => input.checked)) all.checked = true;
+    } else {
+      all.checked = !kids.some((input) => input.checked);
+    }
+    return;
+  }
   if (event.target.name === "logKid") {
     logKidFilter = event.target.value || "";
     render();
@@ -2576,7 +2687,18 @@ app.addEventListener("click", (event) => {
   if (action === "remove-parent") run(() => rpc("remove_parent", { p_parent: btn.dataset.id }), "Parent removed.", "family");
   if (action === "edit-pin") go("edit-pin", { id: btn.dataset.id });
   if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
-  if (action === "approve-chore") run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), "Approved. Add any new device minutes in Screen Time.");
+  if (action === "approve-chore") {
+    const chore = (db.chores || []).find((item) => item.id === btn.dataset.id);
+    const caged = grounded(kidById(chore?.kidId));
+    run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), caged ? "Approved. The coins went toward the cage, not the coin balance." : "Approved. Add any new device minutes in Screen Time.");
+  }
+  if (action === "give-heart") run(() => rpc("give_heart", { p_kid: btn.dataset.id }), "Heart given back.", "chart");
+  if (action === "toggle-task-section") {
+    const zone = btn.closest(".daily-section");
+    const collapse = !zone.classList.contains("collapsed");
+    setSectionCollapsed(btn.dataset.key, collapse);
+    render();
+  }
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Cage open. Three hearts are back. Turn it off in Screen Time too.");
   if (action === "warn-kid") {
     let warnNote = "Warning saved. One heart is gone.";
@@ -2806,6 +2928,10 @@ function dragSlot() {
 
 function placeDragSlot(zone, event) {
   const slot = dragSlot();
+  if (zone.classList.contains("collapsed")) {
+    if (slot.parentElement !== zone) zone.appendChild(slot);
+    return;
+  }
   if (event.target.closest(".drag-slot") === slot && slot.parentElement === zone) return;
   const over = event.target.closest("[data-drag-item]");
   if (over && over !== dragState.node && over.parentElement === zone) {
@@ -2922,6 +3048,13 @@ app.addEventListener("submit", (event) => {
       render();
       return;
     }
+    const days = pickedDays(form);
+    const kids = pickedKids(form);
+    if (!days.length) {
+      route = { ...route, error: "Pick at least one day for the section." };
+      render();
+      return;
+    }
     if (action === "add-section") {
       run(
         () =>
@@ -2929,6 +3062,8 @@ app.addEventListener("submit", (event) => {
             p_title: data.title,
             p_start_minute: startMinute,
             p_end_minute: endMinute,
+            p_days: days,
+            p_kids: kids,
           }),
         "Schedule section added.",
         "chores"
@@ -2942,6 +3077,8 @@ app.addEventListener("submit", (event) => {
             p_title: data.title,
             p_start_minute: startMinute,
             p_end_minute: endMinute,
+            p_days: days,
+            p_kids: kids,
           }),
         "Schedule section saved.",
         "chores"

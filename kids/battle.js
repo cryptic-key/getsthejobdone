@@ -3346,7 +3346,7 @@ async function playRelease(token) {
   if (lockBusy) return;
   lockBusy = true;
   if (!cage) holdCage();
-  say("Chores done! The lock pops open!");
+  say("The lock pops open!");
   cage.locked = false;
   particles.push({ x: heroX() + 10, y: G - 5, vx: 30, vy: -70, g: 220, life: 0.9, c: "#f4c542", s: 3 });
   if (!(await waitFor(0.6, token))) { lockBusy = false; return; }
