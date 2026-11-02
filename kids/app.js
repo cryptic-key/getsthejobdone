@@ -1,9 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=33";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=33";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=33";
-import { createChoreQuest } from "./chore-quest.js?v=33";
+import { APP_VERSION } from "./version.js?v=34";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=34";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=34";
+import { createChoreQuest } from "./chore-quest.js?v=34";
+import { leaveArena, mountArena } from "./arena.js?v=34";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -21,7 +22,7 @@ const COLOR_HEX = {
   mustard: "#c9a227",
   mint: "#3faf8c",
 };
-const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "hero", "kid-shop", "me"]);
+const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "hero", "kid-shop", "arena", "me"]);
 const KID_TOKEN = "chart-kid-token";
 const BATTLE_KEY = "chart-battle-v1";
 
@@ -76,6 +77,7 @@ const LOG_TYPES = [
   ["ground", "Ground"],
   ["lift", "Lift"],
   ["shop", "Shop"],
+  ["arena", "Arena"],
   ["reset", "Reset"],
   ["family", "Family"],
   ["other", "Other"],
@@ -93,6 +95,7 @@ function activityType(text) {
   if (/ gave .+ a heart back\./.test(t)) return "heart";
   if (/ is free\. Three hearts/.test(t)) return "lift";
   if (/ was reset/.test(t)) return "reset";
+  if (/Monster Arena/.test(t)) return "arena";
   if (/ asked for | points went back to | bought 30 device| cashed .+ points for \$1/.test(t)) return "shop";
   if (/ got (?!a reward)/.test(t)) return "shop";
   if (/ spent | cashed in | had a balance taken off| was paid \$/.test(t)) return "deduct";
@@ -269,6 +272,8 @@ function nice(error) {
   if (/pick at least one day/i.test(msg)) return "Pick at least one day for the section.";
   if (/use Lift to open the cage/i.test(msg)) return "That hero is in the cage. Use Lift to free them.";
   if (/hearts are full/i.test(msg)) return "All three hearts are already full.";
+  if (/pick a real birthday/i.test(msg)) return "Pick a real birthday.";
+  if (/arena run over/i.test(msg)) return "That arena run already ended.";
   if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
   if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
   if (/photo required/i.test(msg)) return "Take or choose a photo to mark it done.";
@@ -352,8 +357,23 @@ function mapKid(row) {
     hero: row.hero || "knight",
     weapon: row.weapon || "broom",
     pet: normalizePet(row.pet) || "",
+    birthDate: row.birth_date || "",
+    arenaLevel: row.arena_level || arenaLevelFor(row.birth_date),
   };
 }
+
+function arenaLevelFor(birthDate) {
+  if (!birthDate) return "kid";
+  const today = new Date(`${torontoToday()}T00:00:00`);
+  const born = new Date(`${birthDate}T00:00:00`);
+  let age = today.getFullYear() - born.getFullYear();
+  if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age -= 1;
+  if (age <= 5) return "little";
+  if (age <= 8) return "kid";
+  return "big";
+}
+
+const ARENA_LEVEL_NAMES = { little: "Little Explorer · ages 3–5", kid: "Adventurer · ages 6–8", big: "Champion · ages 9–12" };
 
 function petPrice(key) {
   const custom = Number(db.petPrices?.[key]);
@@ -379,7 +399,7 @@ async function loadParent() {
   if (!user) return false;
   const { data: me, error } = await supabase
     .from("parents")
-    .select("id,name,email,color,hero,weapon,pet,household_id,households(name,code,points_per_dollar,points_per_30,unground_points)")
+    .select("id,name,email,color,hero,weapon,pet,household_id,households(name,code,points_per_dollar,points_per_30,unground_points,arena_entry,arena_per_kill)")
     .eq("user_id", user.id)
     .maybeSingle();
   if (error) throw error;
@@ -388,7 +408,7 @@ async function loadParent() {
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet,birth_date").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
@@ -409,6 +429,8 @@ async function loadParent() {
       pointsPerDollar: me.households.points_per_dollar,
       pointsPer30: me.households.points_per_30,
       ungroundPoints: Number(me.households.unground_points) || 0,
+      arenaEntry: Number(me.households.arena_entry ?? 2),
+      arenaPerKill: Number(me.households.arena_per_kill ?? 1),
     },
     parents: parents.data.map((person) => ({
       ...person,
@@ -468,6 +490,8 @@ async function loadKid() {
       pointsPerDollar: snap.family.points_per_dollar,
       pointsPer30: snap.family.points_per_30,
       ungroundPoints: Number(snap.family.unground_points) || 0,
+      arenaEntry: Number(snap.family.arena_entry ?? 2),
+      arenaPerKill: Number(snap.family.arena_per_kill ?? 1),
     },
     parents: [],
     kids: [mapKid(snap.kid)],
@@ -1036,6 +1060,27 @@ function paintStage() {
   });
 }
 
+function arenaContext() {
+  return {
+    rpc,
+    nice,
+    token: () => kidToken(),
+    points: () => Number(kid()?.points) || 0,
+    setPoints: (value) => {
+      const child = kid();
+      if (child) child.points = value;
+    },
+    entry: () => Number(db.family?.arenaEntry ?? 2),
+    perKill: () => Number(db.family?.arenaPerKill ?? 1),
+    level: () => kid()?.arenaLevel || "kid",
+    grounded: () => Boolean(grounded(kid())),
+    hero: () => kidHero(db.hero?.hero || kid()?.hero),
+    weapon: () => db.hero?.weapon || kid()?.weapon || "broom",
+    pet: () => normalizePet(kid()?.pet || db.hero?.pet) || null,
+    refresh: () => run(async () => {}, ""),
+  };
+}
+
 let questEngine = null;
 function questCatalog() {
   if (!questEngine) {
@@ -1530,6 +1575,7 @@ function kidNav(current) {
   return `<nav class="nav play-nav">${[
     ["today", "Quests"],
     ["hero", "My Hero"],
+    ["arena", "Arena"],
     ["kid-shop", "Market"],
     ["me", "Player"],
   ]
@@ -1931,6 +1977,9 @@ function render() {
   if (host) document.body.appendChild(host);
   app.innerHTML = view();
   mountStage();
+  const arenaSlot = app.querySelector(".arena-slot");
+  if (arenaSlot && db.session?.role === "kid") mountArena(arenaSlot, arenaContext());
+  else leaveArena();
   if (db.session?.role === "kid") {
     syncBattles();
     lastKidSig = `${kid()?.points}|${kid()?.hearts}|${kid()?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
@@ -2066,7 +2115,7 @@ const views = {
                     .map(
                       (child) => `<div class="person">
                         <div class="who"><span class="swatch ${esc(child.color)}"></span><div><strong>${esc(child.name)}</strong><div class="tiny muted">${child.points} pts · ${money(child.cashCents)} · ${child.minutes} min${grounded(child) ? " · grounded" : ""}</div></div></div>
-                        <button class="btn ghost small" data-action="edit-pin" data-id="${child.id}">PIN</button>
+                        <button class="btn ghost small" data-action="edit-pin" data-id="${child.id}">PIN &amp; birthday</button>
                       </div>`
                     )
                     .join("")
@@ -2148,7 +2197,7 @@ const views = {
     if (!child) return views.family();
     return shell(
       db.family.name,
-      `PIN for ${child.name}`,
+      `PIN and birthday for ${child.name}`,
       `<form class="card stack" data-action="save-pin">
         <label>New 4-digit PIN<input name="pin" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label>
         ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
@@ -2157,6 +2206,12 @@ const views = {
           <button class="btn clay" type="button" data-action="remove-kid" data-id="${child.id}">Remove ${esc(child.name)}</button>
           <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
         </div>
+      </form>
+      <form class="card stack" data-action="save-birth">
+        <h2 class="page-title">Birthday</h2>
+        <p class="lede">The Monster Arena picks questions by age. Now: ${esc(ARENA_LEVEL_NAMES[arenaLevelFor(child.birthDate)])}${child.birthDate ? "" : " (no birthday saved yet)"}.</p>
+        <label>Birthday<input name="birth" type="date" value="${esc(child.birthDate || "")}" max="${esc(torontoToday())}"></label>
+        <div class="row"><button class="btn leaf" type="submit">Save birthday</button></div>
       </form>`,
       parentNav("family")
     );
@@ -2514,6 +2569,15 @@ const views = {
           </form>
         </section>
         <section class="card">
+          <h2 class="page-title">Monster Arena</h2>
+          <p class="lede">Kids pay an entry fee, then answer questions for their age to beat monsters. Each monster beaten pays coins. The run ends when their hearts run out. Set a birthday for each kid on the Family page.</p>
+          <form class="two" data-action="save-arena">
+            <label>Entry fee (coins)<input name="entry" type="number" min="0" max="1000" value="${Number(db.family.arenaEntry ?? 2)}"></label>
+            <label>Coins per monster<input name="perKill" type="number" min="0" max="100" value="${Number(db.family.arenaPerKill ?? 1)}"></label>
+            <button class="btn ghost" type="submit">Save arena</button>
+          </form>
+        </section>
+        <section class="card">
           <div class="section-title"><h2>Requests</h2></div>
           ${
             pending.length
@@ -2609,6 +2673,11 @@ const views = {
       </div>`,
       kidNav("kid-shop")
     );
+  },
+
+  arena() {
+    const child = kid();
+    return shell(child.name, "Monster Arena", `<div class="stack"><div class="arena-slot"></div></div>`, kidNav("arena"));
   },
 
   hero() {
@@ -3098,6 +3167,8 @@ app.addEventListener("submit", (event) => {
   if (action === "add-parent-submit") addParent(data);
   if (action === "add-kid-submit") addKid(data);
   if (action === "save-pin") savePin(data);
+  if (action === "save-birth") run(() => rpc("set_kid_birth_date", { p_kid: route.id, p_birth: data.birth || null }), "Birthday saved.");
+  if (action === "save-arena") run(() => rpc("save_arena_settings", { p_entry: Number(data.entry) || 0, p_per_kill: Number(data.perKill) || 0 }), "Arena settings saved.");
   if (action === "save-parent-pin") saveParentPin(data);
   if (action === "add-section" || action === "save-section") {
     const startMinute = minutesFromInput(form.querySelector('[name="start"]'));

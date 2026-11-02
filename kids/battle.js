@@ -37,6 +37,12 @@ export const SPRITES = [
   { id: "snow", name: "Sneaky Snowman" },
   { id: "outside", name: "Couch Monster" },
   { id: "wood", name: "Woodpile Grump" },
+  { id: "basketball", name: "Hoop Hornet" },
+  { id: "bus", name: "School Bus Bully" },
+  { id: "repair", name: "Toolbox Titan" },
+  { id: "helping", name: "Grabby Glove" },
+  { id: "babysit", name: "Mobile Menace" },
+  { id: "shirts", name: "Shirt Shredder" },
 ];
 
 const SPRITE_IDS = new Set(SPRITES.map((sprite) => sprite.id));
@@ -55,6 +61,12 @@ export function guessSprite(title) {
   if (/snow|shovel/.test(text)) return "snow";
   if (/outside|fresh air/.test(text)) return "outside";
   if (/firewood|woodpile|fire wood/.test(text)) return "wood";
+  if (/basketball|hoop|dribbl/.test(text)) return "basketball";
+  if (/\bbus\b/.test(text)) return "bus";
+  if (/fix|repair|tool/.test(text)) return "repair";
+  if (/helping hand|help(?:ed|ing)? (?:out|someone|a friend)/.test(text)) return "helping";
+  if (/babysit|little (?:brother|sister|sibling)|baby/.test(text)) return "babysit";
+  if (/fold(?:ed|ing)? (?:the )?(?:clothes|shirts)|shirt/.test(text)) return "shirts";
   if (/bed|sheet|pillow|blanket/.test(text)) return "bed";
   if (/shoe|boot/.test(text)) return "shoes";
   if (/bookshelf|book shelf|\bshelf\b/.test(text)) return "bookshelf";
@@ -887,7 +899,204 @@ async function charge(m, api) {
   m.lunge = 0;
 }
 
+const hoopPal = { K, W: "#ffffff", w: "#c8d0e0", R: "#e8603c", S: "#8890a8", s: "#5a6278", E: K, N: "#f4f6fb" };
+const hoopTop = ["KKKKKKKKKKKKK.", "KWWWWWWWWWWWK.", "KWEWWWWWWEWWK.", "KWWWKKKKKWWWK.", "KWWWKRRRKWWWK.", "KKKKKKKKKKKKK.", ".KRRRRRRRRRK..", "..KNKNKNKNK...", "...KNKNKNK...."];
+const hoopLow = [".....KSK......", ".....KSK......", ".....KSK......", ".....KsK......", ".....KSK......", "...KKKSKKK....", "..KSSSSSSSK...", "..KKKKKKKKK..."];
+const hoopA = sprite([...hoopTop, "....KNNNK.....", ...hoopLow], hoopPal);
+const hoopB = sprite([...hoopTop, "....KKKKK.....", ...hoopLow], hoopPal);
+const ballS = sprite([".KKKK.", "KOKOOK", "KKKKKK", "KOOKOK", ".KKKK."], { K, O: "#e8702a" });
+const busPal = { K, Y: "#f4c542", y: "#c99a1e", W: "#bfe3ff", w: "#e6f4ff", E: K, D: "#3a3a48", R: "#e04a4a", S: "#8890a8" };
+const busTop = ["..KKKKKKKKKKKKKKKKKKKK..", ".KYYYYYYYYYYYYYYYYYYYYK.", "KYKWWKWWKWWKWWKKWWWWKYYK", "KYKWwKWwKWwKWwKKWEWEKYYK", "KYKKKKKKKKKKKKKKKKKKKYYK", "KYYYYYYYYYYYYYYYYYYYYYRK", "KDDDDDDDDDDDDDDDDDDDDDDK"];
+const busLow = ["KYYYYYYYYYYYYYYYYYYYYYSK", ".KKKKKKKKKKKKKKKKKKKKKK.", "...KDDK..........KDDK...", "...KKKK..........KKKK..."];
+const busA = sprite([...busTop, "KYYYYYYYYYYYYYYYYKKKKKYK", ...busLow], busPal);
+const busB = sprite([...busTop, "KYYYYYYYYYYYYYYYYKRRRKYK", ...busLow], busPal);
+const stopSignS = sprite([".KKKK.", "KRRRRK", "KRWWRK", "KRRRRK", ".KKKK.", "..KK..", "..KK.."], { K, R: "#e04a4a", W: "#ffffff" });
+const toolPal = { K, R: "#d63c3c", r: "#9a2626", S: "#c8d0e0", s: "#8890a8", W: "#ffffff", E: K, Y: "#f4c542", D: "#3a0c14" };
+const toolLid = sprite(["......KKKKKK......", "......KSKKSK......", "..KKKKKKKKKKKKKK..", ".KRRRRRRRRRRRRRRK.", "KRRRWWRRRRRRWWRRRK", "KRRREWRRRRRREWRRRK"], toolPal);
+const toolBody = sprite(["KKKKKKKKKKKKKKKKKK", "KRRRRRRKYYKRRRRRRK", "KRRRRRRKKKKRRRRRRK", "KrrrrrrrrrrrrrrrrK", "KRRRRRRRRRRRRRRRRK", "KrrrrrrrrrrrrrrrrK", "KKKKKKKKKKKKKKKKKK"], toolPal);
+const wrenchS = sprite(["KK..KK", "KSKKSK", ".KSSK.", "..KSK.", "..KSK.", "..KSK.", "..KKK."], { K, S: "#c8d0e0" });
+const screwS = sprite(["KKKK", "KSSK", ".KS.", ".KS.", "..K."], { K, S: "#c8d0e0" });
+const nailS = sprite(["KKK", ".S.", ".S.", ".S.", ".K."], { K, S: "#c8d0e0" });
+const shirtPal = { K, G: "#3fa34d", g: "#2a6e3a", Y: "#f4c542", W: "#ffffff", E: K, D: "#3a0c14", C: "#2a6e3a" };
+function shirtFrame(flap, open) {
+  return sprite([
+    "......KKKKKK......",
+    "..KKKKGKCCKGKKKK..",
+    ".KGGGGGGKKGGGGGGK.",
+    flap ? "KGGGGGGGGGGGGGGGGK" : "KGGGKGGGGGGGGKGGGK",
+    flap ? "KGgGKWWGGGGWWKGgGK" : "KGGKKWWGGGGWWKKGGK",
+    flap ? ".KKKKEWGGGGEWKKKK." : ".KK.KEWGGGGEWK.KK.",
+    "....KGGGGGGGGK....",
+    open ? "....KGGKDDKGGK...." : "....KGGKKKKGGK....",
+    "....KYYYYYYYYK....",
+    "....KGGGGGGGGK....",
+    "....KGgGGGGgGK....",
+    "....KKKKKKKKKK....",
+  ], shirtPal);
+}
+const shirtA = shirtFrame(false, false);
+const shirtB = shirtFrame(true, true);
+const buttonS = sprite([".KKK.", "KWWWK", "KWKWK", "KWWWK", ".KKK."], { K, W: "#f4efdc" });
+const mStar = sprite(["..K..", ".KYK.", "KYYYK", ".KYK.", ".K.K."], { K, Y: "#f4d742" });
+const mMoon = sprite([".KK.", "KMMK", "KMK.", "KMMK", ".KK."], { K, M: "#bfe3ff" });
+const mHeart = sprite(["KK.KK", "KPKPK", "KPPPK", ".KPK.", "..K.."], { K, P: "#ff9cb4" });
+const pacifierS = sprite([".KKK.", "KBBBK", ".KPK.", ".KPK.", "..K.."], { K, B: "#7fb4f0", P: "#ffd1e0" });
+const rattleS = sprite([".KKK.", "KYRYK", "KRYRK", ".KKK.", "..K..", "..K.."], { K, Y: "#f4d742", R: "#ff9cb4" });
+function drawMobile(g, x, y, m) {
+  const sp = m.t * 1.6;
+  const cx = x + 10;
+  rect(g, cx, y, 1, 3, "#8890a8");
+  rect(g, cx - 9, y + 3, 19, 1, K);
+  rect(g, cx - 8, y + 3, 17, 1, "#c98a4a");
+  for (const [spr, dx, len] of [[mStar, -8, 10], [mMoon, 0, 12], [mHeart, 8, 10]]) {
+    const sw = Math.round(Math.sin(sp + dx) * 1.5);
+    for (let i = 0; i < len - 4; i += 1) px(g, cx + dx + Math.round((sw * i) / (len - 4)), y + 4 + i, "#b0b6c2");
+    g.drawImage(spr, cx + dx + sw - 2, y + len);
+  }
+  disc(g, cx, y + 8, 4, K);
+  disc(g, cx, y + 8, 3, "#fff0d8");
+  px(g, cx - 2, y + 7, K);
+  px(g, cx + 2, y + 7, K);
+  if (m.open > 0.5) rect(g, cx - 1, y + 9, 3, 2, "#3a0c14");
+  else {
+    px(g, cx - 1, y + 10, K);
+    px(g, cx, y + 10, K);
+    px(g, cx + 1, y + 10, K);
+  }
+  px(g, cx - 3, y + 9, "#ff9cb4");
+  px(g, cx + 3, y + 9, "#ff9cb4");
+}
+const glovePal = { K, W: "#ffffff", w: "#d6dcea", E: K, M: "#3a0c14", P: "#ff9cb4" };
+const gloveFingers = ["...KK.KK.KK.....", "..KWWKWWKWWK....", "..KWWKWWKWWK.KK.", "..KWWKWWKWWKKWWK", "..KWWKWWKWWKKWWK"];
+const gloveMid = [".KKWwKWwKWwKWWK.", "KWKWWWWWWWWWWWK.", "KWWKWWWWWWWWWWK.", "KWWKWEWWWWEWWK..", ".KWWWWWWWWWWWK..", "..KWWWPMMPWWK...", "...KWWWWWWWK...."];
+const gloveCuff = ["..KKKKKKKKKK....", "..KWwWwWwWwK....", "..KwWwWwWwWK....", "..KKKKKKKKKK...."];
+const gloveA = sprite([...gloveFingers, ...gloveMid, ...gloveCuff], glovePal);
+const gloveB = sprite(["................", "..KK.KK.KK......", ".KWWKWWKWWK.....", ".KWWKWWKWWK.KK..", ".KWWKWWKWWKKWWK.", ...gloveMid, ...gloveCuff], glovePal);
+
 const MON = {
+  basketball: {
+    name: "Hoop Hornet",
+    w: 14,
+    h: 18,
+    hit: ["#e8702a", "#ffffff", "#8890a8"],
+    yoff: () => 0,
+    draw(g, x, y, m) {
+      const sw = m.idle ? Math.round(Math.sin(m.t * 3)) : 0;
+      g.drawImage(m.open > 0.5 ? hoopB : hoopA, x + sw, y);
+    },
+    async attack(m, api) {
+      m.openT = 1;
+      if (!(await api.wait(0.2))) return;
+      for (let i = 0; i < 3; i += 1) {
+        api.projectiles.push({ k: "spr", s: ballS, x: m.x + 5, y: G - 12, vx: -rnd(70, 82), vy: -rnd(75, 95), g: 220, spin: true });
+        if (!(await api.wait(0.18))) return;
+      }
+      m.openT = 0;
+    },
+  },
+  bus: {
+    name: "School Bus Bully",
+    w: 24,
+    h: 11,
+    hit: ["#f4c542", "#e04a4a", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 5) | 0) % 2) : 0),
+    draw(g, x, y, m) {
+      g.drawImage(m.open > 0.5 ? busB : busA, x, y);
+      if (m.open > 0.5) {
+        rect(g, x - 4, y + 3, 5, 5, K);
+        rect(g, x - 3, y + 4, 3, 3, "#e04a4a");
+        px(g, x - 2, y + 5, "#ffffff");
+      }
+      if (m.idle && ((m.t * 2) | 0) % 2) px(g, x + 22, y + 5, "#ffe066");
+    },
+    async attack(m, api) {
+      m.openT = 1;
+      if (!(await api.wait(0.25))) return;
+      for (let i = 0; i < 3; i += 1) {
+        api.projectiles.push({ k: "spr", s: stopSignS, x: m.x, y: G - 8, vx: -rnd(70, 85), vy: -rnd(30, 55), g: 130, spin: true });
+        if (!(await api.wait(0.16))) return;
+      }
+      m.openT = 0;
+    },
+  },
+  repair: {
+    name: "Toolbox Titan",
+    w: 18,
+    h: 13,
+    chomp: true,
+    hit: ["#d63c3c", "#c8d0e0", "#f4c542"],
+    yoff: (m) => (m.idle ? -(((m.t * 2) | 0) % 2) : 0),
+    draw(g, x, y, m) { jaw(g, x, y, m, toolLid, toolBody, 6, 1, 16, "#3a0c14", "#c8d0e0"); },
+    attack(m, api) {
+      return toss(m, api, [
+        { s: wrenchS, y: G - 10, vx: -72, vy: -55, gap: 0.15 },
+        { s: screwS, y: G - 10, vx: -80, vy: -40, gap: 0.12 },
+        { s: nailS, y: G - 10, vx: -86, vy: -60 },
+      ], { lift: false });
+    },
+  },
+  helping: {
+    name: "Grabby Glove",
+    w: 16,
+    h: 16,
+    hpLift: 3,
+    hit: ["#ffffff", "#d6dcea", "#f4d742"],
+    yoff: (m) => (m.idle ? -Math.round(Math.abs(Math.sin(m.t * 3)) * 2) : 0),
+    draw(g, x, y, m) {
+      const wv = m.idle ? Math.round(Math.sin(m.t * 4)) : 0;
+      g.drawImage(m.open > 0.5 ? gloveB : gloveA, x + wv, y);
+    },
+    async attack(m, api) {
+      m.openT = 1;
+      if (!(await api.wait(0.18))) return;
+      burst(m.x + 3, G - 14, ["#f4d742", "#ffffff"], 10, 40);
+      for (let i = 0; i < 3; i += 1) {
+        const a = -0.3 - i * 0.25;
+        api.projectiles.push({ k: "spr", s: starS, x: m.x + 3, y: G - 14, vx: -80, vy: Math.sin(a) * 60, g: 40, spin: false });
+        if (!(await api.wait(0.1))) return;
+      }
+      m.openT = 0;
+      if (!(await api.until(() => api.projectiles.length === 0))) return;
+      if (!(await api.wait(0.15))) return;
+      await charge(m, api);
+    },
+  },
+  babysit: {
+    name: "Mobile Menace",
+    w: 21,
+    h: 17,
+    hit: ["#f4d742", "#bfe3ff", "#ff9cb4"],
+    yoff: (m) => -6 + Math.round(Math.sin(m.t * 2) * 2),
+    draw(g, x, y, m) { drawMobile(g, x, y, m); },
+    attack(m, api) {
+      return toss(m, api, [
+        { s: pacifierS, y: G - 16, vx: -72, vy: -35, gap: 0.16 },
+        { s: rattleS, y: G - 16, vx: -80, vy: -50, gap: 0.16 },
+        { s: pacifierS, y: G - 16, vx: -86, vy: -30 },
+      ]);
+    },
+  },
+  shirts: {
+    name: "Shirt Shredder",
+    w: 18,
+    h: 12,
+    lashX: 1,
+    lashY: 7,
+    lashCol: ["#3fa34d", "#2a6e3a"],
+    hit: ["#3fa34d", "#f4c542", "#ffffff"],
+    yoff: (m) => (m.idle ? -(((m.t * 3) | 0) % 2) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 || (m.idle && ((m.t * 4) | 0) % 2) ? shirtB : shirtA, x, y); },
+    async attack(m, api) {
+      await lash(m, api, this);
+      m.openT = 1;
+      if (!(await api.wait(0.1))) return;
+      for (let i = 0; i < 3; i += 1) {
+        api.projectiles.push({ k: "spr", s: buttonS, x: m.x + 6, y: G - 8, vx: -rnd(75, 90), vy: -rnd(25, 45), g: 120, spin: false });
+        if (!(await api.wait(0.1))) return;
+      }
+      m.openT = 0;
+    },
+  },
   dust: {
     name: "Dust Bunny",
     w: 16,
