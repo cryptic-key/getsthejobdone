@@ -1,12 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=56";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=56";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=56";
-import { createChoreQuest } from "./chore-quest.js?v=56";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=56";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=56";
-import { armAudio, setMusicOn, setSfx, soundState } from "./sound.js";
+import { APP_VERSION } from "./version.js?v=58";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=58";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=58";
+import { createChoreQuest } from "./chore-quest.js?v=58";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=58";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=58";
+import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -172,6 +172,127 @@ function proofUrl(path) {
   return `${SUPABASE_URL}/storage/v1/object/public/chore-proofs/${encodeURI(path)}`;
 }
 
+/* ---------- Family Rewards: shared goals the kids fill together, one colour per kid ---------- */
+function familyBar(reward) {
+  const goal = Math.max(1, Number(reward.goal) || 1);
+  const segs = (reward.shares || [])
+    .map((share) => {
+      const pct = Math.min(100, (Number(share.amount) / goal) * 100);
+      return `<i style="width:${pct.toFixed(2)}%;background:${COLOR_HEX[share.color] || COLOR_HEX.leaf}" title="${esc(share.name)}: ${Number(share.amount)}"></i>`;
+    })
+    .join("");
+  const total = Math.min(goal, Number(reward.total) || 0);
+  return `<div class="fam-bar${reward.status !== "open" ? " full" : ""}" role="img" aria-label="${total} of ${goal} coins">${segs}<span>${total} / ${goal}</span></div>`;
+}
+
+function familyLegend(reward) {
+  const goal = Math.max(1, Number(reward.goal) || 1);
+  const shares = reward.shares || [];
+  if (!shares.length) return `<p class="tiny muted">Nobody has chipped in yet. Be the first!</p>`;
+  return `<div class="fam-legend">${shares
+    .map((share) => {
+      const amount = Number(share.amount) || 0;
+      const pct = Math.round((amount / goal) * 100);
+      return `<div class="fam-row"><i style="background:${COLOR_HEX[share.color] || COLOR_HEX.leaf}"></i><strong>${esc(share.name)}</strong><span>${amount} coin${amount === 1 ? "" : "s"}</span><b>${pct}%</b></div>`;
+    })
+    .join("")}</div>`;
+}
+
+function familyRewardCard(reward, actions) {
+  const goal = Math.max(1, Number(reward.goal) || 1);
+  const total = Math.min(goal, Number(reward.total) || 0);
+  const status = reward.status === "claimed" ? "Unlocked!" : reward.status === "reached" ? "Goal reached!" : `${goal - total} coins to go`;
+  return `<div class="fam-reward ${esc(reward.status)}">
+    <div class="fam-head"><strong>${esc(reward.title)}</strong><span class="chip">${esc(status)}</span></div>
+    ${familyBar(reward)}
+    ${familyLegend(reward)}
+    ${actions}
+  </div>`;
+}
+
+function familyRewardsBoard(child) {
+  const rewards = db.familyRewards || [];
+  if (!rewards.length) return "";
+  const locked = grounded(child);
+  return `<section class="card stack fam-card">
+    <h2 class="page-title">Family Rewards</h2>
+    <p class="lede">Team up! Everyone's coins fill the same bar.</p>
+    ${rewards
+      .map((reward) => {
+        const action = reward.status === "open"
+          ? locked
+            ? `<div class="banner">You can chip in after you break out of the cage.</div>`
+            : `<button class="btn sun" type="button" data-action="open-contribute" data-id="${esc(reward.id)}" ${Number(child.points) > 0 ? "" : "disabled"}>Contribute</button>`
+          : reward.status === "reached"
+            ? `<p class="tiny muted">The family did it! A parent will make it happen.</p>`
+            : "";
+        return familyRewardCard(reward, action);
+      })
+      .join("")}
+  </section>`;
+}
+
+function parentFamilyRewardsBoard() {
+  const rewards = db.familyRewards || [];
+  return `<section class="card stack fam-card">
+    <div class="section-title"><h2>Family Rewards</h2></div>
+    <p class="lede">Set a reward the kids save up for together. Each kid's coins show in their colour.</p>
+    ${rewards
+      .map((reward) =>
+        familyRewardCard(
+          reward,
+          `<div class="row">${reward.status === "reached" ? `<button class="btn small leaf" type="button" data-action="claim-family" data-id="${esc(reward.id)}">Mark as given</button>` : ""}<button class="btn small ghost" type="button" data-action="remove-family" data-id="${esc(reward.id)}">${reward.status === "open" ? "Remove (refund coins)" : "Remove"}</button></div>`
+        )
+      )
+      .join("") || `<p class="muted">No family rewards yet.</p>`}
+    <form class="two" data-action="add-family">
+      <label>Reward<input name="title" required placeholder="Pizza night"></label>
+      <label>Total coins<input name="goal" type="number" min="1" value="300" required></label>
+      <button class="btn leaf" type="submit">Add family reward</button>
+    </form>
+  </section>`;
+}
+
+let calcValue = "";
+let calcReward = null;
+
+function contributeDialogHtml() {
+  return `<dialog class="calc-dialog">
+    <div class="calc">
+      <div class="calc-top"><b class="calc-title"></b><button type="button" class="calc-x" data-action="close-contribute" aria-label="Close">✕</button></div>
+      <div class="calc-screen"><span class="calc-hint"></span><output class="calc-value">0</output></div>
+      <div class="calc-keys">
+        ${["7", "8", "9", "4", "5", "6", "1", "2", "3", "C", "0", "⌫"].map((k) => `<button type="button" class="calc-key${k === "C" || k === "⌫" ? " fn" : ""}" data-action="calc-key" data-k="${k}">${k}</button>`).join("")}
+        <button type="button" class="calc-key fn wide" data-action="calc-key" data-k="max">MAX</button>
+      </div>
+      <button type="button" class="btn sun wide calc-go" data-action="calc-submit">Contribute</button>
+    </div>
+  </dialog>`;
+}
+
+function calcLimit() {
+  const child = kid();
+  const reward = (db.familyRewards || []).find((item) => item.id === calcReward);
+  if (!child || !reward) return 0;
+  const need = Math.max(0, (Number(reward.goal) || 0) - (Number(reward.total) || 0));
+  return Math.max(0, Math.min(Number(child.points) || 0, need));
+}
+
+function paintCalc() {
+  const dialog = document.querySelector(".calc-dialog");
+  if (!dialog) return;
+  const reward = (db.familyRewards || []).find((item) => item.id === calcReward);
+  const child = kid();
+  const amount = Number(calcValue) || 0;
+  const limit = calcLimit();
+  dialog.querySelector(".calc-title").textContent = reward ? reward.title : "";
+  dialog.querySelector(".calc-value").textContent = String(amount);
+  dialog.querySelector(".calc-hint").textContent = `You have ${Number(child?.points) || 0} · Max ${limit}`;
+  const go = dialog.querySelector(".calc-go");
+  go.disabled = amount < 1 || amount > limit;
+  go.textContent = amount > limit ? "Too many coins" : `Contribute ${amount || ""}`.trim();
+}
+
 function proofDialogHtml() {
   return `<dialog class="proof-dialog">
     <form method="dialog" class="card stack proof-card">
@@ -281,6 +402,10 @@ function nice(error) {
   if (/pick a real birthday/i.test(msg)) return "Pick a real birthday.";
   if (/arena run over/i.test(msg)) return "That arena run already ended.";
   if (/priority first/i.test(msg)) return "Finish your Priority Quest first!";
+  if (/goal already reached/i.test(msg)) return "That goal is already full!";
+  if (/enter an amount/i.test(msg)) return "Tap in how many coins first.";
+  if (/reward name required/i.test(msg)) return "Give the reward a name.";
+  if (/goal must be at least 1/i.test(msg)) return "Set the total to at least 1 coin.";
   if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
   if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
   if (/photo required/i.test(msg)) return "Take or choose a photo to mark it done.";
@@ -362,6 +487,7 @@ function mapKid(row) {
     groundProgress: Math.max(0, Number(row.ground_progress) || 0),
     warnParent: row.warn_parent || "",
     warnSeq: Number(row.warn_seq) || 0,
+    warnKind: row.warn_kind === "heart" ? "heart" : "warn",
     hero: row.hero || "knight",
     weapon: row.weapon || "broom",
     pet: normalizePet(row.pet) || "",
@@ -417,7 +543,7 @@ async function loadParent() {
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet,helmet,armor").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet,birth_date").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,warn_kind,hero,weapon,pet,birth_date").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
@@ -427,6 +553,7 @@ async function loadParent() {
     supabase.rpc("door_ready"),
     supabase.from("pet_prices").select("pet_key,cost"),
   ]);
+  const familyRewards = await loadFamilyRewards("family_rewards");
   for (const result of [parents, kids, chores, templates, sections, items, requests, activity]) {
     if (result.error) throw result.error;
   }
@@ -481,6 +608,7 @@ async function loadParent() {
     activity: activity.data.map((row) => ({ id: row.id, kidId: row.kid_id, text: row.body, at: row.created_at })),
     pets: [],
     petPrices: Object.fromEntries(((petPrices.error ? [] : petPrices.data) || []).map((row) => [row.pet_key, Number(row.cost) || DEFAULT_PET_PRICE])),
+    familyRewards,
     session: { role: "parent", id: me.id },
   };
   return true;
@@ -536,6 +664,7 @@ async function loadKid() {
     hero: await loadHeroBoard(token),
     gear: await loadGear(token),
     fights: await loadFights(token),
+    familyRewards: await loadFamilyRewards("kid_family_rewards", { p_token: token }),
     pets: Array.isArray(snap.pets) ? snap.pets.filter((key) => PET_CATALOG[key]) : [],
     petPrices: snap.pet_prices && typeof snap.pet_prices === "object" ? snap.pet_prices : {},
     session: { role: "kid", id: snap.kid.id },
@@ -550,6 +679,16 @@ async function loadKid() {
 }
 
 /* Armour: owned helmets/armour, what is equipped, and household prices (see gear.js + 20261102_armour_gear.sql). */
+async function loadFamilyRewards(name, args) {
+  try {
+    const res = await supabase.rpc(name, args);
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data;
+  } catch {
+    return [];
+  }
+}
+
 async function loadGear(token) {
   const res = await supabase.rpc("kid_gear", { p_token: token });
   if (res.error || !res.data) return { head: null, body: null, owned: [], prices: {} };
@@ -840,8 +979,10 @@ function pendingWarn(child) {
     color: COLOR_HEX[parent?.color] || COLOR_HEX.teal,
     hearts: child.hearts,
     seq: child.warnSeq,
-    locked: grounded(child),
-    lockKey: grounded(child) ? String(child.groundedUntil || child.id) : "",
+    gift: child.warnKind === "heart",
+    kidName: child.name,
+    locked: child.warnKind !== "heart" && grounded(child),
+    lockKey: child.warnKind !== "heart" && grounded(child) ? String(child.groundedUntil || child.id) : "",
   };
 }
 
@@ -863,13 +1004,14 @@ function readParentWarnPending() {
   }
 }
 
-function queueParentWarn(kidId, result) {
+function queueParentWarn(kidId, result, kind = "warn") {
   const me = parent();
   const child = kidById(kidId);
   const seq = Number(result?.warn_seq) || Number(child?.warnSeq) || Date.now();
   const payload = {
     kidId,
     seq,
+    kind,
     hearts: Number(result?.hearts ?? child?.hearts ?? 0),
     locked: Boolean(result?.locked) || grounded({ ...child, groundedUntil: result?.grounded_until || child?.groundedUntil }),
     parent: result?.parent || me?.name || "Parent",
@@ -879,6 +1021,7 @@ function queueParentWarn(kidId, result) {
   if (child) {
     child.warnParent = payload.parent;
     child.warnSeq = payload.seq;
+    child.warnKind = kind;
     child.hearts = payload.hearts;
     if (payload.locked && result?.grounded_until) child.groundedUntil = result.grounded_until;
   }
@@ -899,7 +1042,8 @@ function pendingParentWarn() {
       weapon: heldWeapon(me.weapon || "broom"),
       hearts: queued.hearts,
       seq: queued.seq,
-      locked: queued.locked,
+      gift: queued.kind === "heart",
+      locked: queued.kind !== "heart" && queued.locked,
       lockKey: queued.locked ? queued.lockKey : "",
       kidId: child.id,
       kidName: child.name,
@@ -920,7 +1064,8 @@ function pendingParentWarn() {
     weapon: heldWeapon(me.weapon || "broom"),
     hearts: next.hearts,
     seq: next.warnSeq,
-    locked: grounded(next),
+    gift: next.warnKind === "heart",
+    locked: next.warnKind !== "heart" && grounded(next),
     lockKey: grounded(next) ? String(next.groundedUntil || next.id) : "",
     kidId: next.id,
     kidName: next.name,
@@ -962,7 +1107,7 @@ function paintStage() {
         plays: [],
         onDone: onFightDone,
         gear: kidStageGear(child),
-        hearts: Math.min(3, (child?.hearts ?? 0) + 1),
+        hearts: parentWarn.gift ? Math.max(0, (child?.hearts ?? 1) - 1) : Math.min(3, (child?.hearts ?? 0) + 1),
         guardian,
         warn: parentWarn,
         onWarn: (info) => {
@@ -1088,7 +1233,9 @@ function paintStage() {
   const atSpot = spot === "chest" || spot === "gate";
   // A grounded or warned kid never walks through the gate, so open the arena lobby to show why it's closed.
   if (child && !free && route.name === "arena" && !arenaRevealed()) revealArena();
-  const shownHearts = warn ? Math.min(3, (child?.hearts ?? 0) + 1) : child?.hearts ?? 3;
+  const shownHearts = warn
+    ? warn.gift ? Math.max(0, (child?.hearts ?? 1) - 1) : Math.min(3, (child?.hearts ?? 0) + 1)
+    : child?.hearts ?? 3;
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
     hero: heroKey,
@@ -1785,6 +1932,7 @@ function shell(title, sub, body, nav) {
     ${body}
     ${play ? nav || "" : ""}
     ${child ? proofDialogHtml() : ""}
+    ${child ? contributeDialogHtml() : ""}
     ${play ? soundDialog() : ""}
     ${play ? "" : `<footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`}`;
 }
@@ -2870,6 +3018,7 @@ const views = {
             <button class="btn leaf" type="submit">Add item</button>
           </form>
         </section>
+        ${parentFamilyRewardsBoard()}
         ${parentPetPricesBoard()}
       </div>`,
       parentNav("shop")
@@ -2942,6 +3091,7 @@ const views = {
               : `<p class="muted">No extra items yet.</p>`
           }
         </section>
+        ${familyRewardsBoard(child)}
         ${gearMarketBoard(child)}
         ${petMarketBoard(child)}
       </div>`,
@@ -3123,7 +3273,19 @@ app.addEventListener("click", (event) => {
     const caged = grounded(kidById(chore?.kidId));
     run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), caged ? "Approved. The coins went toward the cage, not the coin balance." : "Approved. Add any new device minutes in Screen Time.");
   }
-  if (action === "give-heart") run(() => rpc("give_heart", { p_kid: btn.dataset.id }), "Heart given back.", "chart");
+  if (action === "give-heart") {
+    const kidId = btn.dataset.id;
+    const child = kidById(kidId);
+    run(
+      async () => {
+        const hearts = await rpc("give_heart", { p_kid: kidId });
+        // give_heart bumps warn_seq by one, so the parent's scene and the kid's scene share the same key.
+        queueParentWarn(kidId, { hearts: Number(hearts) || Math.min(3, (child?.hearts ?? 0) + 1), warn_seq: (Number(child?.warnSeq) || 0) + 1, locked: false }, "heart");
+      },
+      "Heart given back.",
+      "chart"
+    );
+  }
   if (action === "open-dialog") {
     const dialog = document.querySelector(`dialog.${btn.dataset.dialog}`);
     if (dialog && !dialog.open) dialog.showModal();
@@ -3271,6 +3433,45 @@ app.addEventListener("click", (event) => {
     if (!dialog.open) dialog.showModal();
   }
   if (action === "close-proof") document.querySelector(".proof-dialog")?.close();
+  if (action === "open-contribute") {
+    calcReward = btn.dataset.id || null;
+    calcValue = "";
+    paintCalc();
+    const dialog = document.querySelector(".calc-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-contribute") document.querySelector(".calc-dialog")?.close();
+  if (action === "calc-key") {
+    const k = btn.dataset.k;
+    if (k === "C") calcValue = "";
+    else if (k === "⌫") calcValue = calcValue.slice(0, -1);
+    else if (k === "max") calcValue = String(calcLimit() || "");
+    else if (/^\d$/.test(k) && calcValue.length < 5) calcValue = (calcValue + k).replace(/^0+/, "");
+    sfx("tap");
+    paintCalc();
+  }
+  if (action === "calc-submit") {
+    const amount = Number(calcValue) || 0;
+    const rewardId = calcReward;
+    if (!rewardId || amount < 1) return;
+    document.querySelector(".calc-dialog")?.close();
+    let note = "Coins added to the family goal!";
+    run(async () => {
+      const result = await rpc("kid_contribute", { p_token: kidToken(), p_reward: rewardId, p_amount: amount });
+      sfx("coin");
+      if (result?.reached) {
+        note = "You filled the bar! Goal reached!";
+        marketThrow({ type: "gift", text: "Goal reached! Way to go, team!" });
+      } else {
+        marketThrow({ type: "money", text: `${result?.given ?? amount} coins in. Thanks!` });
+      }
+    }, () => note);
+  }
+  if (action === "claim-family") run(() => rpc("claim_family_reward", { p_id: btn.dataset.id }), "Marked as given. Enjoy!");
+  if (action === "remove-family") {
+    if (!window.confirm("Remove this family reward? Coins go back to the kids if the goal wasn't reached.")) return;
+    run(() => rpc("remove_family_reward", { p_id: btn.dataset.id }), "Family reward removed.");
+  }
   if (action === "proof-camera" || action === "proof-library") {
     const dialog = document.querySelector(".proof-dialog");
     const choreId = dialog?.querySelector('input[name="choreId"]')?.value || "";
@@ -3665,6 +3866,7 @@ app.addEventListener("submit", (event) => {
   }
   if (action === "save-rates") run(() => rpc("save_rates", { p_per_dollar: Number(data.pointsPerDollar), p_per_30: Number(data.pointsPer30) }), "Rates saved.");
   if (action === "save-cage-goal") run(() => rpc("save_cage_goal", { p_points: Number(data.points) || 0 }), "Cage release goal saved.", "chart");
+  if (action === "add-family") run(() => rpc("add_family_reward", { p_title: data.title, p_goal: Number(data.goal) }), "Family reward added.");
   if (action === "add-item") run(() => rpc("add_item", { p_name: data.name, p_cost: Number(data.cost) }), "Item added.");
   if (action === "save-pet-price") {
     const pet = form.dataset.pet || data.pet;

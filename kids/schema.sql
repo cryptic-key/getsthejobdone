@@ -4986,6 +4986,523 @@ grant execute on function public.parent_set_gear(text, text) to authenticated;
 
 notify pgrst, 'reload schema';
 
+-- ---------- migrations/20261102_heart_gift.sql ----------
+-- Heart gift: when a parent gives a heart back, the kid sees the parent walk in and toss them a heart.
+-- It reuses the warning channel (warn_parent / warn_seq) with a new warn_kind column: 'warn' or 'heart'.
+-- A trigger resets warn_kind to 'warn' whenever warn_seq moves without warn_kind being set,
+-- so warn_kid needs no changes.
+
+alter table public.kids add column if not exists warn_kind text not null default 'warn';
+alter table public.kids drop constraint if exists kids_warn_kind_check;
+alter table public.kids add constraint kids_warn_kind_check check (warn_kind in ('warn', 'heart'));
+
+create or replace function private.reset_warn_kind()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.warn_seq is distinct from old.warn_seq and new.warn_kind is not distinct from old.warn_kind then
+    new.warn_kind := 'warn';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists kids_reset_warn_kind on public.kids;
+create trigger kids_reset_warn_kind
+  before update of warn_seq on public.kids
+  for each row execute function private.reset_warn_kind();
+
+create or replace function private.give_heart(p_kid uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  child public.kids%rowtype;
+  pname text;
+  next_hearts integer;
+begin
+  select * into child from public.kids where id = p_kid and household_id = hid;
+  if child.id is null then
+    raise exception 'kid not found';
+  end if;
+  if private.is_grounded(child.grounded_until) then
+    raise exception 'use Lift to open the cage';
+  end if;
+  if child.hearts >= 3 then
+    raise exception 'hearts are full';
+  end if;
+  select name into pname from public.parents where user_id = auth.uid() and household_id = hid;
+  pname := coalesce(nullif(btrim(pname), ''), 'A parent');
+  next_hearts := child.hearts + 1;
+  -- Queue the "heart gift" scene for the kid (same channel as warnings, with warn_kind = 'heart').
+  update public.kids
+  set hearts = next_hearts,
+      warn_parent = pname,
+      warn_seq = coalesce(child.warn_seq, 0) + 1
+  where id = child.id;
+  -- Separate update: the trigger only resets warn_kind when warn_seq is in the SET list.
+  update public.kids set warn_kind = 'heart' where id = child.id;
+  insert into public.activity (household_id, kid_id, body)
+  values (
+    hid,
+    child.id,
+    pname || ' gave ' || child.name || ' a heart back. ' || next_hearts || ' heart'
+      || case when next_hearts = 1 then '' else 's' end || ' now.'
+  );
+  return next_hearts;
+end;
+$$;
+
+create or replace function private.kid_snapshot(p_token text)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  hid uuid;
+  result jsonb;
+  today date := (now() at time zone 'America/Toronto')::date;
+  now_min integer := private.toronto_minute();
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  select household_id into hid from public.kids where id = kid;
+  perform private.ensure_daily(hid);
+  select jsonb_build_object(
+    'family', jsonb_build_object(
+      'name', h.name,
+      'code', h.code,
+      'points_per_dollar', h.points_per_dollar,
+      'points_per_30', h.points_per_30,
+      'unground_points', h.unground_points,
+      'arena_entry', h.arena_entry,
+      'arena_per_kill', h.arena_per_kill
+    ),
+    'kid', jsonb_build_object(
+      'id', k.id,
+      'name', k.name,
+      'color', k.color,
+      'points', k.points,
+      'cash_cents', k.cash_cents,
+      'minutes', k.minutes,
+      'grounded_until', k.grounded_until,
+      'hearts', k.hearts,
+      'ground_progress', k.ground_progress,
+      'warn_parent', k.warn_parent,
+      'warn_seq', k.warn_seq,
+      'warn_kind', k.warn_kind,
+      'hero', k.hero,
+      'weapon', k.weapon,
+      'pet', k.pet,
+      'birth_date', k.birth_date,
+      'arena_level', private.arena_level(k.birth_date),
+      'priority_open', private.priority_open(k.id)
+    ),
+    'chores', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', c.id, 'title', c.title, 'points', c.points,
+        'cash_cents', c.cash_cents, 'minutes', c.minutes, 'status', c.status,
+        'sprite', c.sprite,
+        'verdict', c.verdict,
+        'proof_path', c.proof_path,
+        'special', (c.chore_day is null),
+        'section_id', t.section_id,
+        'section_title', s.title,
+        'section_start', s.start_minute,
+        'section_end', s.end_minute,
+        'sort_order', coalesce(t.sort_order, 0),
+        'priority', coalesce(t.priority, false)
+      ) order by
+        case when coalesce(t.priority, false) then 0 else 1 end,
+        case when c.chore_day is null then 1 else 0 end,
+        coalesce(s.sort_order, -1),
+        coalesce(t.sort_order, 0),
+        c.created_at
+      )
+      from public.chores c
+      left join public.chore_templates t on t.id = c.template_id
+      left join public.chore_sections s on s.id = t.section_id
+      where c.kid_id = k.id and c.status <> 'approved'
+        and (c.chore_day is null or c.chore_day = today)
+        and (
+          c.chore_day is null
+          or c.status = 'submitted'
+          or c.verdict = 'flee'
+          or t.section_id is null
+          or (
+            private.section_is_open(s.start_minute, s.end_minute, now_min)
+            and private.section_applies(s.days, s.kid_ids, k.id, today)
+          )
+        )
+    ), '[]'::jsonb),
+    'sections', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', s.id,
+        'title', s.title,
+        'start_minute', s.start_minute,
+        'end_minute', s.end_minute,
+        'open', private.section_is_open(s.start_minute, s.end_minute, now_min),
+        'sort_order', s.sort_order
+      ) order by s.sort_order, s.created_at)
+      from public.chore_sections s
+      where s.household_id = k.household_id
+        and private.section_applies(s.days, s.kid_ids, k.id, today)
+    ), '[]'::jsonb),
+    'week', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'day', d::date,
+        'points', coalesce(e.points, 0),
+        'cash_cents', coalesce(e.cash_cents, 0)
+      ) order by d)
+      from generate_series(today - 6, today, interval '1 day') as d
+      left join (
+        select coalesce(c.chore_day, (c.approved_at at time zone 'America/Toronto')::date) as day,
+               sum(case when c.caged then 0 else c.points end)::int as points,
+               sum(c.cash_cents)::int as cash_cents
+        from public.chores c
+        where c.kid_id = k.id and c.status = 'approved' and c.approved_at is not null
+          and (k.progress_reset_at is null or c.approved_at > k.progress_reset_at)
+        group by 1
+      ) e on e.day = d::date
+    ), '[]'::jsonb),
+    'items', coalesce((
+      select jsonb_agg(jsonb_build_object('id', i.id, 'name', i.name, 'cost', i.cost) order by i.created_at)
+      from public.shop_items i
+      where i.household_id = k.household_id
+    ), '[]'::jsonb),
+    'requests', coalesce((
+      select jsonb_agg(jsonb_build_object('id', r.id, 'item_id', r.item_id, 'status', r.status))
+      from public.requests r
+      where r.kid_id = k.id and r.status = 'pending'
+    ), '[]'::jsonb),
+    'pets', coalesce((
+      select jsonb_agg(key order by earned_at)
+      from public.kid_rewards
+      where kid_id = k.id and kind = 'pet'
+    ), '[]'::jsonb),
+    'pet_prices', coalesce((
+      select jsonb_object_agg(pet_key, cost)
+      from public.pet_prices
+      where household_id = k.household_id
+    ), '{}'::jsonb),
+    'activity', coalesce((
+      select jsonb_agg(jsonb_build_object('id', a.id, 'body', a.body, 'created_at', a.created_at) order by a.created_at desc)
+      from (
+        select * from public.activity
+        where kid_id = k.id
+        order by created_at desc
+        limit 8
+      ) a
+    ), '[]'::jsonb)
+  ) into result
+  from public.kids k
+  join public.households h on h.id = k.household_id
+  where k.id = kid;
+  return result;
+end;
+$$;
+
+notify pgrst, 'reload schema';
+
+-- ---------- migrations/20261102_family_rewards.sql ----------
+-- Family Rewards: a parent sets a shared reward and a coin goal (e.g. "Pizza night", 300 coins).
+-- Kids chip in coins from the Market; the bar fills with each kid's colour.
+-- Removing a reward before it is reached refunds every kid's coins.
+
+create table if not exists public.family_rewards (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households (id) on delete cascade,
+  title text not null check (btrim(title) <> ''),
+  goal integer not null check (goal > 0),
+  status text not null default 'open' check (status in ('open', 'reached', 'claimed')),
+  created_at timestamptz not null default now(),
+  reached_at timestamptz,
+  claimed_at timestamptz
+);
+
+create table if not exists public.family_contributions (
+  id uuid primary key default gen_random_uuid(),
+  reward_id uuid not null references public.family_rewards (id) on delete cascade,
+  household_id uuid not null references public.households (id) on delete cascade,
+  kid_id uuid not null references public.kids (id) on delete cascade,
+  amount integer not null check (amount > 0),
+  created_at timestamptz not null default now()
+);
+create index if not exists family_contributions_reward_idx on public.family_contributions (reward_id);
+
+alter table public.family_rewards enable row level security;
+alter table public.family_contributions enable row level security;
+revoke all on table public.family_rewards from public, anon, authenticated;
+revoke all on table public.family_contributions from public, anon, authenticated;
+grant select on public.family_rewards to authenticated;
+grant select on public.family_contributions to authenticated;
+drop policy if exists family_rewards_select on public.family_rewards;
+create policy family_rewards_select on public.family_rewards
+  for select to authenticated using (household_id = private.household_id());
+drop policy if exists family_contributions_select on public.family_contributions;
+create policy family_contributions_select on public.family_contributions
+  for select to authenticated using (household_id = private.household_id());
+
+-- Rewards for one household, with each kid's share. Claimed rewards stay visible for 14 days.
+create or replace function private.family_reward_rows(p_household uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', r.id,
+    'title', r.title,
+    'goal', r.goal,
+    'status', r.status,
+    'created_at', r.created_at,
+    'total', coalesce((select sum(c.amount) from public.family_contributions c where c.reward_id = r.id), 0),
+    'shares', coalesce((
+      select jsonb_agg(jsonb_build_object('kid_id', k.id, 'name', k.name, 'color', k.color, 'amount', s.amount) order by s.first_at)
+      from (
+        select c.kid_id, sum(c.amount)::int as amount, min(c.created_at) as first_at
+        from public.family_contributions c
+        where c.reward_id = r.id
+        group by c.kid_id
+      ) s
+      join public.kids k on k.id = s.kid_id
+    ), '[]'::jsonb)
+  ) order by case r.status when 'open' then 0 when 'reached' then 1 else 2 end, r.created_at), '[]'::jsonb)
+  from public.family_rewards r
+  where r.household_id = p_household
+    and (r.status <> 'claimed' or r.claimed_at > now() - interval '14 days')
+$$;
+
+create or replace function private.family_rewards()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  return private.family_reward_rows(private.require_household());
+end;
+$$;
+
+create or replace function private.kid_family_rewards(p_token text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  hid uuid;
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  select household_id into hid from public.kids where id = kid;
+  return private.family_reward_rows(hid);
+end;
+$$;
+
+create or replace function private.add_family_reward(p_title text, p_goal integer)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  rid uuid;
+begin
+  if nullif(btrim(coalesce(p_title, '')), '') is null then
+    raise exception 'reward name required';
+  end if;
+  if coalesce(p_goal, 0) < 1 then
+    raise exception 'goal must be at least 1';
+  end if;
+  insert into public.family_rewards (household_id, title, goal)
+  values (hid, btrim(p_title), p_goal)
+  returning id into rid;
+  insert into public.activity (household_id, body)
+  values (hid, 'New Family Reward: ' || btrim(p_title) || ' for ' || p_goal || ' coins.');
+  return rid;
+end;
+$$;
+
+-- Remove a reward. If it was never reached, every kid gets their coins back.
+create or replace function private.remove_family_reward(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  reward public.family_rewards%rowtype;
+begin
+  select * into reward from public.family_rewards where id = p_id and household_id = hid for update;
+  if reward.id is null then
+    raise exception 'reward not found';
+  end if;
+  if reward.status = 'open' then
+    update public.kids k
+    set points = k.points + s.amount
+    from (
+      select kid_id, sum(amount)::int as amount
+      from public.family_contributions
+      where reward_id = reward.id
+      group by kid_id
+    ) s
+    where k.id = s.kid_id;
+  end if;
+  delete from public.family_rewards where id = reward.id;
+end;
+$$;
+
+-- Parent marks a reached reward as given.
+create or replace function private.claim_family_reward(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  reward public.family_rewards%rowtype;
+begin
+  select * into reward from public.family_rewards where id = p_id and household_id = hid for update;
+  if reward.id is null then
+    raise exception 'reward not found';
+  end if;
+  if reward.status <> 'reached' then
+    raise exception 'goal not reached';
+  end if;
+  update public.family_rewards set status = 'claimed', claimed_at = now() where id = reward.id;
+  insert into public.activity (household_id, body)
+  values (hid, 'Family Reward unlocked: ' || reward.title || '!');
+end;
+$$;
+
+-- Kid chips in coins. The amount is capped at what's still needed.
+create or replace function private.kid_contribute(p_token text, p_reward uuid, p_amount integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kid uuid := private.kid_from_token(p_token);
+  child public.kids%rowtype;
+  reward public.family_rewards%rowtype;
+  so_far integer;
+  give integer;
+  left_points integer;
+begin
+  if kid is null then
+    raise exception 'sign in again';
+  end if;
+  select * into child from public.kids where id = kid for update;
+  if private.is_grounded(child.grounded_until) then
+    raise exception 'grounded';
+  end if;
+  select * into reward from public.family_rewards
+  where id = p_reward and household_id = child.household_id
+  for update;
+  if reward.id is null then
+    raise exception 'reward not found';
+  end if;
+  if reward.status <> 'open' then
+    raise exception 'goal already reached';
+  end if;
+  if coalesce(p_amount, 0) < 1 then
+    raise exception 'enter an amount';
+  end if;
+  select coalesce(sum(amount), 0) into so_far from public.family_contributions where reward_id = reward.id;
+  give := least(p_amount, reward.goal - so_far);
+  if give < 1 then
+    raise exception 'goal already reached';
+  end if;
+  if child.points < give then
+    raise exception 'not enough points';
+  end if;
+  update public.kids set points = points - give where id = kid returning points into left_points;
+  insert into public.family_contributions (reward_id, household_id, kid_id, amount)
+  values (reward.id, child.household_id, kid, give);
+  insert into public.activity (household_id, kid_id, body)
+  values (child.household_id, kid, child.name || ' put ' || give || ' coins into ' || reward.title || '.');
+  if so_far + give >= reward.goal then
+    update public.family_rewards set status = 'reached', reached_at = now() where id = reward.id;
+    insert into public.activity (household_id, kid_id, body)
+    values (child.household_id, kid, 'Goal reached: ' || reward.title || '! Time to collect.');
+  end if;
+  return jsonb_build_object('points', left_points, 'given', give, 'total', so_far + give, 'goal', reward.goal, 'reached', so_far + give >= reward.goal);
+end;
+$$;
+
+create or replace function public.family_rewards()
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.family_rewards() $$;
+
+create or replace function public.kid_family_rewards(p_token text)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.kid_family_rewards(p_token) $$;
+
+create or replace function public.add_family_reward(p_title text, p_goal integer)
+returns uuid language sql security invoker set search_path = ''
+as $$ select private.add_family_reward(p_title, p_goal) $$;
+
+create or replace function public.remove_family_reward(p_id uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.remove_family_reward(p_id); end $$;
+
+create or replace function public.claim_family_reward(p_id uuid)
+returns void language plpgsql security invoker set search_path = ''
+as $$ begin perform private.claim_family_reward(p_id); end $$;
+
+create or replace function public.kid_contribute(p_token text, p_reward uuid, p_amount integer)
+returns jsonb language sql security invoker set search_path = ''
+as $$ select private.kid_contribute(p_token, p_reward, p_amount) $$;
+
+revoke all on function private.family_reward_rows(uuid) from public, anon, authenticated;
+revoke all on function private.family_rewards() from public, anon, authenticated;
+revoke all on function private.kid_family_rewards(text) from public, anon, authenticated;
+revoke all on function private.add_family_reward(text, integer) from public, anon, authenticated;
+revoke all on function private.remove_family_reward(uuid) from public, anon, authenticated;
+revoke all on function private.claim_family_reward(uuid) from public, anon, authenticated;
+revoke all on function private.kid_contribute(text, uuid, integer) from public, anon, authenticated;
+revoke all on function public.family_rewards() from public, anon, authenticated;
+revoke all on function public.kid_family_rewards(text) from public, anon, authenticated;
+revoke all on function public.add_family_reward(text, integer) from public, anon, authenticated;
+revoke all on function public.remove_family_reward(uuid) from public, anon, authenticated;
+revoke all on function public.claim_family_reward(uuid) from public, anon, authenticated;
+revoke all on function public.kid_contribute(text, uuid, integer) from public, anon, authenticated;
+
+grant execute on function private.family_reward_rows(uuid) to anon, authenticated;
+grant execute on function private.family_rewards() to authenticated;
+grant execute on function private.kid_family_rewards(text) to anon, authenticated;
+grant execute on function private.add_family_reward(text, integer) to authenticated;
+grant execute on function private.remove_family_reward(uuid) to authenticated;
+grant execute on function private.claim_family_reward(uuid) to authenticated;
+grant execute on function private.kid_contribute(text, uuid, integer) to anon, authenticated;
+grant execute on function public.family_rewards() to authenticated;
+grant execute on function public.kid_family_rewards(text) to anon, authenticated;
+grant execute on function public.add_family_reward(text, integer) to authenticated;
+grant execute on function public.remove_family_reward(uuid) to authenticated;
+grant execute on function public.claim_family_reward(uuid) to authenticated;
+grant execute on function public.kid_contribute(text, uuid, integer) to anon, authenticated;
+
+notify pgrst, 'reload schema';
+
 -- ---- 20261102_fight_pending ----
 -- A parent's approval now waits for the kid to watch the monster fight.
 -- Before, the kid's device only knew about a battle if it had already seen the chore as "submitted".

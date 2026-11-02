@@ -3547,6 +3547,18 @@ function paintHearts(count) {
   row.setAttribute("aria-label", `${n} heart${n === 1 ? "" : "s"} left`);
 }
 
+function fillHeart(index) {
+  const i = Math.max(0, Math.min(2, index));
+  heartFx = { i, mode: "fill", t: 0 };
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      heartFx = null;
+      paintHearts(i + 1);
+      resolve();
+    }, 1000);
+  });
+}
+
 function crackHeart(lostIndex) {
   const i = Math.max(0, Math.min(2, lostIndex));
   heartFx = { i, mode: "crack", t: 0 };
@@ -3572,7 +3584,18 @@ function drawHearts() {
     let ox = 0;
     let oy = 0;
     if (heartFx && heartFx.i === i) {
-      if (heartFx.mode === "crack") {
+      if (heartFx.mode === "fill") {
+        // A refilled heart pops in with a bounce and a sparkle ring.
+        img = heartS;
+        const t = heartFx.t;
+        oy = t < 0.5 ? -Math.round(Math.sin(t * Math.PI * 4) * 2) : 0;
+        if (t < 0.3 && ((t * 20) | 0) % 2 === 0) img = heartE;
+        if (t < 0.8 && ((time * 12) | 0) % 2) {
+          px(ctx, x - 1, y - 1, "#fff3a8");
+          px(ctx, x + 7, y - 1, "#ffffff");
+          px(ctx, x + 3, y + 7, "#ff8ac6");
+        }
+      } else if (heartFx.mode === "crack") {
         img = heartCrack;
         ox = ((time * 24) | 0) % 2 ? 1 : -1;
         oy = ((time * 18) | 0) % 2 ? -1 : 0;
@@ -3768,6 +3791,10 @@ async function playWarn(token) {
   const info = scene.warn;
   if (!info || warnBusy) return;
   warnBusy = true;
+  if (info.gift) {
+    await playHeartGift(token, info);
+    return;
+  }
   if (info.view === "parent") {
     await playParentWarn(token, info);
     return;
@@ -3926,6 +3953,108 @@ async function playWarn(token) {
   }
   warner = null;
   hero.hurt = 0;
+  finishWarn(info);
+  if (token !== runToken) return;
+  goTrail();
+}
+
+/* ---------- A parent gives a heart back ----------
+   The parent conjures a big glowing heart, tosses it to the hero, the hero catches it and cheers,
+   and a little heart flies up to refill the empty slot in the HUD. Plays on the parent's stage
+   (parent view) and on the kid's stage the next time they open the app (the parent walks in). */
+let giftHeart = null;
+
+async function playHeartGift(token, info) {
+  const stop = () => { warnBusy = false; giftHeart = null; };
+  mon = null;
+  projectiles.length = 0;
+  spellBolt = null;
+  giftHeart = null;
+  hero.down = false;
+  hero.hurt = 0;
+  hero.noWeapon = false;
+  scroll = 0;
+  scrollTarget = 0;
+  hero.pose = "idle";
+  hero.ox = 0;
+  hero.oxT = 0;
+  hero.kx = 0;
+  const parentView = info.view === "parent";
+  const kidName = info.kidName || "the hero";
+  let giver;
+  if (parentView) {
+    warner = null;
+    if (!guardian) syncGuardian({ hero: info.hero, color: info.color, name: info.parent, weapon: info.weapon || null });
+    giver = stageParent();
+    if (!giver) {
+      finishWarn(info);
+      return;
+    }
+    giver.cast = 0;
+    giver.point = 0;
+    giver.pointT = 0;
+  } else {
+    const tint = info.color || "#2a9d8f";
+    const heroKey = info.hero || parentLookKey(info.parent);
+    const look = heroLook(heroKey, tint);
+    warner = { x: W + 10, tx: 78, look, hero: heroKey, tint, stand: look.h || 16, hand: look.hand ?? 10, cast: 0, point: 0, pointT: 0, name: info.parent || "Parent" };
+    giver = warner;
+    say(`${warner.name} is here with a gift!`);
+    if (!(await until(() => warner && warner.x <= 78.5, token))) return stop();
+    warner.x = 78;
+  }
+  const name = giver.name || info.parent || "A parent";
+  const filled = Math.max(1, Math.min(3, Number(info.hearts) || 1));
+  paintHearts(filled - 1);
+  say(parentView ? `${name} gives ${kidName} a heart!` : `${name} has a heart for you!`);
+  if (!(await waitFor(0.5, token))) return stop();
+  // Conjure the heart above the parent's hands.
+  giver.cast = 1;
+  sfx("spell");
+  const stand = giver.stand || 16;
+  const gx = giver.x + (parentView ? 10 : 4);
+  const gy = G - stand - 6;
+  giftHeart = { x: gx, y: gy + 6, tx: gx, ty: gy, t: 0, arc: 0, speed: 1.6, big: true };
+  burst(gx, gy, ["#ff8ac6", "#fff3a8", "#ffffff"], 12, 35);
+  if (!(await until(() => giftHeart && giftHeart.t >= 1, token))) return stop();
+  if (!(await waitFor(0.45, token))) return stop();
+  // Toss it to the hero.
+  say("Catch!");
+  sfx("throw");
+  giver.cast = 0;
+  const hx = heroX() + 8;
+  const hy = G - 12;
+  giftHeart = { x: gx, y: gy, tx: hx, ty: hy, t: 0, arc: 14, speed: 1.4, big: true };
+  if (!(await until(() => giftHeart && giftHeart.t >= 1, token))) return stop();
+  giftHeart = null;
+  burst(hx, hy, ["#ff8ac6", "#e04a4a", "#fff3a8", "#ffffff"], 22, 60);
+  sfx("heal");
+  hero.pose = "victory";
+  hero.vy = -80;
+  hero.power = 1.2;
+  petFollower.cheer(true);
+  if (scene.pet) sfx(`pet:${scene.pet}`);
+  say(parentView ? `${kidName} caught it!` : "You caught it!");
+  if (!(await waitFor(0.5, token))) return stop();
+  // A small heart flies up into the empty HUD slot.
+  const slot = filled - 1;
+  giftHeart = { x: hx, y: hy - 6, tx: W - 3 - (3 - slot) * 9 + 3, ty: 6, t: 0, arc: 8, speed: 1.8, big: false };
+  if (!(await until(() => giftHeart && giftHeart.t >= 1, token))) return stop();
+  giftHeart = null;
+  sfx("heartfill");
+  await fillHeart(slot);
+  if (token !== runToken) return stop();
+  paintHearts(filled);
+  hero.pose = "idle";
+  hero.power = 0;
+  say(`A heart is back! ${filled} heart${filled === 1 ? "" : "s"} now.`);
+  if (!(await waitFor(1.1, token))) return stop();
+  if (!parentView && warner) {
+    say("Keep up the good work!");
+    warner.tx = W + 24;
+    if (!(await until(() => !warner || warner.x > W + 6, token))) return stop();
+    warner = null;
+  }
   finishWarn(info);
   if (token !== runToken) return;
   goTrail();
@@ -5398,6 +5527,7 @@ function update(dt) {
     warner.x += ((warner.tx ?? warner.x) - warner.x) * Math.min(1, dt * 5);
   }
   if (spellBolt) spellBolt.t += dt * 2.4;
+  if (giftHeart) giftHeart.t += dt * giftHeart.speed;
   if (paradeOn) {
     parade.forEach((walker) => {
       walker.x += (walker.tx - walker.x) * Math.min(1, dt * 5);
@@ -5586,7 +5716,7 @@ function draw() {
     if (parentFig.cast) {
       const hx = rx + 10;
       const hy = ry + 4;
-      const glow = warnCast ? "#c77dff" : "#5cc96a";
+      const glow = warnCast ? (scene.warn?.gift ? "#ff8ac6" : "#c77dff") : "#5cc96a";
       const spark = warnCast ? "#fff3a8" : "#f4c542";
       disc(ctx, hx, hy, 2, glow);
       disc(ctx, hx + 1, hy - 1, 1, spark);
@@ -5712,7 +5842,8 @@ function draw() {
     if (warner.cast) {
       const hx = wx + 4;
       const hy = wy + 4;
-      disc(ctx, hx, hy, 2, "#c77dff");
+      const gift = Boolean(scene.warn?.gift);
+      disc(ctx, hx, hy, 2, gift ? "#ff8ac6" : "#c77dff");
       disc(ctx, hx + 1, hy - 1, 1, "#fff3a8");
       if (R() < 0.35) {
         particles.push({ x: hx + rnd(-1, 2), y: hy + rnd(-2, 1), vx: rnd(-8, 8), vy: rnd(-20, -6), g: 40, life: 0.25, c: R() < 0.5 ? "#c77dff" : "#fff3a8" });
@@ -5720,6 +5851,19 @@ function draw() {
     }
     // Warner stands on the right and points left at the kid.
     drawPointingArm(warner, true);
+  }
+  if (giftHeart) {
+    const t = Math.min(1, giftHeart.t);
+    const gx = giftHeart.x + (giftHeart.tx - giftHeart.x) * t;
+    const gy = giftHeart.y + (giftHeart.ty - giftHeart.y) * t - Math.sin(t * Math.PI) * giftHeart.arc;
+    const big = giftHeart.big;
+    const pulse = big && ((time * 6) | 0) % 2 ? 1 : 0;
+    if (big) {
+      ctx.drawImage(heartS, 0, 0, 7, 6, Math.round(gx - 7 - pulse), Math.round(gy - 6 - pulse), 14 + pulse * 2, 12 + pulse * 2);
+    } else {
+      ctx.drawImage(heartS, Math.round(gx - 3), Math.round(gy - 3));
+    }
+    if (R() < 0.6) particles.push({ x: gx + rnd(-3, 3), y: gy + rnd(-3, 3), vx: rnd(-10, 10), vy: rnd(-14, 4), g: 10, life: 0.35, c: ["#ff8ac6", "#fff3a8", "#ffffff"][(R() * 3) | 0] });
   }
   if (spellBolt) {
     const t = Math.min(1, spellBolt.t);
