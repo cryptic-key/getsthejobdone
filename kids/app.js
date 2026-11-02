@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=62";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=62";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=62";
-import { createChoreQuest } from "./chore-quest.js?v=62";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=62";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=62";
+import { APP_VERSION } from "./version.js?v=63";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=63";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=63";
+import { createChoreQuest } from "./chore-quest.js?v=63";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=63";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=63";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -401,6 +401,7 @@ function nice(error) {
   if (/hearts are full/i.test(msg)) return "All three hearts are already full.";
   if (/pick a real birthday/i.test(msg)) return "Pick a real birthday.";
   if (/arena run over/i.test(msg)) return "That arena run already ended.";
+  if (/chore not found/i.test(msg) && db.session?.role === "kid") return "Someone else got that one first!";
   if (/priority first/i.test(msg)) return "Finish your Priority Quest first!";
   if (/goal already reached/i.test(msg)) return "That goal is already full!";
   if (/enter an amount/i.test(msg)) return "Tap in how many coins first.";
@@ -545,7 +546,7 @@ async function loadParent() {
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet,helmet,armor").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,warn_kind,hero,weapon,pet,birth_date").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
-    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority").order("sort_order").order("created_at"),
+    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority,first_come").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
     supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
@@ -593,6 +594,7 @@ async function loadParent() {
       sortOrder: Number(row.sort_order) || 0,
       active: row.active !== false,
       priority: Boolean(row.priority),
+      firstCome: Boolean(row.first_come),
     })),
     sections: (sections.data || []).map((row) => ({
       id: row.id,
@@ -647,6 +649,7 @@ async function loadKid() {
       sectionEnd: chore.section_end,
       sortOrder: Number(chore.sort_order) || 0,
       priority: Boolean(chore.priority),
+      firstCome: Boolean(chore.first_come),
     })),
     items: snap.items,
     requests: snap.requests.map((req) => ({ ...req, kidId: snap.kid.id, itemId: req.item_id })),
@@ -2260,6 +2263,11 @@ function priorityToggle(chore) {
   return `<button type="button" class="btn small priority-toggle${on ? " on" : ""}" data-action="toggle-priority" data-id="${esc(chore.id)}" aria-pressed="${on ? "true" : "false"}" title="A Priority task must be done before any other task or the arena">${on ? "★ Priority" : "☆ Priority"}</button>`;
 }
 
+function firstComeToggle(chore) {
+  const on = Boolean(chore.firstCome);
+  return `<button type="button" class="btn small priority-toggle first-come-toggle${on ? " on" : ""}" data-action="toggle-first-come" data-id="${esc(chore.id)}" aria-pressed="${on ? "true" : "false"}" title="The first kid to mark it done keeps it. It disappears for the others.">${on ? "⚡ First come" : "⚡ First come?"}</button>`;
+}
+
 function dragHandle() {
   return `<button type="button" class="drag-handle" draggable="true" aria-label="Drag to rearrange">⋮⋮</button>`;
 }
@@ -2282,7 +2290,7 @@ function questBlock(list, empty, locked = false) {
       const waiting = chore.status === "submitted";
       return `<div class="quest${waiting ? " waiting-quest" : ""}">
         <span class="quest-pay">+${Number(chore.points) || 0}</span>
-        <div class="quest-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}</div></div>
+        <div class="quest-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}${chore.firstCome ? " · First come, first served!" : ""}</div></div>
         <div class="quest-lane" aria-hidden="true">
           <canvas data-quest-walker="${esc(sprite)}" width="96" height="44"></canvas>
         </div>
@@ -2687,8 +2695,9 @@ const views = {
           <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
           <button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button>
           ${priorityToggle(chore)}
+          ${chore.priority ? firstComeToggle(chore) : ""}
         </div>
-        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${chore.priority ? " · Priority: do this first" : ""}${on ? "" : " · Hidden from the daily board"}</div>${renameButton(chore)}</div>
+        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${chore.priority ? " · Priority: do this first" : ""}${chore.priority && chore.firstCome ? " · First come, first served" : ""}${on ? "" : " · Hidden from the daily board"}</div>${renameButton(chore)}</div>
         ${monsterChoice(sprite, chore.id)}
         <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
         <button class="btn small leaf" type="submit">Save</button>
@@ -2768,7 +2777,7 @@ const views = {
                 ? specials
                     .map((chore) => {
                       const sprite = taskSprite(chore);
-                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}${chore.priority ? " · Priority" : ""}</div>${renameButton(chore)}</div>${priorityToggle(chore)}<button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
+                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}${chore.priority ? " · Priority" : ""}${chore.firstCome ? " · First come, first served" : ""}</div>${renameButton(chore)}</div>${priorityToggle(chore)}${firstComeToggle(chore)}<button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
                     })
                     .join("")
                 : `<p class="muted">No bonus tasks yet.</p>`
@@ -3434,6 +3443,14 @@ app.addEventListener("click", (event) => {
     run(
       () => rpc("set_chore_priority", { p_id: btn.dataset.id, p_on: turningOn }),
       turningOn ? "Priority on. Kids must finish it before other tasks or the arena." : "Priority off.",
+      "chores"
+    );
+  }
+  if (action === "toggle-first-come") {
+    const turningOn = btn.getAttribute("aria-pressed") !== "true";
+    run(
+      () => rpc("set_chore_first_come", { p_id: btn.dataset.id, p_on: turningOn }),
+      turningOn ? "First come, first served. The first kid to mark it done keeps it." : "Everyone can do it again.",
       "chores"
     );
   }
