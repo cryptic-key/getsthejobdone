@@ -1520,6 +1520,38 @@ const MORALS={
   ['A friend tells you someone is getting hurt, and asks you to keep it secret. What should you do?','Tell a trusted adult. Safety comes first',['Keep the secret no matter what','Post about it online','Try to handle it all alone']],
   ['A parent comes home tired and stressed. What should you do?','Offer to help without being asked',['Ask for something you want right away','Complain about dinner','Leave your mess for them']],
   ['You borrowed a friend’s game and scratched it. What should you do?','Tell them and offer to replace it',['Return it and say nothing','Say it was already scratched','Keep it so they forget']]]};
+/* Sibling scenarios: sharing, patience, fairness and looking after each other */
+MORALS.little.push(
+  ['Your baby sister knocks over your block tower. What should you do?','Take a deep breath and build it again together',['Knock her down','Yell at her']],
+  ['Your brother is crying because he can’t find his teddy. What should you do?','Help him look for it',['Laugh at him','Hide it even more']],
+  ['You and your brother both want the red cup. What should you do?','Take turns or pick another cup',['Grab it and run','Push him away']],
+  ['Your big sister is reading and you want to play. What should you do?','Ask nicely if she can play later',['Pull her book away','Scream until she plays']],
+  ['Your little brother wants to help you build. What should you do?','Let him help with an easy part',['Say “Go away, baby!”','Take all the blocks']],
+  ['Your sister says sorry for bumping into you. What should you say?','“It’s okay. I forgive you.”',['Bump her back','Say “I don’t like you”']],
+  ['You got a sticker and your brother didn’t. What should you do?','Be kind, and maybe share one',['Tease him about it','Wave it in his face']],
+  ['A grown-up is feeding the baby and you want a snack. What should you do?','Wait patiently or ask nicely',['Whine and stomp','Take the baby’s food']]
+);
+MORALS.kid.push(
+  ['Your little sister wants to play with your new toy. What should you do?','Show her how it works and let her have a turn',['Snatch it and run','Tell her she’ll break it and walk away']],
+  ['Your little brother wrecks your drawing by accident. What should you do?','Tell him it’s okay and draw a new one together',['Rip up his drawing','Tell a parent he did it on purpose']],
+  ['You and your sibling both want to pick the movie. What should you do?','Take turns choosing, or find one you both like',['Grab the remote and hide it','Say the oldest always picks']],
+  ['Your little sister is scared of the dark. What should you do?','Stay with her and help turn on a night light',['Tell her monsters are coming','Laugh and leave her alone']],
+  ['Your brother did something wrong and blames you. What should you do?','Calmly tell a parent the truth',['Hit him','Blame him for something else too']],
+  ['Your big brother is in an online class for school. What should you do?','Play quietly until he’s done',['Make silly noises behind him','Turn off the Wi-Fi']],
+  ['Your sibling gets a bigger piece of cake than you. What should you do?','Let it go, or kindly ask a grown-up',['Squish their cake','Cry until you get theirs']],
+  ['Your little sister is learning to tie her shoes and it’s taking forever. What should you do?','Be patient and help her practise',['Do it for her and say she’s slow','Leave without her']]
+);
+MORALS.big.push(
+  ['Your younger brother keeps coming into your room without asking. What should you do?','Calmly explain the rule and agree he’ll knock first',['Lock him out and yell','Go mess up his room','Tell your parents he steals things']],
+  ['Your little sister copies everything you do. What should you do?','Set a good example. She looks up to you',['Tell her she’s annoying','Do silly things to trick her','Ignore her completely']],
+  ['A parent asks you to watch your younger siblings for an hour. What should you do?','Keep them safe and play with them',['Lock yourself in your room','Let them do whatever they want','Scare them so they stay quiet']],
+  ['Your brother earns a reward and you don’t. What should you do?','Congratulate him and keep working on your own goals',['Say it’s unfair and sulk','Say he must have cheated','Break his reward']],
+  ['Your sibling tells you they feel sad at school. What should you do?','Listen, be kind, and help them tell a parent',['Tell everyone at school','Laugh about it','Tell them to stop being a baby']],
+  ['You and your brother argue about who played the game longest. What should you do?','Make a fair timer plan together',['Unplug it so nobody plays','Hide the controller','Keep playing until he gives up']],
+  ['Your little sister keeps losing a board game and gets upset. What should you do?','Help her learn and cheer for her good moves',['Beat her as hard as you can','Quit the game','Tell her she’s bad at it']],
+  ['You said something mean to your brother when you were angry. What should you do?','Say sorry and tell him how you really felt',['Pretend it never happened','Say it was his fault','Say something even meaner']]
+);
+
 function makeQuestionRaw(cat,lvl,k=0){const Q=(text,sayParts,res,vis)=>Object.assign({cat,text,say:sayParts||[aqEN(text)],vis:vis||null},res);
  if(cat==='math'){
   if(lvl==='little'){const n=aqInt(1,Math.min(8,4+k));return Q('How many apples?',null,aqMC(aqT(n),aqNear(n,2,1)),{apples:n})}
