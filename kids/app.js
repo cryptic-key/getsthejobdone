@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=44";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=44";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=44";
-import { createChoreQuest } from "./chore-quest.js?v=44";
-import { GEAR, normalizeGear } from "./gear.js?v=44";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=44";
+import { APP_VERSION } from "./version.js?v=45";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=45";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=45";
+import { createChoreQuest } from "./chore-quest.js?v=45";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=45";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=45";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -97,7 +97,7 @@ function activityType(text) {
   if (/ is free\. Three hearts/.test(t)) return "lift";
   if (/ was reset/.test(t)) return "reset";
   if (/Monster Arena/.test(t)) return "arena";
-  if (/ asked for | points went back to | bought 30 device| cashed .+ points for \$1/.test(t)) return "shop";
+  if (/ asked for | points went back to | bought 30 device| cashed .+ points for \$1| bought the .+ for \d+ coins/.test(t)) return "shop";
   if (/ got (?!a reward)/.test(t)) return "shop";
   if (/ spent | cashed in | had a balance taken off| was paid \$/.test(t)) return "deduct";
   if (/PIN|joined as a parent|was removed/.test(t)) return "family";
@@ -255,8 +255,11 @@ function nice(error) {
   if (/not a parent/i.test(msg)) return "This login is not on a family yet.";
   if (/already has an account/i.test(msg)) return "That email already has an account. They can sign in.";
   if (/^grounded$/i.test(msg)) return "Device time is locked while you are grounded.";
-  if (/not enough points/i.test(msg)) return "Not enough points for that.";
-  if (/already owned/i.test(msg)) return "You already have that pet.";
+  if (/not enough points/i.test(msg)) return "Not enough coins for that.";
+  if (/already owned/i.test(msg)) return "You already have that.";
+  if (/unknown gear/i.test(msg)) return "That gear is not in the market.";
+  if (/gear locked/i.test(msg)) return "Buy that gear in the Market first.";
+  if (/wrong slot/i.test(msg)) return "That piece goes in the other slot.";
   if (/pet locked/i.test(msg)) return "Buy that pet in the Market first.";
   if (/unknown pet/i.test(msg)) return "That pet is not in the market.";
   if (/not enough coins/i.test(msg)) return "Not enough coins to take off.";
@@ -1170,6 +1173,93 @@ function petMarketBoard(child) {
   </section>`;
 }
 
+function gearPrice(key) {
+  const custom = Number(db.gear?.prices?.[key]);
+  return custom > 0 ? custom : GEAR[key]?.price || 0;
+}
+
+function gearSpecialLine(key) {
+  const ability = ABILITIES[GEAR[key]?.ability];
+  return ability ? `Special: ${ability.name} – ${ability.desc}` : "";
+}
+
+function gearMarketBoard(child) {
+  const coins = Math.max(0, Number(child?.points) || 0);
+  const owned = new Set(db.gear?.owned || []);
+  const wearing = new Set([db.gear?.head, db.gear?.body].filter(Boolean));
+  const row = (key) => {
+    const info = GEAR[key];
+    const cost = gearPrice(key);
+    const have = owned.has(key);
+    const ready = coins >= cost;
+    let action = `<button class="btn small leaf" type="button" data-action="buy-gear" data-gear="${esc(key)}" ${ready ? "" : "disabled"}>Buy</button>`;
+    if (wearing.has(key)) action = `<span class="chip">Wearing</span>`;
+    else if (have) action = `<span class="chip">Owned</span>`;
+    return `<div class="item loot pet-loot gear-loot${have || ready ? " ready" : ""}">
+      <span class="gear-thumb"><canvas data-gear="${esc(key)}" width="14" height="12" aria-hidden="true"></canvas></span>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${esc(gearSpecialLine(key))}</div><div class="tiny muted">${have ? "Owned" : `${cost} coins`}</div>${have ? "" : meter(coins, cost)}</div>
+      ${action}
+    </div>`;
+  };
+  const group = (slot) => GEAR_KEYS.filter((key) => GEAR[key].slot === slot).map(row).join("");
+  return `<section class="card stack">
+    <h2 class="page-title">Helmets &amp; Armour</h2>
+    <p class="lede">Each piece gives a special you can use once per Monster Arena run. Buying puts it on right away. Swap pieces on My Hero.</p>
+    <h3 class="gear-group">Helmets</h3>
+    <div class="pet-market">${group("head")}</div>
+    <h3 class="gear-group">Armour</h3>
+    <div class="pet-market">${group("body")}</div>
+  </section>`;
+}
+
+function heroGearBoard(child) {
+  const owned = db.gear?.owned || [];
+  const slots = [
+    { slot: "head", label: "Helmet" },
+    { slot: "body", label: "Armour" },
+  ];
+  const cards = slots.map(({ slot, label }) => {
+    const current = normalizeGear(db.gear?.[slot], slot);
+    const open = Boolean(heroExpand[`gear-${slot}`]);
+    const mine = owned.filter((key) => GEAR[key]?.slot === slot);
+    const options = open
+      ? `<div class="gear-options">
+          ${mine.map((key) => `<button type="button" class="gear-option${key === current ? " on" : ""}" data-action="set-gear" data-slot="${slot}" data-gear="${esc(key)}" aria-pressed="${key === current ? "true" : "false"}">
+            <span class="gear-thumb"><canvas data-gear="${esc(key)}" width="14" height="12" aria-hidden="true"></canvas></span>
+            <span><strong>${esc(GEAR[key].name)}</strong><small>${esc(ABILITIES[GEAR[key].ability]?.name || "")}</small></span>
+          </button>`).join("")}
+          <button type="button" class="gear-option${current ? "" : " on"}" data-action="set-gear" data-slot="${slot}" data-gear="" aria-pressed="${current ? "false" : "true"}">
+            <span class="gear-thumb empty" aria-hidden="true"></span>
+            <span><strong>None</strong><small>Take it off</small></span>
+          </button>
+          ${mine.length ? "" : `<p class="tiny muted">You don't own any ${slot === "head" ? "helmets" : "armour"} yet. Buy one in the Market.</p>`}
+        </div>`
+      : "";
+    return `<div class="gear-slot">
+      <button type="button" class="gear-slot-head" data-action="open-gear-slot" data-slot="${slot}" aria-expanded="${open ? "true" : "false"}">
+        <span class="gear-thumb${current ? "" : " empty"}">${current ? `<canvas data-gear="${esc(current)}" width="14" height="12" aria-hidden="true"></canvas>` : ""}</span>
+        <span class="gear-slot-copy">
+          <span class="field-label">${label}</span>
+          <strong>${current ? esc(GEAR[current].name) : "Empty"}</strong>
+          <small class="tiny muted">${current ? esc(gearSpecialLine(current)) : "Tap to put something on."}</small>
+        </span>
+        <span class="gear-slot-chev" aria-hidden="true"></span>
+      </button>
+      ${options}
+    </div>`;
+  }).join("");
+  const look = kidHero(db.hero?.hero || child?.hero);
+  const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
+  return `<section class="card stack">
+    <h2 class="page-title">Helmet &amp; Armour</h2>
+    <p class="lede">Each piece gives one special per Monster Arena run. Tap a slot to swap or take it off.</p>
+    <div class="gear-board">
+      <canvas class="hero-icon gear-preview" data-look="${esc(look)}" data-weapon="${esc(db.hero?.weapon || "broom")}" data-color="${esc(tint)}" data-head="${esc(db.gear?.head || "")}" data-body="${esc(db.gear?.body || "")}" width="40" height="34" aria-hidden="true"></canvas>
+      <div class="gear-slots">${cards}</div>
+    </div>
+  </section>`;
+}
+
 function parentPetPricesBoard() {
   const rows = PET_KEYS.map((key) => {
     const info = PET_CATALOG[key];
@@ -1367,6 +1457,7 @@ function heroBoard() {
       <p class="lede">${weaponsOpen ? "Equipped first, then owned, then closest to unlock." : "Your equipped weapon. Tap Show all to browse the armory."}</p>
       <div class="armory">${shownWeapons.map(weaponCard).join("") || `<p class="muted">No weapon equipped yet.</p>`}</div>
     </section>
+    ${heroGearBoard(child)}
     <section class="card stack">
       <div class="section-title">
         <h2 class="page-title">Achievements</h2>
@@ -1454,8 +1545,9 @@ function paintQuestArt(root) {
     slot.replaceWith(art);
   };
   const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
+  const kidGear = db.session?.role === "kid" ? db.gear : null;
   root.querySelectorAll("canvas[data-quest-hero]").forEach((slot) => {
-    paintHeroBadge(slot, slot.dataset.questHero, null, tint);
+    paintHeroBadge(slot, slot.dataset.questHero, null, tint, null, kidGear?.head || null, kidGear?.body || null);
     slot.style.width = "42px";
     slot.style.height = "auto";
   });
@@ -2034,9 +2126,12 @@ function render() {
       icon.dataset.look,
       heldWeapon(icon.dataset.weapon),
       icon.dataset.color || COLOR_HEX.leaf,
-      icon.dataset.pet || ""
+      icon.dataset.pet || "",
+      icon.dataset.head || null,
+      icon.dataset.body || null
     )
   );
+  app.querySelectorAll("canvas[data-gear]").forEach((icon) => drawGearIcon(icon, icon.dataset.gear, 3));
   paintVersion();
   pinHold = false;
   const pin = app.querySelector("dialog.pin-dialog");
@@ -2707,6 +2802,7 @@ const views = {
               : `<p class="muted">No extra items yet.</p>`
           }
         </section>
+        ${gearMarketBoard(child)}
         ${petMarketBoard(child)}
       </div>`,
       kidNav("kid-shop")
@@ -3059,6 +3155,33 @@ app.addEventListener("click", (event) => {
         });
       },
       "Asked. A parent has the points until they say yes or hand them back."
+    );
+  }
+  if (action === "buy-gear") {
+    const key = btn.dataset.gear;
+    const name = GEAR[key]?.name || "New gear";
+    run(
+      async () => {
+        await rpc("kid_buy_gear", { p_token: kidToken(), p_gear: key });
+        marketThrow({ type: "gift", text: `${name}! Try it on!` });
+      },
+      `${name} bought and put on!`,
+      "kid-shop"
+    );
+  }
+  if (action === "open-gear-slot") {
+    const slotKey = `gear-${btn.dataset.slot}`;
+    heroExpand[slotKey] = !heroExpand[slotKey];
+    render();
+  }
+  if (action === "set-gear") {
+    const slot = btn.dataset.slot;
+    const key = btn.dataset.gear || null;
+    heroExpand[`gear-${slot}`] = false;
+    run(
+      () => rpc("kid_set_gear", { p_token: kidToken(), p_slot: slot, p_gear: key }),
+      key ? `${GEAR[key]?.name || "Gear"} on.` : `${slot === "head" ? "Helmet" : "Armour"} off.`,
+      "hero"
     );
   }
   if (action === "buy-pet") {
