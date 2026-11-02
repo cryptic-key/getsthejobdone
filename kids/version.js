@@ -1,2 +1,2 @@
 // Bump APP_VERSION on every push that ships kids/ changes.
-export const APP_VERSION = 48;
+export const APP_VERSION = 49;

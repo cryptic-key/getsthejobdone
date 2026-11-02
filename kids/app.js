@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=48";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=48";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=48";
-import { createChoreQuest } from "./chore-quest.js?v=48";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=48";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=48";
+import { APP_VERSION } from "./version.js?v=49";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=49";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=49";
+import { createChoreQuest } from "./chore-quest.js?v=49";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=49";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=49";
 import { armAudio, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -1689,12 +1689,27 @@ function celebrate() {
 }
 
 /* Sound on/off chips in the game header. Choices are remembered on this device. */
-function soundToggles() {
+function soundButton() {
   const s = soundState();
-  return `<span class="sound-toggles">
-    <button class="sound-chip${s.sfx ? " on" : ""}" type="button" data-action="toggle-sfx" aria-pressed="${s.sfx}" title="Sound effects">SFX</button>
-    <button class="sound-chip${s.music ? " on" : ""}" type="button" data-action="toggle-music" aria-pressed="${s.music}" title="Music">♪</button>
-  </span>`;
+  const muted = !s.sfx && !s.music;
+  const waves = muted
+    ? `<path d="M11 5.5l4 5M15 5.5l-4 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>`
+    : `<path d="M11 5.5c.9.7 1.4 1.5 1.4 2.5s-.5 1.8-1.4 2.5M13 3.5c1.6 1.2 2.4 2.7 2.4 4.5s-.8 3.3-2.4 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/>`;
+  return `<button class="sound-btn${muted ? " muted" : ""}" type="button" data-action="open-sound" aria-haspopup="dialog" aria-label="Sound settings" title="Sound">
+    <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M1.5 6h3l4-3.2v10.4l-4-3.2h-3z" fill="currentColor"/>${waves}</svg>
+  </button>`;
+}
+
+function soundDialog() {
+  const s = soundState();
+  return `<dialog class="balance-dialog sound-dialog" aria-label="Sound">
+    <div class="stack">
+      <div class="section-title"><h2>Sound</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
+      <label class="sound-option"><input type="checkbox" data-sound="music" ${s.music ? "checked" : ""}><span>Music</span></label>
+      <label class="sound-option"><input type="checkbox" data-sound="sfx" ${s.sfx ? "checked" : ""}><span>Sound FX</span></label>
+      <p class="tiny muted">Saved on this device.</p>
+    </div>
+  </dialog>`;
 }
 
 function shell(title, sub, body, nav) {
@@ -1708,7 +1723,7 @@ function shell(title, sub, body, nav) {
         <span><h1>${esc(title)}</h1><p>${esc(sub)} <span class="ver-tag">v${APP_VERSION}</span></p></span>
       </button>
       <span class="top-actions">
-        ${play ? soundToggles() : ""}
+        ${play ? soundButton() : ""}
         ${signedIn ? `<button class="btn ghost small" data-action="sign-out">${play ? "Exit" : "Sign out"}</button>` : ""}
       </span>
     </header>
@@ -1718,6 +1733,7 @@ function shell(title, sub, body, nav) {
     ${body}
     ${play ? nav || "" : ""}
     ${child ? proofDialogHtml() : ""}
+    ${play ? soundDialog() : ""}
     ${play ? "" : `<footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`}`;
 }
 
@@ -2899,6 +2915,13 @@ app.addEventListener("toggle", (event) => {
 });
 
 app.addEventListener("change", (event) => {
+  if (event.target.dataset?.sound) {
+    if (event.target.dataset.sound === "music") setMusicOn(event.target.checked);
+    else setSfx(event.target.checked);
+    const btn = app.querySelector(".sound-btn");
+    if (btn) btn.outerHTML = soundButton();
+    return;
+  }
   if (event.target.name === "allKids" || event.target.name === "kids") {
     const picks = event.target.closest(".picks");
     const all = picks?.querySelector('input[name="allKids"]');
@@ -2965,8 +2988,11 @@ app.addEventListener("click", (event) => {
       go(to);
     }
   }
-  if (action === "toggle-sfx") { setSfx(!soundState().sfx); render(); return; }
-  if (action === "toggle-music") { setMusicOn(!soundState().music); render(); return; }
+  if (action === "open-sound") {
+    const dialog = document.querySelector("dialog.sound-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+    return;
+  }
   if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "chart" : "welcome");
   if (action === "auth-mode") go("parent-auth", { mode: btn.dataset.mode, email: draft.email || "" });
   if (action === "kids-door") openKidGate();
