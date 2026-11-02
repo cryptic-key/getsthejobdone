@@ -118,7 +118,7 @@ function paintQuestion(q) {
   el.innerHTML = `<div class="arena-q-head"><span class="chip">${esc(cat)}</span><span class="tiny muted">Monsters beaten: ${run?.kills || 0}</span></div>
     <p class="arena-q">${esc(q.text)}</p>
     <div class="arena-vis"></div>
-    <div class="arena-choices${q.choices.length > 3 ? " four" : ""}">${q.choices.map(choiceButton).join("")}</div>
+    <div class="arena-choices${q.layout === "list" ? " list" : q.choices.length > 3 ? " four" : ""}">${q.choices.map(choiceButton).join("")}</div>
     <button class="btn ghost small" type="button" data-arena="hear">Hear it</button>`;
   const vis = A.drawVis(q.vis);
   if (vis) {

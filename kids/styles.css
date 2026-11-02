@@ -887,6 +887,9 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
   gap: 8px;
 }
 .arena-choices.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Sentence answers (Good Morals scenarios) stack in one column. */
+.arena-choices.list { grid-template-columns: 1fr; }
+.arena-choices.list .arena-choice { place-items: center start; text-align: left; min-height: 52px; }
 .arena-choice {
   min-height: 64px;
   display: grid;

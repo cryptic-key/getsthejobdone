@@ -8,7 +8,7 @@
  *   quest.play('bed');
  *
  * Heroes: knight, princess, king, queen.  Pets (25): puppy, kitten, bunny, hamster, duckling, frog, fox, turtle, penguin, owl, ghost, robot, slime, unicorn, dragon, rock, himalayan, tuxedo, crab, betta, gecko, platypus, shark, whale, rainbowshark
- * Monster keys (42): calc, mime, flask, alarm, dust, sleep, dry, breakfast, dinner, lunchmade, basketball, bus, repair, helping, babysit, shirts, bed, shoes, pack, dishes, teeth, laundry, toys, reading, pet, plants, table, trash, counters, towels, bookshelf, lunch, coats, groceries, homework, dressed, petbrush, leaves, snow, outside, wood, bath
+ * Monster keys (43): calc, mime, flask, alarm, robber, dust, sleep, dry, breakfast, dinner, lunchmade, basketball, bus, repair, helping, babysit, shirts, bed, shoes, pack, dishes, teeth, laundry, toys, reading, pet, plants, table, trash, counters, towels, bookshelf, lunch, coats, groceries, homework, dressed, petbrush, leaves, snow, outside, wood, bath
  * Weapon keys (35): broom, duster, mop, squeegee, vacuum, golden, toothbrush, spatula, rake, pencil, plunger, dustpan, sponge, spray, diamond, bubble, lint, watering, bookmark, bone, shovel, bat, mallet, duckhammer, pillowmace, rattle, butterknife, whisk, baguette, hockey, crossing, wrench, iron, bottle, foamfinger
  * Canvas renders at 128x72; scale it up with CSS and `image-rendering: pixelated`.
  */
@@ -668,6 +668,18 @@ function drawAlarm(g,x,y,m){const cx=x+12,cy=y+14,ring=(m.idle&&(m.t%2.2)<.5)||m
   if(m.open>.5){rect(g,cx-2,cy+4,5,2,'#3a0c14');px(g,cx-1,cy+4,'#ffffff');px(g,cx+1,cy+4,'#ffffff')}else{px(g,cx-2,cy+4,K);px(g,cx+2,cy+4,K);rect(g,cx-1,cy+5,3,1,K)}
   if(ring)for(const s of [-1,1]){px(g,cx+s*13,y+2,'#ffffff');px(g,cx+s*14,y+4,'#ffffff');px(g,cx+s*13,y+6,'#ffffff')}}
 const puzzleS=['#e04a4a','#3b74d9','#5cc96a','#f4c542'].map(c=>sprite(["..KK....",".KPPK...","KKPPKKK.","KPPPPPKK","KPPPPPPK","KPPPPPKK","KKKKKKK."],{K,P:c}));
+/* Robber Rascal: cartoon burglar who throws grawlix (@#!$*) */
+const robPal={K,B:'#2a2a38',b:'#45465a',S:'#f4c89c',s:'#d39a6c',M:'#1a1c2c',W:'#ffffff',E:K,g:'#8a8f9a',D:'#2a2a38',T:'#c9a46a',t:'#a07a40',G:'#3a8f4a'};
+const robRows=["....KKKKK....","...KBbBBBK...","..KBBBBbBBK..","..KKKKKKKKK..","..KSSSSSSSK..","..KMWEMWEMK..","..KSSSSSSsK..","..KSgSgSgsK..","...KSKKKSK...",
+  "..KWWWWWWWK..",".KSKDDDDDKSK.",".KSKWWWWWKSK.","..KKDDDDDKK..","...KWWWWWK...","...KDDDDDK...","...KBBKBBK...","...KBBKBBK..."];
+const robA=sprite([...robRows,"..KKKK.KKKK.."],robPal);
+const robB=sprite([...robRows.slice(0,8),"...KSKDDKSK..",...robRows.slice(9),"..KKKK.KKKK.."],robPal);
+const sackS=sprite(["...KK...","..KTTK..",".KTTTTK.","KTTGTTTK","KTGGGTTK","KTTGTTTK","KTGGGTTK","KTTGTtTK",".KKKKKK."],robPal);
+const GRAWLIX={at:[".XXX.","X.XXX","X.X.X","X.XX.",".XXXX"],hash:[".X.X.","XXXXX",".X.X.","XXXXX",".X.X."],bang:["XX","XX","XX","..","XX"],
+  dollar:["..X..",".XXXX","X.X..",".XXX.","..X.X","XXXX.","..X.."],star:["X.X.X",".XXX.","XXXXX",".XXX.","X.X.X"],amp:[".XX..","X..X.",".XX..","X..XX",".XX.X"],
+  pct:["XX..X","XX.X.","..X..",".X.XX","X..XX"]};
+const grawCols=['#e04a4a','#f4c542','#ff8ac6','#7fe0ff','#9be04a','#f4862e'];
+const grawS=Object.values(GRAWLIX).map((r,i)=>outlined(r,grawCols[i%grawCols.length]));
 const cushionS=sprite(["KKKKK","KChCK","KCCCK","KKKKK"],couchPal);
 const remoteS=sprite(["KKKKKK","KRrRRK","KKKKKK"],{K,R:'#3a3a48',r:'#e04a4a'});
 const chipS=sprite([".KK.","KYYK","KYyK",".KK."],{K,Y:'#f4d06a',y:'#d4a84a'});
@@ -750,6 +762,11 @@ const MON={
   hit:['#d63c3c','#f4c542','#fff8e6'],yoff:()=>0,
   draw(g,x,y,m){drawAlarm(g,x,y,m)},
   attack(m){return toss(m,[0,1,2,3].map(i=>({s:puzzleS[i],y:G-16,vx:-rnd(68,86),vy:-rnd(35,60),g:130,spin:true,gap:.12})),{lift:false})}},
+ robber:{name:'Robber Rascal',chore:'Arena: Good Morals',coins:1,arenaOnly:true,w:15,h:18,attackName:'grawlix barrage',
+  intro:'ROBBER RASCAL tiptoes in with a sack of loot!',atk:'@#!$*! He hurls a string of grumbly symbols!',win:'Caught! He gives everything back.',
+  hit:['#2a2a38','#ffffff','#f4c542'],yoff:m=>m.idle?-Math.round(Math.abs(Math.sin(m.t*5))):0,
+  draw(g,x,y,m){g.drawImage(sackS,x+8,y+5+(m.idle?((m.t*5|0)%2):0));g.drawImage(m.open>.5?robB:robA,x,y)},
+  attack(m){return toss(m,[0,1,2,3,4].map(()=>({s:aqPick(grawS),y:G-13,vx:-rnd(70,90),vy:-rnd(25,60),g:110,spin:R()<.4,gap:.09})),{lift:false})}},
  dust:{name:'Dust Bunny',chore:'Swept the floor',coins:5,w:16,h:14,attackName:'dust sneeze',
   intro:'A DUST BUNNY hops out from under the couch!',atk:'The Dust Bunny sneezes a dust cloud!',win:'Floor swept! The Dust Bunny is gone.',
   hit:['#b4b4c4','#6e6e82','#ffffff'],
@@ -1426,7 +1443,8 @@ const ARENA_CATS={
  words:{name:'Words',monster:'reading'},
  french:{name:'French',monster:'mime'},
  nature:{name:'Nature & Science',monster:'flask'},
- puzzles:{name:'Puzzles',monster:'alarm'}
+ puzzles:{name:'Puzzles',monster:'alarm'},
+ morals:{name:'Good Morals',monster:'robber'}
 };
 const ARENA_LEVELS={little:{name:'Little Explorer',ages:'Ages 3–5',readAloud:true},kid:{name:'Adventurer',ages:'Ages 6–8',readAloud:false},big:{name:'Champion',ages:'Ages 9–12',readAloud:false}};
 let hurtMode=false;
@@ -1455,6 +1473,47 @@ function misspell(w){const ops=[s=>{const i=1+(R()*(s.length-2)|0);return s.slic
   s=>{const i=1+(R()*(s.length-2)|0);return s.slice(0,i)+s[i]+s.slice(i)},s=>s.replace(/ie/,'ei').replace(/ce/,'se'),s=>s.replace(/ou/,'o').replace(/ph/,'f'),s=>s.replace(/(.)\1/,'$1')];
   for(let t=0;t<12;t++){const m=aqPick(ops)(w);if(m!==w&&m.length>2)return m}return w+'e'}
 const LETTER_PETS={F:'frog',D:'duckling',P:'puppy',B:'bunny',C:'crab',T:'turtle',O:'owl',W:'whale',S:'shark',K:'kitten',H:'hamster'};
+/* Good Morals: [scenario, right choice, [wrong choices]] by level */
+const MORALS={
+ little:[
+  ['Your brother takes your toy without asking. What should you do?',"Say, “Can I have it back, please?”",['Hit him','Scream and cry']],
+  ['You spill your juice on the floor. What should you do?','Tell a grown-up and help clean it',['Hide it','Walk away']],
+  ['Your friend falls down and gets hurt. What should you do?','Ask if they are okay',['Laugh at them','Keep playing']],
+  ['You and your sister both want the last cookie. What should you do?','Share it or take turns',['Grab it fast','Hide it']],
+  ['Someone gives you a present. What should you say?','Thank you!',['Nothing','I don’t like it']],
+  ['You break a toy by accident. What should you do?','Tell the truth',['Blame the dog','Hide it under the bed']],
+  ['A grown-up is talking and you want to say something. What should you do?','Wait for your turn',['Shout over them','Pull on their arm']],
+  ['It is time to clean up the toys. What should you do?','Help put them away',['Run and hide','Make a bigger mess']],
+  ['A new kid wants to play with you. What should you do?','Say, “Come play with us!”',['Tell them to go away','Ignore them']],
+  ['You feel really, really angry. What should you do?','Take deep breaths and use your words',['Throw things','Hit someone']],
+  ['Your friend is sad. What should you do?','Give them a hug or ask what’s wrong',['Tell them to stop crying','Walk away']],
+  ['A grown-up says it is bedtime. What should you do?','Brush your teeth and get in bed',['Run around the house','Yell “No!”']]],
+ kid:[
+  ['Your brother takes your toy without asking. What should you do?','Calmly ask for it back, and tell a parent if he won’t give it',['Grab it back and push him','Take one of his toys to get even']],
+  ['You find $5 on the floor at school. What should you do?','Give it to a teacher',['Keep it','Spend it at lunch']],
+  ['Other kids are teasing your friend. What should you do?','Stand up for your friend and tell a teacher',['Join in so they like you','Walk away and say nothing']],
+  ['You forgot to do your homework. What should you do?','Tell your teacher the truth',['Say the dog ate it','Copy a friend’s']],
+  ['You are losing a board game. What should you do?','Keep playing and be a good sport',['Flip the board over','Cheat when nobody is looking']],
+  ['A classmate drops all of their books. What should you do?','Help pick them up',['Laugh at them','Kick the books away']],
+  ['A parent asks you to set the table, but your show is on. What should you do?','Pause the show and help',['Pretend you didn’t hear','Say “later” and keep watching']],
+  ['You bump into someone and they drop their lunch. What should you do?','Say sorry and help clean it up',['Run away fast','Say it was their fault']],
+  ['You won a game and your sister is sad she lost. What should you do?','Say “good game” and cheer her up',['Brag about winning','Tease her about losing']],
+  ['Someone is sitting alone at recess. What should you do?','Invite them to play',['Point and laugh','Pretend you didn’t see']],
+  ['You see a friend take candy from a store without paying. What should you do?','Tell them it’s wrong and tell a grown-up',['Ask them to get you one too','Keep it a secret']],
+  ['You promised to play with your sister, then a friend calls. What should you do?','Keep your promise, or ask your sister first',['Leave without telling her','Tell her she’s too little']]],
+ big:[
+  ['A friend posts a mean photo of a classmate in the group chat. What should you do?','Don’t share it, and tell a trusted adult',['Add a funny comment','Forward it to more people','Like it so you fit in']],
+  ['The cashier gives you too much change. What should you do?','Tell the cashier and give it back',['Keep it, it was their mistake','Split it with your friend','Spend it before anyone notices']],
+  ['Your friends want you to skip practice and lie to your coach. What should you do?','Say no and go to practice',['Go along so you fit in','Skip and say you were sick','Let a friend lie for you']],
+  ['Someone you don’t know online asks where you live. What should you do?','Don’t answer, and tell a parent',['Tell them, they seem nice','Send a photo of your street','Give them your school instead']],
+  ['You break a neighbour’s window playing ball. What should you do?','Knock, apologize and offer to help fix it',['Run home and hope nobody saw','Blame another kid','Leave a note with a fake name']],
+  ['Your little brother keeps bugging you while you study. What should you do?','Calmly ask for quiet time, and offer to play after',['Yell at him to get lost','Lock him out and ignore him','Tell on him for nothing']],
+  ['You see the answer sheet left on the teacher’s desk. What should you do?','Leave it and let the teacher know',['Take a picture of it','Peek at just one answer','Share it with your friends']],
+  ['Kids are copying a new student’s accent to tease them. What should you do?','Don’t join in, and make the new student feel welcome',['Laugh along','Copy it too, it’s just a joke','Avoid the new student']],
+  ['Your mistake cost your team the game. What should you do?','Own it, say sorry and keep practising',['Blame the referee','Quit the team','Blame a teammate']],
+  ['A friend tells you someone is getting hurt, and asks you to keep it secret. What should you do?','Tell a trusted adult. Safety comes first',['Keep the secret no matter what','Post about it online','Try to handle it all alone']],
+  ['A parent comes home tired and stressed. What should you do?','Offer to help without being asked',['Ask for something you want right away','Complain about dinner','Leave your mess for them']],
+  ['You borrowed a friend’s game and scratched it. What should you do?','Tell them and offer to replace it',['Return it and say nothing','Say it was already scratched','Keep it so they forget']]]};
 function makeQuestion(cat,lvl,k=0){const Q=(text,sayParts,res,vis)=>Object.assign({cat,text,say:sayParts||[aqEN(text)],vis:vis||null},res);
  if(cat==='math'){
   if(lvl==='little'){const n=aqInt(1,Math.min(8,4+k));return Q('How many apples?',null,aqMC(aqT(n),aqNear(n,2,1)),{apples:n})}
@@ -1485,6 +1544,9 @@ function makeQuestion(cat,lvl,k=0){const Q=(text,sayParts,res,vis)=>Object.assig
     if(r<.75){const yes=aqPick(['owl','dragon','duckling']);return Q('Which one can fly?',null,aqMC({t:'pet',k:yes},['turtle','frog','crab','puppy','kitten','whale'].map(x=>({t:'pet',k:x}))))}
     const yes=aqPick(['whale','shark','crab']);return Q('Which one lives in the water?',null,aqMC({t:'pet',k:yes},['puppy','kitten','bunny','owl','hamster','unicorn'].map(x=>({t:'pet',k:x}))))}
   const bank=lvl==='kid'?NAT_KID:NAT_BIG;const [q,a,w]=aqPick(bank);return Q(q,null,aqMC(aqT(a),w.map(aqT),lvl==='kid'?3:4))}
+ if(cat==='morals'){const [q,a,w]=aqPick(MORALS[lvl]||MORALS.kid);const res=aqMC(aqT(a),w.map(aqT),lvl==='big'?4:3);
+  const opts=res.choices.map(c=>c.v);const say=[aqEN(q),aqEN('Is it: '+opts.slice(0,-1).join('? Or, ')+'? Or, '+opts[opts.length-1]+'?')];
+  return Object.assign({cat,text:q,say,vis:null,layout:'list'},res)}
  /* puzzles */
  if(lvl==='little'){if(R()<.55){const s=aqPick(SHAPES);return Q(`Tap the ${s}`,null,aqMC({t:'shape',s},SHAPES.filter(x=>x!==s).map(x=>({t:'shape',s:x}))))}
    const cs=aqShuf(COLOURS.slice(0,6)).slice(0,2);const seq=[0,1,0,1,0];return Q('What colour comes next?',null,aqMC({t:'swatch',c:cs[1][2],v:cs[1][0]},COLOURS.filter(x=>x!==cs[1]).map(x=>({t:'swatch',c:x[2],v:x[0]}))),{pattern:seq.map(i=>cs[i][2])})}
@@ -1787,14 +1849,14 @@ return {
   clearThought,                           // call on Approve (then play) or Decline
   setHearts:(n,max)=>{hearts=n;if(max)maxHearts=max},   // pixel hearts HUD; null hides it
   icon(type,scale=3){const d=MON[type];if(!d)return null;const hr=(d.headroom||0)+1;const[c,g]=canvas(d.w+(d.headroom?2:0),d.h+hr);d.draw(g,0,hr,{open:0,t:0,idle:false,shake:0,flash:0});return pixelCanvas(c,scale)},
+  weaponSprite(key){const w=WEAPONS[key];return w?{key,name:w.name,image:pixelCanvas(w.icon,1),grip:w.grip,mapLen:w.map[0].length,smear:w.smear,fx:w.fx,fxG:w.fxG,beam:!!w.beam,beamCol:w.beamCol,heavy:!!w.heavy,speed:w.speed||1,bonus:w.bonus||0}:null},
+  heroFrames(key){const h=HEROES[key];return h?{a:pixelCanvas(h.a,1),b:pixelCanvas(h.b,1)}:null},
   weaponIcon(key,scale=4){const w=WEAPONS[key];return w?pixelCanvas(w.icon,scale):null},
   setPet:k=>{petKey=PETS[k]?k:null},   // pet that follows the hero; null for none
   getPet:()=>petKey,
   pets:Object.fromEntries(Object.entries(PETS).map(([k,p])=>[k,{name:p.name,price:p.price,flies:p.fly,hops:p.hop}])),
   petIcon(key,scale=3){const p=PETS[key];if(!p)return null;const c=pixelCanvas(p.a,scale);if(p.extra)p.extra(0,0,c.getContext('2d'));return c},
   heroIcon(key,scale=3){const h=HEROES[key];return h?pixelCanvas(h.a,scale):null},
-  heroFrames(key){const h=HEROES[key];return h?{a:pixelCanvas(h.a,1),b:pixelCanvas(h.b,1)}:null},
-  weaponSprite(key){const w=WEAPONS[key];return w?{key,name:w.name,image:pixelCanvas(w.icon,1),grip:w.grip,mapLen:w.map[0].length,smear:w.smear,fx:w.fx,fxG:w.fxG,beam:!!w.beam,beamCol:w.beamCol,heavy:!!w.heavy,speed:w.speed||1,bonus:w.bonus||0}:null},
   destroy(){running=false;cancelAnimationFrame(raf)}
 };
 }
