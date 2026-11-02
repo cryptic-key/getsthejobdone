@@ -1,10 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=41";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=41";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=41";
-import { createChoreQuest } from "./chore-quest.js?v=41";
-import { arenaRevealed, leaveArena, mountArena, revealArena } from "./arena.js?v=41";
+import { APP_VERSION } from "./version.js?v=42";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=42";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=42";
+import { createChoreQuest } from "./chore-quest.js?v=42";
+import { arenaRevealed, leaveArena, mountArena, revealArena } from "./arena.js?v=42";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -1029,6 +1029,8 @@ function paintStage() {
     : route.name === "arena" && !arenaRevealed() ? "gate"
     : null;
   const atSpot = spot === "chest" || spot === "gate";
+  // A grounded or warned kid never walks through the gate, so open the arena lobby to show why it's closed.
+  if (child && !free && route.name === "arena" && !arenaRevealed()) revealArena();
   const shownHearts = warn ? Math.min(3, (child?.hearts ?? 0) + 1) : child?.hearts ?? 3;
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,

@@ -3582,6 +3582,13 @@ function activeSpot() {
   return spots.find((s) => s.state !== "out") || null;
 }
 
+// Another scene (welcome parade, review, warning, cage) takes over the stage: drop landmarks without a walk-off.
+function clearSpots() {
+  spots = [];
+  spotHold = false;
+  gateFade = 0;
+}
+
 function leaveSpots() {
   let any = false;
   for (const s of spots) {
@@ -4223,6 +4230,7 @@ export function setStageScene(next) {
     marketStall = null;
     shopKeeper = null;
     marketWorldX = null;
+    clearSpots();
     warner = null;
     clearReviewer();
     syncGuardian(null);
@@ -4313,6 +4321,7 @@ export function setStageScene(next) {
     marketStall = null;
     shopKeeper = null;
     marketWorldX = null;
+    clearSpots();
     setReviewActions(false);
     if (reviewKey === lastReview && (reviewBusy || hero.pose === "idle")) {
       if (!reviewBusy) presentReview(runToken);
@@ -4344,6 +4353,7 @@ export function setStageScene(next) {
     marketStall = null;
     shopKeeper = null;
     marketWorldX = null;
+    clearSpots();
     if (warnKey === lastWarn && (warnBusy || warner)) return;
     lastWarn = warnKey;
     bumpRun();
@@ -4368,6 +4378,7 @@ export function setStageScene(next) {
     marketStall = null;
     shopKeeper = null;
     marketWorldX = null;
+    clearSpots();
     if (lockKey === lastLockup && (lockBusy || (lockup === "held" && cage?.locked) || (lockup === "arrive" && cage))) return;
     lastLockup = lockKey;
     bumpRun();
