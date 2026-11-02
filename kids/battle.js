@@ -2234,24 +2234,109 @@ function setStorm(on) {
   }
 }
 
-function makeBolt() {
+function makeBolt(target = null) {
   const pts = [];
-  let x = 20 + Math.random() * (W - 40);
+  let x = target ? target[0] + (Math.random() - 0.5) * 30 : 20 + Math.random() * (W - 40);
   let y = 0;
-  const end = Math.random() < 0.5 ? G - 2 : 24 + Math.random() * 18;
+  const end = target ? target[1] : Math.random() < 0.5 ? G - 2 : 24 + Math.random() * 18;
   while (y < end) {
     pts.push([x, y]);
     y += 3 + Math.random() * 5;
-    x += (Math.random() - 0.5) * 10;
+    // A targeted bolt zig-zags but homes in on its target.
+    if (target) x += (target[0] - x) * Math.min(1, 4 / Math.max(4, end - y)) + (Math.random() - 0.5) * 6;
+    else x += (Math.random() - 0.5) * 10;
   }
-  pts.push([x, Math.min(y, end)]);
+  pts.push(target ? [target[0], end] : [x, Math.min(y, end)]);
   // A short side fork.
   const at = pts[1 + ((Math.random() * (pts.length - 2)) | 0)] || pts[0];
   const fork = [at];
   let fx = at[0];
   let fy = at[1];
   for (let i = 0; i < 3; i += 1) { fx += (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 4); fy += 3 + Math.random() * 4; fork.push([fx, fy]); }
-  return { pts, fork, life: 0.28, ground: end >= G - 2 };
+  return { pts, fork, life: 0.28, ground: Boolean(target) || end >= G - 2 };
+}
+
+/* Sometimes the lightning hits the cage: the hero lights up and flashes as an x-ray skeleton. */
+let zap = 0;
+let zapSmoke = 0;
+
+function strikeCage() {
+  const hx = Math.round(heroX());
+  bolt = makeBolt([hx + 7, G - 24]);
+  bolt.life = 0.45;
+  flash = 1;
+  zap = 1.1;
+  zapSmoke = 0;
+  shake = Math.max(shake, 0.4);
+  sfx("lightning");
+  sfx("zap");
+  thunderAt = 0.15;
+  burst(hx + 7, G - 22, ["#fff3a8", "#7fe0ff", "#ffffff"], 18, 70);
+}
+
+function updateZap(dt) {
+  if (zap > 0) {
+    zap = Math.max(0, zap - dt);
+    if (cage && R() < 0.5) {
+      const hx = Math.round(heroX());
+      particles.push({ x: hx - 3 + ((R() * 7) | 0) * 3, y: G - 21 + R() * 22, vx: rnd(-20, 20), vy: rnd(-25, 5), g: 60, life: 0.2, c: R() < 0.5 ? "#fff3a8" : "#7fe0ff" });
+    }
+    if (zap === 0) zapSmoke = 1.8;
+  }
+  if (zapSmoke > 0) {
+    zapSmoke = Math.max(0, zapSmoke - dt);
+    if (cage && R() < dt * 10) {
+      const hx = Math.round(heroX());
+      particles.push({ x: hx + 5 + rnd(0, 4), y: G - 16, vx: rnd(-3, 3), vy: rnd(-14, -8), g: -2, life: 0.9, c: R() < 0.5 ? "#6e7280" : "#9aa0ac", s: 2 });
+    }
+  }
+}
+
+const SKELETON = {
+  skull: ["..WWWW..", ".WWWWWW.", "WWWWWWWW", "WKKWWKKW", "WKKWWKKW", "WWWKKWWW", ".WWWWWW.", "..WKWKW."],
+  pal: { W: "#f4f8ff", K: "#0a0c18" },
+};
+
+/* The x-ray frame: the hero's outline glows electric blue with a white skeleton inside. */
+function drawZappedHero() {
+  if (zap <= 0 || !cage) return;
+  if (((zap * 14) | 0) % 2) return;
+  const look = scene.hero ? kidLook() : null;
+  const sprites = look || heroSprites;
+  const src = sprites.a;
+  const stand = look?.h || 16;
+  const x = Math.round(heroX());
+  const y = Math.round(G - (stand - 1));
+  const kind = scene.hero || "knight";
+  // Silhouette.
+  const mask = document.createElement("canvas");
+  mask.width = src.width;
+  mask.height = src.height;
+  const g = mask.getContext("2d");
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = ((zap * 7) | 0) % 2 ? "#2a3cff" : "#0a0c18";
+  g.fillRect(0, 0, mask.width, mask.height);
+  ctx.drawImage(mask, x, y);
+  // Skeleton, lined up with the eyes and feet.
+  const eye = y + heroEyeRow(kind, scene.gear?.head);
+  const feet = y + stand - 1;
+  const cx = x + 3;
+  SKELETON.skull.forEach((row, ry) => [...row].forEach((ch, rx) => {
+    if (SKELETON.pal[ch]) px(ctx, cx + rx, eye - 3 + ry, SKELETON.pal[ch]);
+  }));
+  const W_ = "#f4f8ff";
+  const neck = eye + 5;
+  const hip = Math.max(neck + 4, feet - 4);
+  rect(ctx, cx + 3, neck, 2, hip - neck, W_);
+  for (let ry = neck + 1; ry < hip - 1; ry += 2) rect(ctx, cx + 1, ry, 6, 1, W_);
+  rect(ctx, cx, neck + 1, 1, 4, W_);
+  rect(ctx, cx + 7, neck + 1, 1, 4, W_);
+  rect(ctx, cx + 1, hip, 6, 1, W_);
+  rect(ctx, cx + 1, hip + 1, 1, feet - hip, W_);
+  rect(ctx, cx + 6, hip + 1, 1, feet - hip, W_);
+  px(ctx, cx, feet, W_);
+  px(ctx, cx + 7, feet, W_);
 }
 
 function updateStorm(dt) {
@@ -2287,7 +2372,10 @@ function updateStorm(dt) {
   if (thunderAt > 0) { thunderAt -= dt; if (thunderAt <= 0) { sfx("thunder"); thunderAt = -1; } }
   if (stormOn && stormAmt > 0.6 && !reduce) {
     nextBolt -= dt;
-    if (nextBolt <= 0) {
+    if (nextBolt <= 0 && cage?.locked && Math.abs(cage.y) < 1 && !cops.length && Math.random() < 0.3) {
+      strikeCage();
+      nextBolt = 4 + Math.random() * 4;
+    } else if (nextBolt <= 0) {
       bolt = makeBolt();
       flash = 1;
       shake = Math.max(shake, bolt.ground ? 0.25 : 0.12);
@@ -4394,9 +4482,11 @@ function drawCage() {
   const hx = Math.round(heroX());
   const x0 = hx - 3;
   const top = G - 21 + Math.round(cage.y);
+  // Bars glow on the frames between the x-ray flashes.
+  const live = zap > 0 && ((zap * 14) | 0) % 2 === 1;
   for (let x = x0; x <= x0 + 19; x += 3) {
-    rect(ctx, x, top, 1, 22, "#c8d0e0");
-    rect(ctx, x + 1, top, 1, 22, "#6e7688");
+    rect(ctx, x, top, 1, 22, live ? "#fff3a8" : "#c8d0e0");
+    rect(ctx, x + 1, top, 1, 22, live ? "#7fe0ff" : "#6e7688");
   }
   rect(ctx, x0 - 1, top - 3, 22, 4, K);
   rect(ctx, x0, top - 2, 20, 2, "#55606e");
@@ -5133,6 +5223,7 @@ function drawCoin(x, y, ph) {
 function update(dt) {
   time += dt;
   updateStorm(dt);
+  updateZap(dt);
   for (let i = timers.length - 1; i >= 0; i -= 1) {
     timers[i].t -= dt;
     if (timers[i].t <= 0 || timers[i].token !== runToken) {
@@ -5476,6 +5567,7 @@ function draw() {
     ctx.fillRect(x + 1, y, 14, stand);
   }
   if (cage) drawCage();
+  drawZappedHero();
   drawCops();
   }
   if (warner) {

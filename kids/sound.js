@@ -179,6 +179,11 @@ const SFX = {
     noise({ dur: 0.35, vol: 0.4, at: 0.04, lp: 5000, hp: 600 });
     tone({ type: "square", f: 1800, f2: 200, dur: 0.1, vol: 0.12 });
   },
+  // Electric buzz while the cage is zapped.
+  zap: () => {
+    for (let i = 0; i < 14; i += 1) tone({ type: "sawtooth", f: i % 2 ? 95 : 190, dur: 0.07, at: i * 0.07, vol: 0.22 });
+    for (let i = 0; i < 6; i += 1) noise({ dur: 0.05, vol: 0.3, at: i * 0.15 + Math.random() * 0.05, lp: 9000, hp: 2000 });
+  },
   thunder: () => {
     noise({ dur: 2.2, vol: 0.7, lp: 260, hp: 25 });
     noise({ dur: 1.4, vol: 0.45, at: 0.35, lp: 160, hp: 20 });
