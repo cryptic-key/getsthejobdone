@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=63";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=63";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=63";
-import { createChoreQuest } from "./chore-quest.js?v=63";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=63";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=63";
+import { APP_VERSION } from "./version.js?v=64";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=64";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=64";
+import { createChoreQuest } from "./chore-quest.js?v=64";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=64";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=64";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -1272,7 +1272,8 @@ function paintStage() {
       sessionStorage.setItem(WARN_SEEN, key);
       if (child) {
         child.warnParent = "";
-        supabase.rpc("kid_ack_warn", { p_token: kidToken(), p_seq: info?.seq || child.warnSeq });
+        // The request only goes out once the builder is awaited or chained, so chain it.
+        supabase.rpc("kid_ack_warn", { p_token: kidToken(), p_seq: info?.seq || child.warnSeq }).then(() => {}, () => {});
       }
       paintStage();
     },
@@ -4206,6 +4207,9 @@ function installPullToRefresh() {
 
   // A fast flick up leaves momentum scrolling running; grabbing the page then must not start a pull
   // (preventDefault during momentum and the body padding shift can strand fixed elements on iOS).
+  // Kid screens scroll inside #scroller (the document is locked); other screens scroll the document.
+  const scroller = document.getElementById("scroller");
+  const scrollPos = () => (scroller && getComputedStyle(scroller).position === "fixed" ? scroller.scrollTop : window.scrollY);
   let lastScrollAt = 0;
   window.addEventListener(
     "scroll",
@@ -4213,7 +4217,7 @@ function installPullToRefresh() {
       lastScrollAt = performance.now();
       if (document.body.style.getPropertyValue("--pull-space") && !tracking) reset();
     },
-    { passive: true }
+    { passive: true, capture: true }
   );
 
   document.addEventListener(
@@ -4224,7 +4228,7 @@ function installPullToRefresh() {
         return;
       }
       if (performance.now() - lastScrollAt < 180) return;
-      if (event.touches.length !== 1 || window.scrollY > 2 || typing()) return;
+      if (event.touches.length !== 1 || scrollPos() > 2 || typing()) return;
       startX = event.touches[0].clientX;
       startY = event.touches[0].clientY;
       tracking = true;
@@ -4241,7 +4245,7 @@ function installPullToRefresh() {
         return;
       }
       if (!tracking) return;
-      if (window.scrollY > 2) {
+      if (scrollPos() > 2) {
         reset();
         return;
       }
@@ -4264,7 +4268,7 @@ function installPullToRefresh() {
 
   const finish = () => {
     if (!tracking) return;
-    if (pulled >= 72 && window.scrollY <= 2) {
+    if (pulled >= 72 && scrollPos() <= 2) {
       hint.classList.add("ready");
       label.textContent = "Refreshing…";
       location.reload();

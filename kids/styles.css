@@ -831,6 +831,19 @@ body.play[data-sky="night"] .sky-fx i:nth-child(6),
 body.play[data-sky="night"] .sky-fx i:nth-child(7),
 body.play[data-sky="night"] .sky-fx i:nth-child(8) { top: 18%; }
 
+/* Kid screens: the document is locked and an inner box scrolls. iOS rubber-bands the document, which could strand the fixed nav bar mid-screen; an inner scroller leaves it alone. */
+html:has(body.play) { height: 100%; overflow: hidden; }
+body.play { height: 100%; min-height: 0; overflow: hidden; padding-top: 0; }
+body.play .scroller {
+  position: fixed;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-top: var(--pull-space, 0px);
+}
+
 body.play .app { padding-bottom: 28px; }
 body.play:has(.play-nav) .app { padding-bottom: 108px; }
 
@@ -1284,15 +1297,10 @@ body.play .cash-card { border: 3px solid var(--ink); }
 
 body.play .play-nav {
   position: fixed;
-  /* Centered with auto margins (no translateX) and kept on its own layer so iOS Safari cannot strand it mid-screen after a fast scroll. */
+  /* Centered with auto margins (no translateX). The page itself never scrolls on kid screens (see .scroller), so rubber-banding cannot drag this bar. */
   left: 0;
   right: 0;
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  transform: translate3d(0, 0, 0);
-  -webkit-transform: translate3d(0, 0, 0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  will-change: transform;
   width: min(920px, calc(100% - 20px));
   margin: 0 auto;
   padding: 6px;
