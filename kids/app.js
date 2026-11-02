@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=52";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=52";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=52";
-import { createChoreQuest } from "./chore-quest.js?v=52";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=52";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=52";
+import { APP_VERSION } from "./version.js?v=53";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=53";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=53";
+import { createChoreQuest } from "./chore-quest.js?v=53";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=53";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=53";
 import { armAudio, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -2200,10 +2200,13 @@ function render() {
   const view = views[route.name] || views.welcome;
   const play = PLAY_ROUTES.has(route.name);
   document.body.classList.toggle("play", play);
+  // A grounded kid sees the page background turn into a dark, rainy jail cell to match the caged stage.
+  const jailed = play && db.session?.role === "kid" && Boolean(grounded(kid()));
+  document.body.classList.toggle("grounded", jailed);
   const theme = applySeasonTheme();
   paintForestBackdrop(document.querySelector(".forest-bg"));
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", play ? SKY_THEME[theme.sky] || SKY_THEME.day : "#f3efe4");
+  if (meta) meta.setAttribute("content", jailed ? "#0b0d18" : play ? SKY_THEME[theme.sky] || SKY_THEME.day : "#f3efe4");
   const host = document.querySelector(".stage");
   if (host) document.body.appendChild(host);
   app.innerHTML = view();

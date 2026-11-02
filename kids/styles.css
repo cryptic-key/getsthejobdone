@@ -1860,7 +1860,74 @@ body.play .loot strong::before { content: "★ "; color: var(--sun); }
   to { transform: translate(var(--dx, 0px), -210px) scale(.4) rotate(160deg); opacity: 0; }
 }
 
+/* ---------- Grounded: the page becomes a dark, stormy jail cell ---------- */
+body.grounded { background: #0b0d18; color: #ece8f6; }
+/* Text sitting straight on the dark cell turns light; anything on a card or tile keeps its normal ink. */
+body.grounded .top h1,
+body.grounded .top p,
+body.grounded .hero h2,
+body.grounded .app > .stack > .lede,
+body.grounded .app > .lede { color: #ece8f6; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
+body.grounded .card,
+body.grounded .stat,
+body.grounded .item,
+body.grounded .banner,
+body.grounded .play-nav,
+body.grounded dialog,
+body.grounded .kid-pick,
+body.grounded .door { color: var(--ink); text-shadow: none; }
+body.grounded .forest-bg { filter: brightness(0.32) saturate(0.45); }
+body.grounded .backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(8, 10, 24, 0.7) 0%, rgba(14, 18, 36, 0.55) 55%, rgba(6, 8, 16, 0.8) 100%);
+  animation: jail-lightning 9s steps(1, end) infinite;
+}
+/* Pixel jail bars: dark outline, steel body, one bright highlight; plus two crossbars. */
+body.grounded .backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    linear-gradient(180deg, #0e1018 0 3px, #5a6274 3px 6px, #9aa4b6 6px 8px, #3a4050 8px 13px, #0e1018 13px 16px) 0 11vh / 100% 16px no-repeat,
+    linear-gradient(180deg, #0e1018 0 3px, #5a6274 3px 6px, #9aa4b6 6px 8px, #3a4050 8px 13px, #0e1018 13px 16px) 0 calc(100% - 14vh) / 100% 16px no-repeat,
+    repeating-linear-gradient(90deg,
+      transparent 0 72px,
+      #0e1018 72px 75px,
+      #4a5262 75px 78px,
+      #9aa4b6 78px 80px,
+      #5a6274 80px 85px,
+      #3a4050 85px 88px,
+      #0e1018 88px 91px);
+  opacity: 0.92;
+}
+body.grounded .sky-fx::before { display: none; }
+body.grounded .sky-fx i {
+  width: 2px !important;
+  height: 14px !important;
+  border-radius: 0 !important;
+  background: #8fb4f0 !important;
+  opacity: 0.55;
+  animation: jail-rain 0.85s linear infinite !important;
+}
+body.grounded .sky-fx i:nth-child(2n) { animation-duration: 1.05s !important; }
+body.grounded .sky-fx i:nth-child(3n) { animation-duration: 0.7s !important; height: 10px !important; }
+@keyframes jail-rain {
+  from { transform: translate3d(0, -20vh, 0); }
+  to { transform: translate3d(-24px, 110vh, 0); }
+}
+/* A rare lightning flash lifts the darkness for a blink. */
+@keyframes jail-lightning {
+  0%, 91%, 93.5%, 100% { opacity: 1; }
+  92% { opacity: 0.25; }
+  94% { opacity: 0.55; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  body.grounded .backdrop::before, body.grounded .sky-fx i { animation: none !important; }
   .sky-fx i, .face, .stat i, .quest, .week-col i, .ring-value {
     animation: none !important;
     transition: none !important;
