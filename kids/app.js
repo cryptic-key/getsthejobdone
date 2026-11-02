@@ -1,11 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=44";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=44";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=44";
-import { createChoreQuest } from "./chore-quest.js?v=44";
-import { GEAR, normalizeGear } from "./gear.js?v=44";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=44";
+import { APP_VERSION } from "./version.js?v=45";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=45";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=45";
+import { createChoreQuest } from "./chore-quest.js?v=45";
+import { GEAR, normalizeGear } from "./gear.js?v=45";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=45";
+import { armAudio, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -304,6 +305,7 @@ async function enableDevicePush() {
 
 async function boot() {
   try {
+    armAudio();
     registerAdventureWorker();
     const legacyKid = sessionStorage.getItem(KID_TOKEN);
     if (legacyKid && !localStorage.getItem(KID_TOKEN)) setKidToken(legacyKid);
@@ -1571,6 +1573,15 @@ function celebrate() {
   setTimeout(() => layer.remove(), 1100);
 }
 
+/* Sound on/off chips in the game header. Choices are remembered on this device. */
+function soundToggles() {
+  const s = soundState();
+  return `<span class="sound-toggles">
+    <button class="sound-chip${s.sfx ? " on" : ""}" type="button" data-action="toggle-sfx" aria-pressed="${s.sfx}" title="Sound effects">SFX</button>
+    <button class="sound-chip${s.music ? " on" : ""}" type="button" data-action="toggle-music" aria-pressed="${s.music}" title="Music">♪</button>
+  </span>`;
+}
+
 function shell(title, sub, body, nav) {
   const play = PLAY_ROUTES.has(route.name);
   const signedIn = Boolean(db.session);
@@ -1581,7 +1592,10 @@ function shell(title, sub, body, nav) {
         ${child ? face(child.color) : mark()}
         <span><h1>${esc(title)}</h1><p>${esc(sub)} <span class="ver-tag">v${APP_VERSION}</span></p></span>
       </button>
-      ${signedIn ? `<button class="btn ghost small" data-action="sign-out">${play ? "Exit" : "Sign out"}</button>` : ""}
+      <span class="top-actions">
+        ${play ? soundToggles() : ""}
+        ${signedIn ? `<button class="btn ghost small" data-action="sign-out">${play ? "Exit" : "Sign out"}</button>` : ""}
+      </span>
     </header>
     ${child ? hudStats(child) : ""}
     ${play ? "" : nav || ""}
@@ -2832,6 +2846,8 @@ app.addEventListener("click", (event) => {
       go(to);
     }
   }
+  if (action === "toggle-sfx") { setSfx(!soundState().sfx); render(); return; }
+  if (action === "toggle-music") { setMusicOn(!soundState().music); render(); return; }
   if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "chart" : "welcome");
   if (action === "auth-mode") go("parent-auth", { mode: btn.dataset.mode, email: draft.email || "" });
   if (action === "kids-door") openKidGate();

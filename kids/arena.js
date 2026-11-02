@@ -1,7 +1,8 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=44";
-import { gearSpecials, gearedLook } from "./gear.js?v=44";
+import { createChoreQuest } from "./chore-quest.js?v=45";
+import { gearSpecials, gearedLook } from "./gear.js?v=45";
+import { music, play as sfx } from "./sound.js";
 
 let host = null;
 let quest = null;
@@ -29,6 +30,8 @@ export function revealArena() {
   revealed = true;
   if (host) host.hidden = false;
   quest?.arena.scene?.(true);
+  music("arena");
+  sfx("cheer");
 }
 
 const LEVEL_ORDER = ["little", "kid", "big", "teen"];
@@ -57,6 +60,7 @@ function startEngine() {
     pet: ctx.pet(),
     seed: (Date.now() ^ (Math.random() * 0x7fffffff)) | 0,
     idleText: "The Monster Arena awaits...",
+    sound: sfx,
   });
 }
 
@@ -225,12 +229,14 @@ function useSpecial(ability) {
     // Same category and level, brand new question. The loop reads `current` when the answer comes in.
     const next = quest.arena.makeQuestion(current.cat, run.level, run.kills);
     if (quest.arena.levels[run.level]?.readAloud) quest.arena.speak(next.say);
+    sfx("use");
     current = next;
     paintQuestion(next);
     return;
   }
   const bar = panel()?.querySelector(".arena-specials");
   if (bar) bar.outerHTML = specialsBar() || "";
+  sfx("use");
   quest.arena.speak([{ t: `${sp.name}!`, lang: "en-CA" }]);
 }
 
@@ -313,6 +319,7 @@ async function playRun() {
       const asked = current || q;
       lockChoices(asked.answer, picked);
       if (picked === asked.answer) {
+        sfx("right");
         const dmg = run.power ? 2 : 1;
         run.power = false;
         beaten = await A.hit(dmg, run.lucky ? 1 : 0);
@@ -323,6 +330,7 @@ async function playRun() {
       } else {
         A.speak([{ t: `The answer is ${A.choiceLabel(asked.choices[asked.answer])}`, lang: "en-CA" }]);
         run.missed = true;
+        sfx("wrong");
         const blocked = Boolean(run.shield);
         run.shield = false;
         await A.miss(blocked);
@@ -358,6 +366,7 @@ async function playRun() {
         run.streak = 0;
         const info = A.levels[next];
         levelUp = `<p class="arena-q">Level up! ${PERFECT_TO_LEVEL} perfect monsters in a row.</p><p class="tiny muted">Harder questions now: ${esc(info.name)} · ${esc(info.ages)}</p>`;
+        sfx("levelup");
         A.speak([{ t: `Level up! ${info.name} questions now.`, lang: "en-CA" }]);
       }
     } else {

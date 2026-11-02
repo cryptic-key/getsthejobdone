@@ -112,6 +112,28 @@ body:not(.play)[data-sky="evening"] .backdrop::after { background: rgba(243, 239
   margin-bottom: 18px;
 }
 
+/* Header actions: sound chips + Exit. */
+.top-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.sound-toggles { display: flex; gap: 6px; }
+.sound-chip {
+  min-width: 40px;
+  height: 34px;
+  padding: 0 8px;
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.6rem;
+  color: var(--ink);
+  background: #e6e2d6;
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: pointer;
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.sound-chip.on { background: #f4c542; opacity: 1; text-decoration: none; }
+.sound-chip:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.sound-chip:focus-visible { outline: 3px solid var(--sky, #3c7f92); outline-offset: 2px; }
+
 .brand {
   display: flex;
   align-items: center;
