@@ -1690,25 +1690,25 @@ function choiceArt(c){if(c.t==='pet'){const p=PETS[c.k];if(!p)return null;const[
 function speakParts(parts){try{const S=window.speechSynthesis;if(!S||!parts)return;S.cancel();for(const p of parts){const u=new SpeechSynthesisUtterance(p.t);u.lang=p.lang||'en-CA';u.rate=.92;S.speak(u)}}catch(e){}}
 /* arena battle steps */
 async function arenaSpawn(type){thought=null;const d=MON[type];
-  mon={def:d,x:W+6,hp:ARENA.monsterHP,open:0,openT:0,tongue:0,tongueT:0,lunge:0,lungeT:0,flash:0,shake:0,t:0,idle:true,approach:true,alive:true,showHp:false,lift:0};
+  mon={type,def:d,x:W+6,hp:ARENA.monsterHP,open:0,openT:0,tongue:0,tongueT:0,lunge:0,lungeT:0,flash:0,shake:0,t:0,idle:true,approach:true,alive:true,showHp:false,lift:0};
   scrollTarget=30;scroll=Math.max(scroll,18);hero.pose=arenaScene?'idle':'walk';if(arenaScene)crowdHype=.6;await until(()=>mon.x<=d.tx);
-  mon.x=d.tx;mon.approach=false;scroll=0;scrollTarget=0;hero.pose='idle';hero.alert=.6;mon.showHp=true}
+  mon.x=d.tx;mon.approach=false;scroll=0;scrollTarget=0;hero.pose='idle';hero.alert=.6;mon.showHp=true;sfx('voice:'+type)}
 async function arenaHit(dmg=1,bonus=0){const d=mon.def,wpn=WEAPONS[weapon];
-  if(wpn.beam){hero.pose='aim';hero.oxT=-2;await wait(.3);beamT=.45;mon.lungeT=-5;sfx('swing')}
-  else{hero.pose='windup';await wait(.2*(wpn.speed||1));sfx('swing');const reach=wpn.map[0].length-wpn.grip[0];hero.oxT=mon.x-(reach>15?22:18)-26;await wait(.14);hero.pose='swing';hero.ang=POSE.swing;hero.smear=.12}
-  mon.hp=Math.max(0,mon.hp-dmg);sfx(dmg>1?'power':'hit');mon.flash=.2;mon.shake=.25;mon.idle=false;if(!reduce)shake=dmg>1?.4:wpn.heavy?.3:.15;
+  if(wpn.beam){hero.pose='aim';hero.oxT=-2;await wait(.3);beamT=.45;mon.lungeT=-5;sfx('swing:'+weapon)}
+  else{hero.pose='windup';await wait(.2*(wpn.speed||1));sfx('swing:'+weapon);const reach=wpn.map[0].length-wpn.grip[0];hero.oxT=mon.x-(reach>15?22:18)-26;await wait(.14);hero.pose='swing';hero.ang=POSE.swing;hero.smear=.12}
+  mon.hp=Math.max(0,mon.hp-dmg);sfx(dmg>1?'power':'hit:'+weapon);mon.flash=.2;mon.shake=.25;mon.idle=false;if(!reduce)shake=dmg>1?.4:wpn.heavy?.3:.15;
   const hx=mon.x+d.w/2,hy=G-d.h/2+d.yoff(mon);burst(hx,hy,d.hit,12,70);
   if(dmg>1){say('POWER STRIKE! Double damage!');burst(hx,hy,['#f4c542','#fff3a8','#ffffff'],24,90);effects.push({type:'ring',t:0,dur:.5,cx:hx,cy:hy,cols:['#f4c542','#ffffff']})}
   for(let k=0;k<10;k++){const a=R()*Math.PI*2,v=rnd(20,60);particles.push({x:hx,y:hy,vx:Math.cos(a)*v,vy:Math.sin(a)*v-15,g:wpn.fxG??120,life:rnd(.3,.7),c:wpn.fx[k%wpn.fx.length]})}
-  petCheer(mon.hp<=0);const last=mon.hp<=0;if(arenaScene)crowdHype=last?2.2:.9;if(last){special(weapon,hx,hy);sfx('special');await wait(.6)}
+  petCheer(mon.hp<=0);const last=mon.hp<=0;if(arenaScene)crowdHype=last?2.2:.9;if(last){special(weapon,hx,hy);sfx('special:'+weapon);await wait(.6)}
   await wait(wpn.beam?.45:.25);mon.lungeT=0;hero.oxT=0;hero.pose='idle';await wait(.25);mon.idle=true;
   if(!last)return false;
   mon.idle=false;mon.showHp=false;mon.flash=.6;await wait(.5);const cx=mon.x+d.w/2,cy=G-d.h/2;
   for(let i=0;i<22;i++){const a=R()*Math.PI*2,v=rnd(10,45);particles.push({x:cx+rnd(-4,4),y:cy+rnd(-4,4),vx:Math.cos(a)*v,vy:Math.sin(a)*v-10,g:-15,life:rnd(.4,.8),c:['#ffffff','#e6e6ee','#c8c8d4'][i%3],s:2})}
-  burst(cx,cy,d.hit,10,50);mon.alive=false;sfx('poof');if(arenaScene){sfx('cheer')};if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});const drop=ARENA.perKill+bonus;floats.push({s:'+'+drop,x:cx-4,y:cy-8,life:1.2});if(bonus)say('Lucky Coin! +'+bonus+' extra');
+  burst(cx,cy,d.hit,10,50);mon.alive=false;sfx('defeat:'+mon.type);if(arenaScene){sfx('cheer')};if(arenaScene)for(let i=0;i<30;i++)particles.push({x:rnd(0,W),y:rnd(14,40),vx:rnd(-10,10),vy:rnd(-30,-5),g:50,life:rnd(.8,1.4),c:RAINBOW[i%6]});const drop=ARENA.perKill+bonus;floats.push({s:'+'+drop,x:cx-4,y:cy-8,life:1.2});if(bonus)say('Lucky Coin! +'+bonus+' extra');
   for(let i=0;i<drop;i++)coins.push({x:cx,y:cy,vx:rnd(-30,30),vy:rnd(-70,-45),t:-i*.06});
   await until(()=>coins.length===0);await wait(.3);mon=null;return true}
-async function arenaMiss(blocked=false){const d=mon.def;hero.pose=blocked?'block':'idle';mon.idle=false;hurtMode=!blocked;
+async function arenaMiss(blocked=false){const d=mon.def;hero.pose=blocked?'block':'idle';mon.idle=false;hurtMode=!blocked;sfx('attack:'+mon.type);
   if(blocked){say('SHIELD UP! No heart lost.');effects.push({type:'bubble',t:0,dur:1.1,cx:heroX()+7,cy:heroY()+8,cols:['#7fe0ff','#ffffff']})}
   sfx(d===MON.robber?'grumble':'enemy');await d.attack(mon);await until(()=>projectiles.length===0);hurtMode=false;mon.idle=true;hero.pose='idle';
   if(!blocked&&hearts>0)hearts--;await wait(.3)}
@@ -1830,7 +1830,8 @@ async function marketClose(){if(!mkt||busy)return false;busy=true;mkt.state='out
 
 /* ---------- loop ---------- */
 let last=performance.now();
-function update(dt){
+let projSeen=0;
+function update(dt){if(projectiles.length>projSeen){const p=projectiles[projectiles.length-1];sfx('lob:'+(p&&p.k!=='spr'?p.k:'toss'))}projSeen=projectiles.length;
   time+=dt;
   for(let i=timers.length-1;i>=0;i--){timers[i].t-=dt;if(timers[i].t<=0){const r=timers[i].r;timers.splice(i,1);r()}}
   for(let i=conds.length-1;i>=0;i--){if(conds[i].fn()){const r=conds[i].r;conds.splice(i,1);r()}}

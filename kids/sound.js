@@ -179,6 +179,15 @@ const SFX = {
     noise({ dur: 0.35, vol: 0.4, at: 0.04, lp: 5000, hp: 600 });
     tone({ type: "square", f: 1800, f2: 200, dur: 0.1, vol: 0.12 });
   },
+  // Parent spells, approvals and the hearts.
+  spell: () => { arp(["C5", "E5", "G5", "B5", "D6"], 0.05, { type: "triangle", vol: 0.16 }); noise({ dur: 0.5, vol: 0.1, lp: 9000, hp: 3000 }); },
+  powerup: () => { tone({ type: "square", f: 220, f2: 880, dur: 0.4, vol: 0.18 }); arp(["C6", "E6", "G6", "C7"], 0.06, { at: 0.3, vol: 0.18 }); },
+  darkspell: () => { arp(["B4", "F5", "B4", "F4"], 0.07, { type: "sawtooth", vol: 0.12 }); noise({ dur: 0.5, vol: 0.12, lp: 3000, hp: 500 }); },
+  heartbreak: () => { noise({ dur: 0.06, vol: 0.35, lp: 6000, hp: 1500 }); arp(["E5", "C5", "A4"], 0.12, { type: "square", vol: 0.16, at: 0.05 }); },
+  decline: () => { tone({ type: "triangle", f: 520, f2: 260, dur: 0.14, vol: 0.3 }); arp(["E4", "C4"], 0.14, { type: "square", vol: 0.14, at: 0.12 }); },
+  appear: () => { tone({ type: "square", f: 180, f2: 360, dur: 0.12, vol: 0.12 }); tone({ type: "square", f: 360, f2: 180, dur: 0.12, at: 0.12, vol: 0.12 }); },
+  cart: () => { for (let i = 0; i < 6; i += 1) noise({ dur: 0.05, vol: 0.16, at: i * 0.1, lp: 900, hp: 100 }); tone({ type: "triangle", f: 1760, dur: 0.25, at: 0.6, vol: 0.14 }); tone({ type: "triangle", f: 2350, dur: 0.3, at: 0.72, vol: 0.12 }); },
+  walk: () => noise({ dur: 0.04, vol: 0.1, lp: 1200, hp: 200 }),
   // Electric buzz while the cage is zapped.
   zap: () => {
     for (let i = 0; i < 14; i += 1) tone({ type: "sawtooth", f: i % 2 ? 95 : 190, dur: 0.07, at: i * 0.07, vol: 0.22 });
@@ -191,6 +200,202 @@ const SFX = {
     tone({ type: "sine", f: 70, f2: 32, dur: 1.6, vol: 0.5, attack: 0.03 });
   },
 };
+
+/* ---------- weapon and monster voices ----------
+   play("swing:mop"), play("hit:mop"), play("special:mop") use each weapon's own sounds;
+   play("voice:toaster"), play("attack:bus"), play("defeat:dust") use each monster's voice;
+   play("lob:bubble") is a thrown projectile; play("pet:puppy") is a pet cheering.
+   Unknown keys fall back to the plain sound, so old callers keep working. */
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// Hit "materials": what it sounds like when a weapon connects.
+const MAT = {
+  thud: () => { tone({ type: "square", f: 200, f2: 70, dur: 0.12, vol: 0.32 }); noise({ dur: 0.08, vol: 0.22, lp: 2200 }); },
+  heavy: () => { tone({ type: "square", f: 140, f2: 40, dur: 0.22, vol: 0.4 }); noise({ dur: 0.18, vol: 0.35, lp: 900 }); },
+  clang: () => { tone({ type: "square", f: 1320, f2: 1100, dur: 0.18, vol: 0.16 }); tone({ type: "triangle", f: 1980, dur: 0.25, vol: 0.12 }); noise({ dur: 0.05, vol: 0.2, lp: 9000, hp: 2500 }); },
+  ting: () => { tone({ type: "triangle", f: 2640, dur: 0.3, vol: 0.16 }); tone({ type: "triangle", f: 3520, dur: 0.18, vol: 0.08, at: 0.02 }); },
+  splat: () => { noise({ dur: 0.16, vol: 0.35, lp: 1500, hp: 150 }); tone({ type: "sine", f: 300, f2: 90, dur: 0.12, vol: 0.25 }); },
+  squish: () => { tone({ type: "sine", f: 180, f2: 420, dur: 0.12, vol: 0.3 }); noise({ dur: 0.1, vol: 0.18, lp: 1200 }); },
+  squeak: () => { tone({ type: "square", f: 900, f2: 1600, dur: 0.09, vol: 0.18 }); tone({ type: "square", f: 1500, f2: 800, dur: 0.1, vol: 0.16, at: 0.09 }); },
+  quack: () => { tone({ type: "sawtooth", f: 520, f2: 380, dur: 0.12, vol: 0.22 }); tone({ type: "sawtooth", f: 480, f2: 340, dur: 0.14, vol: 0.2, at: 0.14 }); },
+  crack: () => { noise({ dur: 0.05, vol: 0.5, lp: 7000, hp: 1200 }); tone({ type: "square", f: 700, f2: 300, dur: 0.06, vol: 0.2 }); },
+  poof: () => { noise({ dur: 0.2, vol: 0.22, lp: 900, hp: 100 }); },
+  sparkle: () => { arp(["E6", "B6", "E7"], 0.04, { type: "triangle", vol: 0.14 }); noise({ dur: 0.12, vol: 0.1, lp: 12000, hp: 6000 }); },
+  hiss: () => { noise({ dur: 0.3, vol: 0.28, lp: 9000, hp: 3000 }); },
+  pop: () => { tone({ type: "sine", f: 500, f2: 1400, dur: 0.06, vol: 0.3 }); tone({ type: "sine", f: 900, f2: 2000, dur: 0.05, vol: 0.2, at: 0.08 }); },
+  scratch: () => { for (let i = 0; i < 4; i += 1) noise({ dur: 0.04, vol: 0.2, at: i * 0.035, lp: 6000, hp: 1800 }); },
+  rattle: () => { for (let i = 0; i < 6; i += 1) noise({ dur: 0.025, vol: 0.22, at: i * 0.03, lp: 8000, hp: 2500 }); },
+  crunch: () => { for (let i = 0; i < 5; i += 1) noise({ dur: 0.03, vol: 0.28, at: i * 0.022, lp: 4000, hp: 600 }); },
+  bonk: () => { tone({ type: "triangle", f: 520, f2: 260, dur: 0.14, vol: 0.32 }); tone({ type: "square", f: 260, dur: 0.05, vol: 0.12 }); },
+  wet: () => { noise({ dur: 0.25, vol: 0.25, lp: 2500, hp: 300 }); tone({ type: "sine", f: 600, f2: 200, dur: 0.15, vol: 0.18 }); },
+  boing: () => { tone({ type: "sine", f: 200, f2: 700, dur: 0.12, vol: 0.3 }); tone({ type: "sine", f: 700, f2: 300, dur: 0.18, vol: 0.22, at: 0.12 }); },
+  suction: () => { tone({ type: "sine", f: 120, f2: 500, dur: 0.1, vol: 0.32 }); tone({ type: "sine", f: 900, f2: 300, dur: 0.06, vol: 0.2, at: 0.1 }); },
+};
+// Swing styles.
+const SWING = {
+  whoosh: () => noise({ dur: 0.14, vol: 0.22, lp: 5000, hp: 900 }),
+  light: () => noise({ dur: 0.09, vol: 0.16, lp: 9000, hp: 2500 }),
+  heavy: () => { noise({ dur: 0.24, vol: 0.28, lp: 1800, hp: 200 }); tone({ type: "triangle", f: 160, f2: 90, dur: 0.22, vol: 0.12 }); },
+  blade: () => { noise({ dur: 0.1, vol: 0.2, lp: 9000, hp: 3500 }); tone({ type: "triangle", f: 2200, f2: 3000, dur: 0.08, vol: 0.06 }); },
+  beam: () => { tone({ type: "sawtooth", f: 200, f2: 1200, dur: 0.35, vol: 0.18 }); noise({ dur: 0.35, vol: 0.12, lp: 4000, hp: 800 }); },
+  spray: () => noise({ dur: 0.3, vol: 0.25, lp: 10000, hp: 2500 }),
+  magic: () => { arp(["C6", "E6", "G6"], 0.03, { type: "triangle", vol: 0.12 }); noise({ dur: 0.14, vol: 0.14, lp: 8000, hp: 2000 }); },
+  motor: () => { for (let i = 0; i < 6; i += 1) tone({ type: "sawtooth", f: 110 + i * 25, dur: 0.06, at: i * 0.05, vol: 0.14 }); },
+};
+// Finisher flourishes, played with the weapon's special effect.
+const FLOURISH = {
+  hero: () => SFX.special(),
+  sparkle: () => { arp(["C6", "E6", "G6", "C7", "E7", "G7"], 0.04, { type: "triangle", vol: 0.16 }); noise({ dur: 0.4, vol: 0.12, at: 0.1, lp: 12000, hp: 5000 }); },
+  boom: () => { noise({ dur: 0.6, vol: 0.45, lp: 700, hp: 40 }); tone({ type: "square", f: 110, f2: 35, dur: 0.5, vol: 0.35 }); },
+  splash: () => { noise({ dur: 0.5, vol: 0.35, lp: 3500, hp: 300 }); for (let i = 0; i < 4; i += 1) tone({ type: "sine", f: rand(500, 1200), f2: 200, dur: 0.08, at: 0.1 + i * 0.07, vol: 0.15 }); },
+  bubbles: () => { for (let i = 0; i < 7; i += 1) tone({ type: "sine", f: rand(500, 900), f2: rand(1200, 2200), dur: 0.06, at: i * 0.06, vol: 0.2 }); },
+  squeaky: () => { for (let i = 0; i < 3; i += 1) MAT.squeak(); arp(["C6", "G6"], 0.08, { at: 0.2, vol: 0.14 }); },
+  quacks: () => { MAT.quack(); setTimeout(() => ac && MAT.quack(), 280); },
+  steam: () => { noise({ dur: 0.7, vol: 0.32, lp: 10000, hp: 2500 }); tone({ type: "triangle", f: 880, f2: 1760, dur: 0.4, vol: 0.08 }); },
+  vroom: () => { tone({ type: "sawtooth", f: 90, f2: 400, dur: 0.6, vol: 0.22 }); noise({ dur: 0.6, vol: 0.2, lp: 2000, hp: 300 }); },
+  crowd: () => { SFX.cheer(); arp(["G5", "C6", "E6", "G6"], 0.07, { vol: 0.16, at: 0.1 }); },
+  clang: () => { MAT.clang(); tone({ type: "triangle", f: 1320, dur: 0.6, vol: 0.1, at: 0.05 }); },
+  whistle: () => { tone({ type: "square", f: 2000, dur: 0.12, vol: 0.12 }); tone({ type: "square", f: 2000, dur: 0.3, at: 0.16, vol: 0.12 }); },
+  lullaby: () => arp(["E6", "C6", "D6", "G5", "G5", "D6", "E6", "C6"], 0.09, { type: "triangle", vol: 0.14 }),
+};
+
+/* Weapon key -> [swing, hit material, finisher]. */
+const WEAPON_SFX = {
+  broom: ["whoosh", "thud", "hero"],
+  duster: ["light", "poof", "sparkle"],
+  mop: ["heavy", "splat", "splash"],
+  squeegee: ["whoosh", "squeak", "hero"],
+  vacuum: ["beam", "hiss", "vroom"],
+  golden: ["magic", "sparkle", "sparkle"],
+  toothbrush: ["light", "scratch", "bubbles"],
+  spatula: ["whoosh", "clang", "clang"],
+  rake: ["whoosh", "rattle", "hero"],
+  pencil: ["blade", "scratch", "hero"],
+  plunger: ["heavy", "suction", "boom"],
+  dustpan: ["whoosh", "clang", "clang"],
+  sponge: ["whoosh", "squish", "bubbles"],
+  spray: ["spray", "wet", "splash"],
+  diamond: ["magic", "ting", "sparkle"],
+  bubble: ["magic", "pop", "bubbles"],
+  lint: ["whoosh", "crunch", "hero"],
+  watering: ["spray", "wet", "splash"],
+  bookmark: ["blade", "crack", "hero"],
+  bone: ["whoosh", "squeak", "squeaky"],
+  shovel: ["heavy", "clang", "boom"],
+  bat: ["heavy", "crack", "crowd"],
+  mallet: ["heavy", "heavy", "boom"],
+  duckhammer: ["whoosh", "quack", "quacks"],
+  pillowmace: ["light", "poof", "hero"],
+  rattle: ["whoosh", "rattle", "lullaby"],
+  butterknife: ["blade", "ting", "hero"],
+  whisk: ["motor", "rattle", "hero"],
+  baguette: ["whoosh", "crunch", "hero"],
+  hockey: ["heavy", "crack", "crowd"],
+  crossing: ["heavy", "clang", "whistle"],
+  wrench: ["heavy", "clang", "clang"],
+  iron: ["beam", "hiss", "steam"],
+  bottle: ["spray", "wet", "lullaby"],
+  foamfinger: ["whoosh", "boing", "crowd"],
+};
+
+// Monster voices: a few synth "throats" with a pitch, used when they show up, fight back and get beaten.
+const VOICE = {
+  growl: (p) => { tone({ type: "sawtooth", f: 110 * p, f2: 70 * p, dur: 0.35, vol: 0.22 }); noise({ dur: 0.3, vol: 0.12, lp: 600 }); },
+  squeak: (p) => { tone({ type: "square", f: 1200 * p, f2: 1800 * p, dur: 0.07, vol: 0.14 }); tone({ type: "square", f: 1500 * p, f2: 1000 * p, dur: 0.09, vol: 0.12, at: 0.08 }); },
+  ghost: (p) => { for (let i = 0; i < 8; i += 1) tone({ type: "sine", f: 420 * p + (i % 2 ? 30 : -30), dur: 0.08, at: i * 0.07, vol: 0.18, attack: 0.03 }); },
+  gurgle: (p) => { for (let i = 0; i < 5; i += 1) tone({ type: "sine", f: rand(140, 260) * p, f2: rand(300, 500) * p, dur: 0.06, at: i * 0.06, vol: 0.24 }); },
+  mech: (p) => { arp(["C5", "G4", "E5"].map((n) => n), 0.07, { type: "square", vol: 0.12 }); tone({ type: "square", f: 220 * p, dur: 0.05, at: 0.22, vol: 0.12 }); },
+  honk: () => { tone({ type: "sawtooth", f: 350, dur: 0.22, vol: 0.2 }); tone({ type: "sawtooth", f: 440, dur: 0.22, vol: 0.16 }); tone({ type: "sawtooth", f: 350, dur: 0.3, at: 0.3, vol: 0.2 }); tone({ type: "sawtooth", f: 440, dur: 0.3, at: 0.3, vol: 0.16 }); },
+  ring: () => { for (let i = 0; i < 10; i += 1) tone({ type: "square", f: i % 2 ? 1800 : 2100, dur: 0.04, at: i * 0.045, vol: 0.1 }); },
+  sizzle: () => { noise({ dur: 0.5, vol: 0.25, lp: 10000, hp: 3500 }); for (let i = 0; i < 5; i += 1) noise({ dur: 0.02, vol: 0.3, at: rand(0, 0.45), lp: 9000, hp: 4000 }); },
+  rustle: () => { for (let i = 0; i < 6; i += 1) noise({ dur: 0.06, vol: 0.16, at: i * 0.05, lp: 5000, hp: 1200 }); },
+  chomp: (p) => { for (let i = 0; i < 3; i += 1) { tone({ type: "square", f: 300 * p, f2: 120 * p, dur: 0.05, at: i * 0.12, vol: 0.22 }); noise({ dur: 0.03, vol: 0.2, at: i * 0.12, lp: 3000 }); } },
+  buzz: (p) => { for (let i = 0; i < 12; i += 1) tone({ type: "sawtooth", f: (i % 2 ? 230 : 250) * p, dur: 0.04, at: i * 0.035, vol: 0.12 }); },
+  snore: () => { noise({ dur: 0.5, vol: 0.2, lp: 400, hp: 60 }); tone({ type: "sine", f: 600, f2: 900, dur: 0.25, at: 0.55, vol: 0.1 }); },
+  ding: () => { tone({ type: "triangle", f: 1760, dur: 0.5, vol: 0.18 }); tone({ type: "triangle", f: 2640, dur: 0.3, vol: 0.08 }); },
+  flap: () => { for (let i = 0; i < 4; i += 1) noise({ dur: 0.05, vol: 0.2, at: i * 0.08, lp: 3000, hp: 400 }); },
+  clank: () => { MAT.clang(); tone({ type: "square", f: 180, dur: 0.06, at: 0.1, vol: 0.15 }); MAT.rattle(); },
+  brr: () => { for (let i = 0; i < 8; i += 1) tone({ type: "triangle", f: i % 2 ? 300 : 340, dur: 0.04, at: i * 0.04, vol: 0.16 }); tone({ type: "triangle", f: 1500, f2: 2200, dur: 0.15, at: 0.35, vol: 0.08 }); },
+  grumble: (p) => { tone({ type: "sawtooth", f: 140 * p, f2: 90 * p, dur: 0.18, vol: 0.18 }); tone({ type: "sawtooth", f: 120 * p, f2: 160 * p, dur: 0.16, vol: 0.16, at: 0.16 }); },
+  chime: () => arp(["E6", "C6", "G5"], 0.09, { type: "triangle", vol: 0.14 }),
+  laugh: (p) => { for (let i = 0; i < 4; i += 1) tone({ type: "square", f: (520 - i * 30) * p, f2: (420 - i * 30) * p, dur: 0.07, at: i * 0.1, vol: 0.14 }); },
+  boing: (p) => { tone({ type: "sine", f: 160 * p, f2: 600 * p, dur: 0.15, vol: 0.28 }); tone({ type: "sine", f: 600 * p, f2: 200 * p, dur: 0.2, at: 0.15, vol: 0.2 }); },
+};
+/* Monster key -> [voice, pitch]. Covers trail and arena monsters. */
+const MONSTER_SFX = {
+  dust: ["squeak", 1.1], sleep: ["snore", 1], dry: ["gurgle", 1.2], breakfast: ["ding", 1], dinner: ["sizzle", 1],
+  lunchmade: ["chomp", 1.1], bath: ["gurgle", 1], bed: ["ghost", 1], shoes: ["chomp", 0.8], pack: ["growl", 1.2],
+  dishes: ["gurgle", 0.8], teeth: ["squeak", 0.9], laundry: ["grumble", 1], toys: ["clank", 1], reading: ["flap", 1],
+  pet: ["laugh", 1.2], plants: ["rustle", 1], table: ["clank", 1], trash: ["growl", 0.9], counters: ["chomp", 1.4],
+  towels: ["ghost", 0.75], bookshelf: ["flap", 0.8], lunch: ["chomp", 0.9], coats: ["rustle", 0.8], groceries: ["grumble", 0.9],
+  homework: ["laugh", 1.4], dressed: ["ghost", 1.2], petbrush: ["rustle", 1.2], leaves: ["rustle", 0.9], snow: ["brr", 1],
+  outside: ["snore", 1], wood: ["grumble", 0.7], basketball: ["buzz", 1], bus: ["honk", 1], repair: ["clank", 1],
+  helping: ["laugh", 0.9], babysit: ["chime", 1], shirts: ["grumble", 1.2],
+  calc: ["mech", 1], mime: ["laugh", 0.7], flask: ["gurgle", 1.3], alarm: ["ring", 1], robber: ["laugh", 0.8],
+};
+
+function weaponParts(key) {
+  return WEAPON_SFX[key] || WEAPON_SFX.broom;
+}
+
+function voiceOf(key) {
+  const [v, p] = MONSTER_SFX[key] || ["grumble", 1];
+  return () => VOICE[v](p);
+}
+
+// Thrown projectile kinds -> a short toss sound.
+const LOB = {
+  bubble: () => tone({ type: "sine", f: rand(400, 700), f2: rand(1100, 1600), dur: 0.08, vol: 0.18 }),
+  pillow: () => noise({ dur: 0.12, vol: 0.14, lp: 1500, hp: 150 }),
+  paste: () => { noise({ dur: 0.1, vol: 0.2, lp: 3000, hp: 400 }); tone({ type: "sine", f: 300, f2: 700, dur: 0.08, vol: 0.15 }); },
+  cloud: () => noise({ dur: 0.35, vol: 0.18, lp: 700, hp: 80 }),
+  letter: () => tone({ type: "triangle", f: rand(700, 1000), f2: 500, dur: 0.1, vol: 0.1 }),
+  sock: () => noise({ dur: 0.1, vol: 0.16, lp: 2500, hp: 300 }),
+  block: () => tone({ type: "square", f: 300, f2: 500, dur: 0.06, vol: 0.12 }),
+  pencil: () => noise({ dur: 0.08, vol: 0.16, lp: 8000, hp: 2500 }),
+  paper: () => noise({ dur: 0.08, vol: 0.14, lp: 6000, hp: 1500 }),
+};
+
+// Pets cheering: species-style chirps.
+const PET_CRY = {
+  bark: () => { tone({ type: "square", f: 520, f2: 300, dur: 0.07, vol: 0.18 }); tone({ type: "square", f: 560, f2: 320, dur: 0.07, at: 0.12, vol: 0.18 }); },
+  meow: () => { tone({ type: "triangle", f: 700, f2: 1000, dur: 0.12, vol: 0.18 }); tone({ type: "triangle", f: 1000, f2: 600, dur: 0.2, at: 0.12, vol: 0.18 }); },
+  squeak: () => VOICE.squeak(1.3),
+  quack: () => MAT.quack(),
+  ribbit: () => { tone({ type: "square", f: 200, f2: 160, dur: 0.06, vol: 0.2 }); tone({ type: "square", f: 260, f2: 180, dur: 0.1, at: 0.08, vol: 0.2 }); },
+  hoot: () => { tone({ type: "sine", f: 440, dur: 0.15, vol: 0.2 }); tone({ type: "sine", f: 392, dur: 0.25, at: 0.2, vol: 0.2 }); },
+  chirp: () => arp(["C6", "E6", "C7"], 0.05, { type: "triangle", vol: 0.14 }),
+  beep: () => arp(["C6", "G6"], 0.07, { type: "square", vol: 0.12 }),
+  blob: () => VOICE.gurgle(1.4),
+  roar: () => { tone({ type: "sawtooth", f: 300, f2: 180, dur: 0.25, vol: 0.18 }); noise({ dur: 0.2, vol: 0.14, lp: 2000 }); },
+  click: () => { for (let i = 0; i < 4; i += 1) tone({ type: "square", f: 1800, dur: 0.02, at: i * 0.05, vol: 0.1 }); },
+  whale: () => tone({ type: "sine", f: 300, f2: 600, dur: 0.6, vol: 0.2, attack: 0.1 }),
+  plop: () => tone({ type: "sine", f: 600, f2: 200, dur: 0.1, vol: 0.2 }),
+  rock: () => noise({ dur: 0.06, vol: 0.18, lp: 1200 }),
+};
+const PET_SFX = {
+  puppy: "bark", kitten: "meow", bunny: "squeak", hamster: "squeak", duckling: "quack", frog: "ribbit", fox: "bark",
+  turtle: "plop", penguin: "chirp", owl: "hoot", ghost: "blob", robot: "beep", slime: "blob", unicorn: "chirp",
+  dragon: "roar", rock: "rock", himalayan: "meow", tuxedo: "meow", crab: "click", betta: "plop", gecko: "click",
+  platypus: "quack", shark: "roar", whale: "whale",
+};
+
+/* Resolve "kind:key" names to a sound. */
+function keyed(name) {
+  const at = name.indexOf(":");
+  if (at < 0) return null;
+  const kind = name.slice(0, at);
+  const key = name.slice(at + 1);
+  if (kind === "swing") return SWING[weaponParts(key)[0]] || SWING.whoosh;
+  if (kind === "hit") return MAT[weaponParts(key)[1]] || MAT.thud;
+  if (kind === "special") return () => { SFX.special(); (FLOURISH[weaponParts(key)[2]] || FLOURISH.hero)(); };
+  if (kind === "voice") return voiceOf(key);
+  if (kind === "attack") return () => { SFX.enemy(); voiceOf(key)(); };
+  if (kind === "defeat") return () => { voiceOf(key)(); SFX.poof(); };
+  if (kind === "lob") return LOB[key] || (() => noise({ dur: 0.1, vol: 0.14, lp: 4000, hp: 700 }));
+  if (kind === "pet") return PET_CRY[PET_SFX[key]] || PET_CRY.chirp;
+  return null;
+}
 
 /* ---------- weather ambience ----------
    "storm": a looping, gusting wind (filtered noise with slow wobbles). Follows the Sound FX switch. */
@@ -253,14 +458,16 @@ export function weather(name) {
 
 /* Play a sound effect by name. Rapid repeats (like a shower of coins) are thinned out. */
 export function play(name) {
-  if (!sfxOn || !SFX[name]) return;
+  if (!sfxOn) return;
+  const fn = SFX[name] || keyed(String(name || ""));
+  if (!fn) return;
   const a = ctx();
   if (!a || a.state !== "running") return;
   const now = a.currentTime;
   const gap = name === "coin" ? 0.05 : 0.03;
   if (now - (lastPlayed.get(name) || -1) < gap) return;
   lastPlayed.set(name, now);
-  try { SFX[name](); } catch { /* never let audio break the game */ }
+  try { fn(); } catch { /* never let audio break the game */ }
 }
 
 /* ---------- music ----------
