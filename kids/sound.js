@@ -183,6 +183,7 @@ const SFX = {
   spell: () => { arp(["C5", "E5", "G5", "B5", "D6"], 0.05, { type: "triangle", vol: 0.16 }); noise({ dur: 0.5, vol: 0.1, lp: 9000, hp: 3000 }); },
   powerup: () => { tone({ type: "square", f: 220, f2: 880, dur: 0.4, vol: 0.18 }); arp(["C6", "E6", "G6", "C7"], 0.06, { at: 0.3, vol: 0.18 }); },
   darkspell: () => { arp(["B4", "F5", "B4", "F4"], 0.07, { type: "sawtooth", vol: 0.12 }); noise({ dur: 0.5, vol: 0.12, lp: 3000, hp: 500 }); },
+  heartfill: () => { arp(["C6", "E6", "G6", "C7"], 0.06, { type: "triangle", vol: 0.2 }); tone({ type: "sine", f: 523, f2: 1046, dur: 0.3, vol: 0.12, at: 0.05 }); },
   heartbreak: () => { noise({ dur: 0.06, vol: 0.35, lp: 6000, hp: 1500 }); arp(["E5", "C5", "A4"], 0.12, { type: "square", vol: 0.16, at: 0.05 }); },
   decline: () => { tone({ type: "triangle", f: 520, f2: 260, dur: 0.14, vol: 0.3 }); arp(["E4", "C4"], 0.14, { type: "square", vol: 0.14, at: 0.12 }); },
   appear: () => { tone({ type: "square", f: 180, f2: 360, dur: 0.12, vol: 0.12 }); tone({ type: "square", f: 360, f2: 180, dur: 0.12, at: 0.12, vol: 0.12 }); },

@@ -362,6 +362,7 @@ function mapKid(row) {
     groundProgress: Math.max(0, Number(row.ground_progress) || 0),
     warnParent: row.warn_parent || "",
     warnSeq: Number(row.warn_seq) || 0,
+    warnKind: row.warn_kind === "heart" ? "heart" : "warn",
     hero: row.hero || "knight",
     weapon: row.weapon || "broom",
     pet: normalizePet(row.pet) || "",
@@ -417,7 +418,7 @@ async function loadParent() {
   const day = torontoToday();
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet,helmet,armor").order("created_at"),
-    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,hero,weapon,pet,birth_date").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,warn_kind,hero,weapon,pet,birth_date").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
@@ -828,8 +829,10 @@ function pendingWarn(child) {
     color: COLOR_HEX[parent?.color] || COLOR_HEX.teal,
     hearts: child.hearts,
     seq: child.warnSeq,
-    locked: grounded(child),
-    lockKey: grounded(child) ? String(child.groundedUntil || child.id) : "",
+    gift: child.warnKind === "heart",
+    kidName: child.name,
+    locked: child.warnKind !== "heart" && grounded(child),
+    lockKey: child.warnKind !== "heart" && grounded(child) ? String(child.groundedUntil || child.id) : "",
   };
 }
 
@@ -851,13 +854,14 @@ function readParentWarnPending() {
   }
 }
 
-function queueParentWarn(kidId, result) {
+function queueParentWarn(kidId, result, kind = "warn") {
   const me = parent();
   const child = kidById(kidId);
   const seq = Number(result?.warn_seq) || Number(child?.warnSeq) || Date.now();
   const payload = {
     kidId,
     seq,
+    kind,
     hearts: Number(result?.hearts ?? child?.hearts ?? 0),
     locked: Boolean(result?.locked) || grounded({ ...child, groundedUntil: result?.grounded_until || child?.groundedUntil }),
     parent: result?.parent || me?.name || "Parent",
@@ -867,6 +871,7 @@ function queueParentWarn(kidId, result) {
   if (child) {
     child.warnParent = payload.parent;
     child.warnSeq = payload.seq;
+    child.warnKind = kind;
     child.hearts = payload.hearts;
     if (payload.locked && result?.grounded_until) child.groundedUntil = result.grounded_until;
   }
@@ -887,7 +892,8 @@ function pendingParentWarn() {
       weapon: heldWeapon(me.weapon || "broom"),
       hearts: queued.hearts,
       seq: queued.seq,
-      locked: queued.locked,
+      gift: queued.kind === "heart",
+      locked: queued.kind !== "heart" && queued.locked,
       lockKey: queued.locked ? queued.lockKey : "",
       kidId: child.id,
       kidName: child.name,
@@ -908,7 +914,8 @@ function pendingParentWarn() {
     weapon: heldWeapon(me.weapon || "broom"),
     hearts: next.hearts,
     seq: next.warnSeq,
-    locked: grounded(next),
+    gift: next.warnKind === "heart",
+    locked: next.warnKind !== "heart" && grounded(next),
     lockKey: grounded(next) ? String(next.groundedUntil || next.id) : "",
     kidId: next.id,
     kidName: next.name,
@@ -950,7 +957,7 @@ function paintStage() {
         plays: [],
         onDone: onFightDone,
         gear: kidStageGear(child),
-        hearts: Math.min(3, (child?.hearts ?? 0) + 1),
+        hearts: parentWarn.gift ? Math.max(0, (child?.hearts ?? 1) - 1) : Math.min(3, (child?.hearts ?? 0) + 1),
         guardian,
         warn: parentWarn,
         onWarn: (info) => {
@@ -1076,7 +1083,9 @@ function paintStage() {
   const atSpot = spot === "chest" || spot === "gate";
   // A grounded or warned kid never walks through the gate, so open the arena lobby to show why it's closed.
   if (child && !free && route.name === "arena" && !arenaRevealed()) revealArena();
-  const shownHearts = warn ? Math.min(3, (child?.hearts ?? 0) + 1) : child?.hearts ?? 3;
+  const shownHearts = warn
+    ? warn.gift ? Math.max(0, (child?.hearts ?? 1) - 1) : Math.min(3, (child?.hearts ?? 0) + 1)
+    : child?.hearts ?? 3;
   setStageScene({
     color: COLOR_HEX[name] || COLOR_HEX.leaf,
     hero: heroKey,
@@ -3103,7 +3112,19 @@ app.addEventListener("click", (event) => {
     const caged = grounded(kidById(chore?.kidId));
     run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), caged ? "Approved. The coins went toward the cage, not the coin balance." : "Approved. Add any new device minutes in Screen Time.");
   }
-  if (action === "give-heart") run(() => rpc("give_heart", { p_kid: btn.dataset.id }), "Heart given back.", "chart");
+  if (action === "give-heart") {
+    const kidId = btn.dataset.id;
+    const child = kidById(kidId);
+    run(
+      async () => {
+        const hearts = await rpc("give_heart", { p_kid: kidId });
+        // give_heart bumps warn_seq by one, so the parent's scene and the kid's scene share the same key.
+        queueParentWarn(kidId, { hearts: Number(hearts) || Math.min(3, (child?.hearts ?? 0) + 1), warn_seq: (Number(child?.warnSeq) || 0) + 1, locked: false }, "heart");
+      },
+      "Heart given back.",
+      "chart"
+    );
+  }
   if (action === "open-dialog") {
     const dialog = document.querySelector(`dialog.${btn.dataset.dialog}`);
     if (dialog && !dialog.open) dialog.showModal();
