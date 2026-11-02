@@ -708,7 +708,7 @@ const fore=layer(256,12,(g,w,h,wrap)=>{[30,120,200].forEach(x=>wrap(o=>{disc(g,x
 function drawLayer(c,off,y=0){const w=c.width;const x=-(((Math.round(off))%w)+w)%w;ctx.drawImage(c,x,y);ctx.drawImage(c,x+w,y)}
 
 /* ---------- tiny pixel font ---------- */
-const FONT={'0':'111101101101111','1':'010110010010111','2':'111001111100111','3':'111001111001111','4':'101101111001001','5':'111100111001111','6':'111100111101111','7':'111001001001001','8':'111101111101111','9':'111101111001111','+':'000010111010000','-':'000000111000000',A:'010101111101101',B:'110101110101110',C:'011100100100011',Z:'111001010100111'};
+const FONT={'0':'111101101101111','1':'010110010010111','2':'111001111100111','3':'111001111001111','4':'101101111001001','5':'111100111001111','6':'111100111101111','7':'111001001001001','8':'111101111101111','9':'111101111001111','+':'000010111010000','-':'000000111000000',A:'010101111101101',B:'110101110101110',C:'011100100100011',Z:'111001010100111',S:'111100111001111',H:'101101111101101',O:'111101101101111',P:'111101111100100',M:'101111111101101',I:'111010010010111',N:'111101101101101',X:'101101010101101'};
 function glyph(ch,x,y,col){const f=FONT[ch];if(!f)return;for(let k=0;k<15;k++)if(f[k]==='1')px(ctx,x+k%3,y+(k/3|0),col)}
 function text(s,x,y,col){[...s].forEach((ch,i)=>{const f=FONT[ch];if(!f)return;for(let k=0;k<15;k++)if(f[k]==='1'){const gx=x+i*4+k%3,gy=y+(k/3|0);px(ctx,gx+1,gy+1,K);px(ctx,gx,gy,col)}})}
 
@@ -1202,7 +1202,7 @@ function drawProj(p){const t=time;
 
 /* ---------- battle script ---------- */
 let busy=false;
-async function battle(type){if(grounded)return false;thought=null;
+async function battle(type){if(grounded||mkt)return false;thought=null;
   if(busy||!MON[type])return false;busy=true;opts.onStart?.(type);
   const d=MON[type];mon={def:d,x:W+6,hp:3,open:0,openT:0,tongue:0,tongueT:0,lunge:0,lungeT:0,flash:0,shake:0,t:0,idle:true,approach:true,alive:true,showHp:false,lift:0};
   say('...');scrollTarget=30;scroll=Math.max(scroll,18);hero.pose='walk';
@@ -1594,6 +1594,72 @@ function drawArenaBG(){ctx.drawImage(colo,0,0);const hype=crowdHype>0;
   for(const tx of [36,68,100]){rect(ctx,tx,50,1,4,'#4e4238');rect(ctx,tx-1,49,3,1,'#4e4238');const f=(time*10+tx|0)%3;
     px(ctx,tx,48,'#f4862e');px(ctx,tx,47-(f===1?1:0),'#f4c542');if(f!==2)px(ctx,tx+(f?1:-1),47,'#e04a4a');px(ctx,tx,46-(f===0?1:0),'#fff3a8')}}
 
+
+/* ---------- market stand ---------- */
+const keeperPal={K,H:'#5a3a8a',h:'#7a5aaa',S:'#f4c89c',E:K,P:'#e09a7a',M:'#6e3418',A:'#3fa34d',W:'#fff8e6'};
+const keeperRows=["...KKKKK....","..KHHHHHK...","..KHhHHHK...",".KKKKKKKKK..","..KSSSSSK...","..KSESESK...","..KSSPSSK...","..KMMMMMK...","...KSSSK....","..KAWWWAK...",".KAAWWWAAK.."];
+const keeperA=sprite(keeperRows,keeperPal);
+const keeperB=sprite(keeperRows.map((r,i)=>i===5?"..KSKSKSK...":r),keeperPal);
+const billS=sprite(["KKKKKKKKK","KGGGGGGGK","KGKgWgKGK","KGGgWgGGK","KGKgWgKGK","KGGGGGGGK","KKKKKKKKK"],{K,G:'#5cb85c',g:'#3a8f4a',W:'#e6ffd8'});
+const stopwatchS=sprite(["...KKK...","....K....","..KKKKK..",".KRRRRRK.","KRWWWWWRK","KRWWKWWRK","KRWWKKWRK","KRWWWWWRK",".KRRRRRK.","..KKKKK.."],{K,R:'#e04a4a',W:'#ffffff'});
+const potionR=sprite([".K.","KWK","KRK","KRK","KKK"],{K,W:'#e6ecf5',R:'#e04a4a'}),potionB=sprite([".K.","KWK","KBK","KBK","KKK"],{K,W:'#e6ecf5',B:'#3b74d9'});
+let mkt=null,gift=null;
+const MKT_X=50;
+function drawStall(){if(!mkt)return;const x=Math.round(mkt.x),t=time,Y=G;
+  rect(ctx,x+2,Y,38,1,SHC);
+  // posts
+  rect(ctx,x+1,Y-32,3,32,K);rect(ctx,x+2,Y-32,1,32,'#8a5a2a');rect(ctx,x+37,Y-32,3,32,K);rect(ctx,x+38,Y-32,1,32,'#8a5a2a');
+  // shopkeeper (behind counter)
+  const throwing=mkt.throwT>0;ctx.drawImage((t%3.5)<.15?keeperB:keeperA,x+14,Y-25);
+  if(throwing){rect(ctx,x+12,Y-26,2,5,K);rect(ctx,x+12,Y-25,1,3,'#f4c89c')}
+  else if(mkt.wave>0){const up=(t*8|0)%2;rect(ctx,x+24,Y-20-up*2,2,4,K);px(ctx,x+24,Y-20-up*2,'#f4c89c')}
+  // counter
+  rect(ctx,x,Y-15,41,3,K);rect(ctx,x+1,Y-14,39,1,'#d09a5a');rect(ctx,x+1,Y-13,39,1,'#b07840');
+  rect(ctx,x+2,Y-12,37,12,K);for(let i=0;i<37;i++){const c=i%6===0?K:(i%6<3?'#9a6232':'#8a5a2a');rect(ctx,x+2+i,Y-11,1,11,c)}
+  rect(ctx,x+3,Y-11,35,1,'#b07840');
+  // pouch on the front
+  disc(ctx,x+20,Y-6,3,K);disc(ctx,x+20,Y-6,2,'#c98a4a');rect(ctx,x+19,Y-9,3,1,K);px(ctx,x+20,Y-6,'#f4c542');
+  // goods on the counter
+  ctx.drawImage(potionR,x+4,Y-20);ctx.drawImage(potionB,x+8,Y-20);
+  rect(ctx,x+31,Y-17,5,2,K);rect(ctx,x+32,Y-17,3,1,'#f4c542');rect(ctx,x+31,Y-19,5,2,K);rect(ctx,x+32,Y-19,3,1,'#f4c542');rect(ctx,x+32,Y-21,4,2,K);rect(ctx,x+33,Y-21,2,1,'#fff3a8');
+  // awning
+  const sw=Math.round(Math.sin(t*2)*.6);
+  rect(ctx,x-2,Y-36,45,8,K);for(let i=0;i<43;i++){const c=Math.floor(i/4)%2?'#fff0d0':'#d63c3c';rect(ctx,x-1+i,Y-35,1,6,c)}
+  rect(ctx,x-1,Y-35,43,1,'#ff7a6a');
+  for(let i=0;i<11;i++){const sx=x-1+i*4+sw,c=i%2?'#fff0d0':'#d63c3c';rect(ctx,sx,Y-29,4,1,K);rect(ctx,sx+1,Y-29,2,1,c);rect(ctx,sx+1,Y-28,2,1,K)}
+  // sign
+  rect(ctx,x+12,Y-44,17,8,K);rect(ctx,x+13,Y-43,15,6,'#fff0d0');rect(ctx,x+16,Y-36,1,1,K);rect(ctx,x+24,Y-36,1,1,K);
+  'SHOP'.split('').forEach((ch,i)=>glyph(ch,x+14+i*4-(i>1?0:0)-(i?0:0)+0,Y-42,'#d63c3c'));
+  // lantern
+  rect(ctx,x+35,Y-28,1,3,K);rect(ctx,x+33,Y-25,5,5,K);const fl=(t*8|0)%3;rect(ctx,x+34,Y-24,3,3,fl?'#f4c542':'#fff3a8');
+  if(fl===0)px(ctx,x+35,Y-23,'#ffffff')}
+function drawGift(){if(!gift)return;const g=gift,p=Math.min(1,g.t/g.dur);const x=g.x0+(g.x1-g.x0)*p,y=g.y0+(g.y1-g.y0)*p-Math.sin(p*Math.PI)*g.arc;
+  const img=g.img;const rot=g.spin?Math.round(p*8)%4:0;ctx.save();ctx.translate(Math.round(x),Math.round(y));ctx.rotate(rot*Math.PI/2);ctx.drawImage(img,-(img.width>>1),-(img.height>>1));ctx.restore();
+  if((time*20|0)%2)px(ctx,x-img.width/2-2,y,'#ffffff')}
+async function marketOpen(text){if(busy||mkt)return false;busy=true;thought=null;mkt={x:W+8,state:'in',throwT:0,wave:0};
+  scrollTarget=30;scroll=Math.max(scroll,18);hero.pose='walk';say('Walking to the market...');
+  await until(()=>mkt.x<=MKT_X);mkt.x=MKT_X;scroll=0;scrollTarget=0;hero.pose='idle';mkt.state='open';mkt.wave=1.4;
+  say(text||'Welcome to the Market! Spend your coins here.');busy=false;return true}
+async function marketBuy(item={}){if(mkt&&mkt.state==='in')await until(()=>mkt&&mkt.state==='open'&&!busy);if(!mkt||mkt.state!=='open'||busy)return false;busy=true;
+  if(item.cost&&item.cost>coinsTotal){busy=false;say(`You need ${item.cost} coins for that. Do more chores!`);mkt.wave=.8;return false}
+  if(item.cost){coinsTotal-=item.cost;hudPop=.2;floats.push({s:'-'+item.cost,x:W-26,y:hearts==null?14:24,life:1.1})}
+  let img=billS,spin=true,label=null;
+  if(item.type==='timer'){img=stopwatchS;spin=false;label=item.label||('+'+(item.minutes||15)+' MIN')}
+  else if(item.type==='pet'&&PETS[item.pet]){img=PETS[item.pet].a;spin=true}
+  else if(item.type==='weapon'&&WEAPONS[item.weapon]){img=WEAPONS[item.weapon].icon;spin=true}
+  else if(item.sprite){img=item.sprite}
+  say(item.text||'Here you go!');mkt.throwT=.5;mkt.wave=0;await wait(.25);
+  const hx=heroX()+(item.type==='pet'?-4:7),hy=item.type==='pet'?G-4:heroY()+4;
+  gift={img,spin,t:0,dur:.75,x0:mkt.x+14,y0:G-26,x1:hx,y1:hy,arc:item.type==='pet'?26:20};
+  await until(()=>gift.t>=gift.dur);gift=null;
+  if(item.type==='pet'){petKey=item.pet;pet.x=heroX()-PETS[item.pet].w-1;pet.hopV=-70;for(let i=0;i<10;i++)particles.push({x:pet.x+4,y:G-8,vx:rnd(-25,25),vy:-rnd(20,50),g:60,life:.7,c:['#ff8ac6','#ffffff','#f4c542'][i%3]})}
+  else burst(hx,hy,['#f4c542','#ffffff','#fff3a8'],14,55);
+  if(label)floats.push({s:label,x:hx-label.length*2,y:hy-10,life:1.6});
+  hero.pose='victory';hero.vy=-80;petCheer(true);await wait(.5);hero.pose='idle';
+  say(item.thanks||'Thanks for shopping! Come back soon.');mkt.wave=1.2;busy=false;return true}
+async function marketClose(){if(!mkt||busy)return false;busy=true;mkt.state='out';scrollTarget=18;scroll=Math.max(scroll,12);hero.pose='walk';say('Back on the trail.');
+  await until(()=>mkt.x<-50);mkt=null;busy=false;return true}
+
 /* ---------- loop ---------- */
 let last=performance.now();
 function update(dt){
@@ -1605,7 +1671,7 @@ function update(dt){
   hero.ox+=(hero.oxT-hero.ox)*Math.min(1,dt*22);hero.kx*=Math.exp(-dt*9);
   hero.jy+=hero.vy*dt;hero.vy+=320*dt;if(hero.jy>0){hero.jy=0;hero.vy=0}
   const tA=POSE[hero.pose]??-55;hero.ang+=(tA-hero.ang)*Math.min(1,dt*28);
-  hero.smear=Math.max(0,hero.smear-dt);hero.hurt=Math.max(0,(hero.hurt||0)-dt);sceneFade=Math.max(0,sceneFade-dt*1.6);crowdHype=Math.max(0,crowdHype-dt);beamT=Math.max(0,beamT-dt);if(thought)thought.t+=dt;updateEffects(dt);updatePet(dt);
+  hero.smear=Math.max(0,hero.smear-dt);hero.hurt=Math.max(0,(hero.hurt||0)-dt);if(mkt){if(mkt.state!=='open')mkt.x-=scroll*dt;mkt.throwT=Math.max(0,mkt.throwT-dt);mkt.wave=Math.max(0,mkt.wave-dt)}if(gift)gift.t+=dt;sceneFade=Math.max(0,sceneFade-dt*1.6);crowdHype=Math.max(0,crowdHype-dt);beamT=Math.max(0,beamT-dt);if(thought)thought.t+=dt;updateEffects(dt);updatePet(dt);
   if(mon&&mon.hopV!=null){mon.hopY=(mon.hopY||0)+mon.hopV*dt;mon.hopV+=360*dt;if(mon.hopY>=0){mon.hopY=0;mon.hopV=null}}
   if(mon&&mon.alive&&mon.def.fizz&&R()<dt*8)particles.push({x:mon.x+8+rnd(-1,1),y:G-mon.def.h-1,vx:rnd(-4,4),vy:-rnd(8,14),g:-4,life:1,c:R()<.5?'#c8f088':'#e6ffc8',s:R()<.3?2:1});
   if(mon&&mon.alive&&mon.def.sizzle&&R()<dt*9)particles.push({x:mon.x+rnd(3,15),y:G-10+mon.def.yoff(mon),vx:rnd(-3,3),vy:-rnd(10,18),g:-5,life:.9,c:R()<.5?'#c8d0e0':'#e6ecf5'});
@@ -1645,6 +1711,7 @@ function draw(){
   ctx.drawImage(sky,0,0);
   drawLayer(clouds,worldX*.08+time*2,2);drawLayer(hills,worldX*.15);drawLayer(farPines,worldX*.3);
   drawLayer(midPines,worldX*.5);drawLayer(trees,worldX*.7);drawLayer(ground,worldX);}
+  drawStall();
   // hero
   const HY=HEROES[heroKey].hand;const x=Math.round(heroX()),walking=scroll>2&&hero.pose==='walk';const fr=walking&&(time*8|0)%2;
   const y=Math.round(heroY())-(fr?1:0);
@@ -1663,6 +1730,7 @@ function draw(){
   if(mon&&mon.alive)drawMonster(mon);
   drawThought();
   projectiles.forEach(drawProj);
+  drawGift();
   particles.forEach(p=>p.spr?ctx.drawImage(p.spr,Math.round(p.x),Math.round(p.y)):rect(ctx,p.x,p.y,p.s||1,p.s||1,p.c));
   drawEffects();
   coins.forEach(c=>{if(c.t>=0)drawCoin(c.x,c.y,time+c.x*.05)});
@@ -1713,6 +1781,8 @@ return {
   // Monster Arena (learning battles). See CURSOR_BRIEF.md for the run loop.
   arena:{config:ARENA,categories:ARENA_CATS,levels:ARENA_LEVELS,makeQuestion,begin:arenaBegin,spawn:arenaSpawn,hit:arenaHit,miss:arenaMiss,ko:arenaKO,end:arenaEnd,
     hearts:()=>hearts,speak:speakParts,drawVis,choiceArt,choiceLabel},
+  // Market: hero walks up to the stall, the trail stops, purchases get thrown to the hero
+  market:{open:marketOpen,buy:marketBuy,close:marketClose,isOpen:()=>!!mkt&&mkt.state==='open'},
   think:(type,text)=>think(type,text),   // approval screen: hero waits with a pixel thought cloud of that monster
   clearThought,                           // call on Approve (then play) or Decline
   setHearts:(n,max)=>{hearts=n;if(max)maxHearts=max},   // pixel hearts HUD; null hides it

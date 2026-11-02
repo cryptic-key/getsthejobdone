@@ -1,6 +1,6 @@
 /* Pixel forest battles. Waiting chores idle on the trail. Approval plays the fight, hit bars, and defeat. */
 
-import { createPetFollower, drawPetAt, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet, petSize } from "./pets.js";
+import { createPetFollower, drawPetAt, drawPetIcon, DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, normalizePet, petIcon, petSize } from "./pets.js";
 
 export { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, drawPetIcon, normalizePet };
 
@@ -2251,6 +2251,14 @@ const FONT = {
   B: "110101110101110",
   C: "011100100100011",
   Z: "111001010100111",
+  S: "111100111001111",
+  H: "101101111101101",
+  O: "111101101101111",
+  P: "111101111100100",
+  M: "101111111101101",
+  I: "111010010010111",
+  N: "111101101101101",
+  X: "101101010101101",
 };
 
 export function drawMonsterIcon(target, type) {
@@ -2412,37 +2420,18 @@ let lastMarket = "";
 let marketStall = null;
 let shopKeeper = null;
 let marketWorldX = null;
-const keeperPal = {
-  K,
-  C: "#f4c542",
-  H: "#6e3418",
-  h: "#4a2410",
-  S: "#f4c89c",
-  s: "#d39a6c",
-  A: "#f4e4b8",
-  a: "#d8c090",
-  B: "#6b4426",
-  R: "#c0392b",
-  E: K,
-};
-// Cap, hair, face, apron — tall enough that the head clears the counter.
-const keeperTop = [
-  ".....CCCC.....",
-  "....KCCCCK....",
-  "...KHHHHHHK...",
-  "..KHHHHHHHHK..",
-  "..KHSSSSSSHK..",
-  "..KSSSESSESK..",
-  "..KSSSSSSSsK..",
-  "...KSSSSSSK...",
-  "....KAAAAK....",
-  "...KAAAAAAK...",
-  "..KAARRAARAK..",
-  "..KAAAAAAAAK..",
-  "...KAAAAAAK...",
-];
-const keeperA = sprite([...keeperTop, "....KBBBBK....", "...KBBK.KBBK..", "..KBBBK.KBBBK.", "..KKKKK.KKKKK."], keeperPal);
-const keeperB = sprite([...keeperTop, "....KBBBBK....", "....KBBKBBK...", "...KBBBKBBBK..", "...KKKKKKKKK.."], keeperPal);
+let marketGift = null;
+let pendingGift = null;
+const MARKET_X = 50;
+const keeperPal = { K, H: "#5a3a8a", h: "#7a5aaa", S: "#f4c89c", E: K, P: "#e09a7a", M: "#6e3418", A: "#3fa34d", W: "#fff8e6" };
+const keeperRows = ["...KKKKK....", "..KHHHHHK...", "..KHhHHHK...", ".KKKKKKKKK..", "..KSSSSSK...", "..KSESESK...", "..KSSPSSK...", "..KMMMMMK...", "...KSSSK....", "..KAWWWAK...", ".KAAWWWAAK.."];
+const keeperA = sprite(keeperRows, keeperPal);
+const keeperB = sprite(keeperRows.map((row, i) => (i === 5 ? "..KSKSKSK..." : row)), keeperPal);
+const billS = sprite(["KKKKKKKKK", "KGGGGGGGK", "KGKgWgKGK", "KGGgWgGGK", "KGKgWgKGK", "KGGGGGGGK", "KKKKKKKKK"], { K, G: "#5cb85c", g: "#3a8f4a", W: "#e6ffd8" });
+const stopwatchS = sprite(["...KKK...", "....K....", "..KKKKK..", ".KRRRRRK.", "KRWWWWWRK", "KRWWKWWRK", "KRWWKKWRK", "KRWWWWWRK", ".KRRRRRK.", "..KKKKK.."], { K, R: "#e04a4a", W: "#ffffff" });
+const potionR = sprite([".K.", "KWK", "KRK", "KRK", "KKK"], { K, W: "#e6ecf5", R: "#e04a4a" });
+const potionB = sprite([".K.", "KWK", "KBK", "KBK", "KKK"], { K, W: "#e6ecf5", B: "#3b74d9" });
+const giftBoxS = sprite(["...K.K...", "..KYKYK..", "KKKKYKKKK", "KRRRYRRRK", "KKKKYKKKK", "KRRRYRRRK", "KRRRYRRRK", "KKKKKKKKK"], { K, R: "#d63c3c", Y: "#f4c542" });
 let warner = null;
 let spellBolt = null;
 let warnBusy = false;
@@ -3581,15 +3570,14 @@ function freezeMarketBg() {
   scrollTarget = 0;
 }
 
-function placeMarket(x = 74, rolling = false) {
+function placeMarket(x = MARKET_X, rolling = false) {
   freezeMarketBg();
-  marketStall = { x, open: true, goal: 74, rolling };
-  // stand lifts the keeper so head and shoulders sit above the counter
-  shopKeeper = { x: x + 9, look: { a: keeperA, b: keeperB }, stand: 22 };
+  marketStall = { x, open: true, goal: MARKET_X, rolling, throwT: 0, wave: rolling ? 0 : 1.4 };
+  shopKeeper = { x: x + 14, look: { a: keeperA, b: keeperB } };
 }
 
 function holdMarket() {
-  placeMarket(74, false);
+  placeMarket(MARKET_X, false);
   mon = null;
   hero.down = false;
   hero.hurt = 0;
@@ -3627,18 +3615,18 @@ async function playMarketArrive(token) {
     marketBusy = false;
     return;
   }
-  placeMarket(74, false);
-  hero.oxT = 8;
-  if (!(await until(() => Math.abs(hero.ox - 8) < 0.6, token))) {
+  placeMarket(MARKET_X, false);
+  hero.oxT = 6;
+  if (!(await until(() => Math.abs(hero.ox - 6) < 0.6, token))) {
     marketBusy = false;
     return;
   }
   hero.pose = "idle";
-  hero.ox = 8;
-  hero.oxT = 8;
+  hero.ox = 6;
+  hero.oxT = 6;
   hero.ang = POSE.idle;
   freezeMarketBg();
-  burst(heroX() + 10, G - 8, ["#f4c542", "#fff3a8", "#ffffff"], 10, 40);
+  marketStall.wave = 1.4;
   say("The shopkeeper waves hello!");
   if (!(await waitFor(1.1, token))) {
     marketBusy = false;
@@ -3649,44 +3637,139 @@ async function playMarketArrive(token) {
   lastMarket = "shop";
   marketBusy = false;
   scene.onMarket?.("shop");
+  if (pendingGift) {
+    const item = pendingGift;
+    pendingGift = null;
+    playMarketGift(item, token);
+  }
+}
+
+function giftImage(item) {
+  if (item.type === "timer") return { img: stopwatchS, spin: false };
+  if (item.type === "pet") {
+    const icon = petIcon(item.pet, 1);
+    if (icon) return { img: icon, spin: true };
+  }
+  if (item.type === "gift") return { img: giftBoxS, spin: false };
+  return { img: billS, spin: true };
+}
+
+async function playMarketGift(item, token) {
+  if (!marketStall || marketBusy) {
+    pendingGift = item;
+    return;
+  }
+  marketBusy = true;
+  const done = () => { marketBusy = false; marketGift = null; };
+  say(item.text || "Here you go!");
+  marketStall.throwT = 0.5;
+  marketStall.wave = 0;
+  if (!(await waitFor(0.25, token))) return done();
+  const { img, spin } = giftImage(item);
+  const pet = item.type === "pet";
+  const hx = heroX() + (pet ? -4 : 7);
+  const hy = pet ? G - 4 : heroY() + 4;
+  marketGift = { img, spin, t: 0, dur: 0.75, x0: marketStall.x + 14, y0: G - 26, x1: hx, y1: hy, arc: pet ? 26 : 20 };
+  if (!(await until(() => !marketGift || marketGift.t >= marketGift.dur, token))) return done();
+  marketGift = null;
+  burst(hx, hy, pet ? ["#ff8ac6", "#ffffff", "#f4c542"] : ["#f4c542", "#ffffff", "#fff3a8"], 14, 55);
+  if (item.label) floats.push({ s: item.label, x: hx - item.label.length * 2, y: hy - 10, life: 1.6 });
+  hero.pose = "victory";
+  hero.vy = -80;
+  if (!(await waitFor(0.5, token))) return done();
+  hero.pose = "idle";
+  say(item.thanks || "Thanks for shopping! Come back soon.");
+  if (marketStall) marketStall.wave = 1.2;
+  marketBusy = false;
+}
+
+export function marketThrow(item) {
+  if (!item) return;
+  playMarketGift(item, runToken);
 }
 
 function drawMarket() {
   if (!marketStall) return;
-  const sx = Math.round(marketStall.x);
-  const top = G - 26;
-  if (shopKeeper) {
-    const kx = Math.round(shopKeeper.x);
-    const ky = Math.round(G - ((shopKeeper.stand || 22) - 1));
-    const wave = ((time * 3) | 0) % 2 === 0;
-    rect(ctx, kx + 3, G, 8, 1, scenery.shadow);
-    ctx.drawImage(wave ? shopKeeper.look.b : shopKeeper.look.a, kx, ky);
+  const x = Math.round(marketStall.x);
+  const Y = G;
+  const t = time;
+  rect(ctx, x + 2, Y, 38, 1, scenery.shadow);
+  rect(ctx, x + 1, Y - 32, 3, 32, K);
+  rect(ctx, x + 2, Y - 32, 1, 32, "#8a5a2a");
+  rect(ctx, x + 37, Y - 32, 3, 32, K);
+  rect(ctx, x + 38, Y - 32, 1, 32, "#8a5a2a");
+  // shopkeeper stands behind the counter and blinks
+  ctx.drawImage(t % 3.5 < 0.15 ? keeperB : keeperA, x + 14, Y - 25);
+  if (marketStall.throwT > 0) {
+    rect(ctx, x + 12, Y - 26, 2, 5, K);
+    rect(ctx, x + 12, Y - 25, 1, 3, "#f4c89c");
+  } else if (marketStall.wave > 0) {
+    const up = ((t * 8) | 0) % 2;
+    rect(ctx, x + 24, Y - 20 - up * 2, 2, 4, K);
+    px(ctx, x + 24, Y - 20 - up * 2, "#f4c89c");
   }
-  // Awning posts
-  rect(ctx, sx + 2, top + 8, 2, 18, "#6b4426");
-  rect(ctx, sx + 28, top + 8, 2, 18, "#6b4426");
-  // Striped awning sits above the keeper's head
-  for (let i = 0; i < 8; i += 1) {
-    rect(ctx, sx + i * 4, top, 4, 7, i % 2 ? "#c0392b" : "#fff3a8");
+  // counter
+  rect(ctx, x, Y - 15, 41, 3, K);
+  rect(ctx, x + 1, Y - 14, 39, 1, "#d09a5a");
+  rect(ctx, x + 1, Y - 13, 39, 1, "#b07840");
+  rect(ctx, x + 2, Y - 12, 37, 12, K);
+  for (let i = 0; i < 37; i += 1) {
+    const c = i % 6 === 0 ? K : i % 6 < 3 ? "#9a6232" : "#8a5a2a";
+    rect(ctx, x + 2 + i, Y - 11, 1, 11, c);
   }
-  rect(ctx, sx - 1, top + 6, 34, 2, "#4a2e18");
-  // Counter covers only the legs / apron hem
-  rect(ctx, sx, G - 10, 32, 7, "#8a5a30");
-  rect(ctx, sx, G - 10, 32, 2, "#b08a5a");
-  rect(ctx, sx + 1, G - 8, 30, 1, "#6b4426");
-  // Coin crates on the counter
-  rect(ctx, sx + 3, G - 14, 8, 4, "#6b4426");
-  rect(ctx, sx + 4, G - 13, 6, 2, "#f4c542");
-  rect(ctx, sx + 21, G - 14, 8, 4, "#6b4426");
-  px(ctx, sx + 24, G - 12, "#fff3a8");
-  px(ctx, sx + 26, G - 13, "#f4c542");
-  // Sign hangs from the awning, not over the face
-  rect(ctx, sx + 11, top - 5, 10, 6, "#fffdf8");
-  rect(ctx, sx + 11, top - 5, 10, 1, K);
-  rect(ctx, sx + 11, top, 10, 1, K);
-  px(ctx, sx + 14, top - 3, "#f4c542");
-  px(ctx, sx + 16, top - 2, "#f4c542");
-  px(ctx, sx + 18, top - 3, "#c0392b");
+  rect(ctx, x + 3, Y - 11, 35, 1, "#b07840");
+  // coin pouch on the front
+  disc(ctx, x + 20, Y - 6, 3, K);
+  disc(ctx, x + 20, Y - 6, 2, "#c98a4a");
+  rect(ctx, x + 19, Y - 9, 3, 1, K);
+  px(ctx, x + 20, Y - 6, "#f4c542");
+  // goods on the counter
+  ctx.drawImage(potionR, x + 4, Y - 20);
+  ctx.drawImage(potionB, x + 8, Y - 20);
+  rect(ctx, x + 31, Y - 17, 5, 2, K);
+  rect(ctx, x + 32, Y - 17, 3, 1, "#f4c542");
+  rect(ctx, x + 31, Y - 19, 5, 2, K);
+  rect(ctx, x + 32, Y - 19, 3, 1, "#f4c542");
+  rect(ctx, x + 32, Y - 21, 4, 2, K);
+  rect(ctx, x + 33, Y - 21, 2, 1, "#fff3a8");
+  // striped awning with a swaying fringe
+  const sw = Math.round(Math.sin(t * 2) * 0.6);
+  rect(ctx, x - 2, Y - 36, 45, 8, K);
+  for (let i = 0; i < 43; i += 1) rect(ctx, x - 1 + i, Y - 35, 1, 6, Math.floor(i / 4) % 2 ? "#fff0d0" : "#d63c3c");
+  rect(ctx, x - 1, Y - 35, 43, 1, "#ff7a6a");
+  for (let i = 0; i < 11; i += 1) {
+    const fx = x - 1 + i * 4 + sw;
+    rect(ctx, fx, Y - 29, 4, 1, K);
+    rect(ctx, fx + 1, Y - 29, 2, 1, i % 2 ? "#fff0d0" : "#d63c3c");
+    rect(ctx, fx + 1, Y - 28, 2, 1, K);
+  }
+  // SHOP sign
+  rect(ctx, x + 12, Y - 44, 17, 8, K);
+  rect(ctx, x + 13, Y - 43, 15, 6, "#fff0d0");
+  rect(ctx, x + 16, Y - 36, 1, 1, K);
+  rect(ctx, x + 24, Y - 36, 1, 1, K);
+  "SHOP".split("").forEach((ch, i) => glyph(ch, x + 14 + i * 4, Y - 42, "#d63c3c"));
+  // lantern
+  rect(ctx, x + 35, Y - 28, 1, 3, K);
+  rect(ctx, x + 33, Y - 25, 5, 5, K);
+  const fl = ((t * 8) | 0) % 3;
+  rect(ctx, x + 34, Y - 24, 3, 3, fl ? "#f4c542" : "#fff3a8");
+  if (fl === 0) px(ctx, x + 35, Y - 23, "#ffffff");
+}
+
+function drawMarketGift() {
+  const g = marketGift;
+  if (!g) return;
+  const p = Math.min(1, g.t / g.dur);
+  const x = g.x0 + (g.x1 - g.x0) * p;
+  const y = g.y0 + (g.y1 - g.y0) * p - Math.sin(p * Math.PI) * g.arc;
+  const rot = g.spin ? Math.round(p * 8) % 4 : 0;
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  ctx.rotate((rot * Math.PI) / 2);
+  ctx.drawImage(g.img, -(g.img.width >> 1), -(g.img.height >> 1));
+  ctx.restore();
+  if (((time * 20) | 0) % 2) px(ctx, x - g.img.width / 2 - 2, y, "#ffffff");
 }
 
 async function playLockup(token) {
@@ -4116,6 +4199,8 @@ export function setStageScene(next) {
     marketStall = null;
     shopKeeper = null;
     marketWorldX = null;
+    marketGift = null;
+    pendingGift = null;
   }
   const sameLead = lead === lastLead;
   const sameFront = frontKey === lastFront;
@@ -4556,8 +4641,13 @@ function update(dt) {
       marketStall.x = marketStall.goal;
       marketStall.rolling = false;
     }
-    if (shopKeeper) shopKeeper.x = marketStall.x + 10;
+    if (shopKeeper) shopKeeper.x = marketStall.x + 14;
   }
+  if (marketStall) {
+    marketStall.throwT = Math.max(0, (marketStall.throwT || 0) - dt);
+    marketStall.wave = Math.max(0, (marketStall.wave || 0) - dt);
+  }
+  if (marketGift) marketGift.t += dt;
   if (cage?.locked && !lockBusy && R() < dt * 0.9) {
     particles.push({ x: heroX() + (R() < 0.5 ? 6 : 9), y: heroY() + 6, vx: 0, vy: 10, g: 80, life: 0.5, c: "#7fd0ff" });
   }
@@ -4645,6 +4735,7 @@ function draw() {
   drawLayer(scenery.midPines, bgX * 0.5);
   drawLayer(scenery.trees, bgX * 0.7);
   drawLayer(scenery.ground, bgX);
+  if (marketStall) drawMarket();
   if (paradeOn && parade.length) {
     const walking = scroll > 2;
     parade.slice().sort((a, b) => a.x - b.x).forEach((walker) => {
@@ -4787,7 +4878,6 @@ function draw() {
   }
   if (cage) drawCage();
   drawCops();
-  if (marketStall) drawMarket();
   }
   if (warner) {
     const wx = Math.round(warner.x);
@@ -4833,6 +4923,7 @@ function draw() {
   particles.forEach((p) => (p.spr ? ctx.drawImage(p.spr, Math.round(p.x), Math.round(p.y)) : rect(ctx, p.x, p.y, p.s || 1, p.s || 1, p.c)));
   drawEffects();
   coins.forEach((c) => { if (c.t >= 0) drawCoin(c.x, c.y, time + c.x * 0.05); });
+  drawMarketGift();
   floats.forEach((f) => text(f.s, Math.round(f.x), Math.round(f.y), "#f4c542"));
   drawLayer(scenery.fore, (marketWorldX != null ? marketWorldX : worldX) * 1.3, H - 12);
   drawHearts();

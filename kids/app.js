@@ -1,10 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=34";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=34";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=34";
-import { createChoreQuest } from "./chore-quest.js?v=34";
-import { leaveArena, mountArena } from "./arena.js?v=34";
+import { APP_VERSION } from "./version.js?v=35";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=35";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=35";
+import { createChoreQuest } from "./chore-quest.js?v=35";
+import { leaveArena, mountArena } from "./arena.js?v=35";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
 const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
@@ -2979,14 +2979,25 @@ app.addEventListener("click", (event) => {
       `Marked done. ${spriteName(taskSprite(chore))} is waiting until a parent approves it.`
     );
   }
-  if (action === "cash-out") run(() => rpc("kid_cash_out", { p_token: kidToken() }), "$1.00 added to your cash balance.");
-  if (action === "buy-time") run(() => rpc("kid_buy_time", { p_token: kidToken() }), "30 minutes added. A parent still turns that on in Screen Time.");
+  if (action === "cash-out") {
+    run(async () => {
+      await rpc("kid_cash_out", { p_token: kidToken() });
+      marketThrow({ type: "money", text: "A whole dollar! Catch!" });
+    }, "$1.00 added to your cash balance.");
+  }
+  if (action === "buy-time") {
+    run(async () => {
+      await rpc("kid_buy_time", { p_token: kidToken() });
+      marketThrow({ type: "timer", label: "+30 MIN", text: "30 minutes of screen time, coming up!" });
+    }, "30 minutes added. A parent still turns that on in Screen Time.");
+  }
   if (action === "ask") {
     const item = (db.items || []).find((row) => row.id === btn.dataset.id);
     const child = kid();
     run(
       async () => {
         await rpc("kid_ask", { p_token: kidToken(), p_item: btn.dataset.id });
+        marketThrow({ type: "gift", text: `${item?.name || "Your treasure"} is on hold for you!`, thanks: "A parent will hand it over soon." });
         await sendAdventurePush(supabase, {
           audience: "parents",
           kid_token: kidToken(),
@@ -3002,7 +3013,10 @@ app.addEventListener("click", (event) => {
   if (action === "buy-pet") {
     const key = btn.dataset.pet;
     run(
-      () => rpc("kid_buy_pet", { p_token: kidToken(), p_pet: key }),
+      async () => {
+        await rpc("kid_buy_pet", { p_token: kidToken(), p_pet: key });
+        marketThrow({ type: "pet", pet: key, text: `A new friend: the ${PET_CATALOG[key]?.name || "pet"}!` });
+      },
       `${PET_CATALOG[key]?.name || "Pet"} bought and equipped!`,
       "kid-shop"
     );
