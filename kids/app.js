@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=61";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=61";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=61";
-import { createChoreQuest } from "./chore-quest.js?v=61";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=61";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=61";
+import { APP_VERSION } from "./version.js?v=62";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=62";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=62";
+import { createChoreQuest } from "./chore-quest.js?v=62";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=62";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=62";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -2250,6 +2250,11 @@ function specialTemplates() {
     .sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.title).localeCompare(String(b.title)));
 }
 
+/* Small "Rename" link under a task on the Tasks page; it opens the shared rename dialog. */
+function renameButton(chore) {
+  return `<button type="button" class="link-btn" data-action="open-rename" data-id="${esc(chore.id)}" data-title="${esc(chore.title)}">Rename</button>`;
+}
+
 function priorityToggle(chore) {
   const on = Boolean(chore.priority);
   return `<button type="button" class="btn small priority-toggle${on ? " on" : ""}" data-action="toggle-priority" data-id="${esc(chore.id)}" aria-pressed="${on ? "true" : "false"}" title="A Priority task must be done before any other task or the arena">${on ? "★ Priority" : "☆ Priority"}</button>`;
@@ -2683,7 +2688,7 @@ const views = {
           <button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button>
           ${priorityToggle(chore)}
         </div>
-        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${chore.priority ? " · Priority: do this first" : ""}${on ? "" : " · Hidden from the daily board"}</div></div>
+        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${chore.priority ? " · Priority: do this first" : ""}${on ? "" : " · Hidden from the daily board"}</div>${renameButton(chore)}</div>
         ${monsterChoice(sprite, chore.id)}
         <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
         <button class="btn small leaf" type="submit">Save</button>
@@ -2763,13 +2768,22 @@ const views = {
                 ? specials
                     .map((chore) => {
                       const sprite = taskSprite(chore);
-                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}${chore.priority ? " · Priority" : ""}</div></div>${priorityToggle(chore)}<button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
+                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}${chore.priority ? " · Priority" : ""}</div>${renameButton(chore)}</div>${priorityToggle(chore)}<button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
                     })
                     .join("")
                 : `<p class="muted">No bonus tasks yet.</p>`
             }
           </div>
         </section>
+        <dialog class="balance-dialog rename-task-dialog">
+          <form class="stack" data-action="rename-task">
+            <div class="section-title"><h2>Rename task</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
+            <input type="hidden" name="id" value="">
+            <label>Task name<input name="title" required maxlength="80" autocomplete="off"></label>
+            <p class="tiny muted">Today's open copies get the new name too. Finished tasks in the log keep the old one.</p>
+            <span class="row"><button class="btn leaf" type="submit">Save name</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
+          </form>
+        </dialog>
         <dialog class="balance-dialog add-special-dialog">
           <form class="stack" id="add-special-form" data-action="add-special">
             <div class="section-title"><h2>Add bonus task</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
@@ -3325,6 +3339,17 @@ app.addEventListener("click", (event) => {
     const dialog = document.querySelector(`dialog.${btn.dataset.dialog}`);
     if (dialog && !dialog.open) dialog.showModal();
   }
+  if (action === "open-rename") {
+    const dialog = document.querySelector("dialog.rename-task-dialog");
+    if (dialog) {
+      dialog.querySelector('input[name="id"]').value = btn.dataset.id || "";
+      const field = dialog.querySelector('input[name="title"]');
+      field.value = btn.dataset.title || "";
+      if (!dialog.open) dialog.showModal();
+      field.focus();
+      field.select();
+    }
+  }
   if (action === "close-dialog") btn.closest("dialog")?.close();
   if (action === "toggle-task-section") {
     const zone = btn.closest(".daily-section, .collapsible-card");
@@ -3843,6 +3868,10 @@ app.addEventListener("submit", (event) => {
       name ? `Added once for ${name}.` : "Added once for every kid.",
       "chores"
     );
+  }
+  if (action === "rename-task") {
+    if (!String(data.title || "").trim()) return;
+    run(() => rpc("rename_chore", { p_id: data.id, p_title: data.title }), "Task renamed.", "chores");
   }
   if (action === "save-daily") run(() => rpc("save_daily_chore", { p_id: data.id, p_points: Number(data.points) || 0 }), "Points updated for everybody.", "chores");
   if (action === "confirm-reset-child") {

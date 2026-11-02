@@ -912,6 +912,16 @@ body.play .btn.leaf { box-shadow: 0 4px 0 #1f5c40; }
 .arena-dialog:empty { display: none; }
 .arena-panel { display: grid; gap: 12px; }
 .arena-facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.link-btn {
+  margin-top: 2px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--sky);
+  font-weight: 800;
+  font-size: 0.82rem;
+  text-decoration: underline;
+}
 .arena-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .arena-chips .btn small { display: block; font-size: 0.72em; font-weight: 700; opacity: 0.8; }
 .arena-good { color: var(--leaf); font-weight: 800; margin: 0; }
