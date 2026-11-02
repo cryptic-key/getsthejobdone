@@ -1,7 +1,7 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=54";
-import { gearSpecials, gearedLook } from "./gear.js?v=54";
+import { createChoreQuest } from "./chore-quest.js?v=55";
+import { gearSpecials, gearedLook } from "./gear.js?v=55";
 import { music, play as sfx } from "./sound.js";
 
 let host = null;
