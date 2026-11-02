@@ -1448,9 +1448,15 @@ const ARENA_CATS={
 };
 const ARENA_LEVELS={little:{name:'Little Explorer',ages:'Ages 3–5',readAloud:true},kid:{name:'Adventurer',ages:'Ages 6–8',readAloud:false},big:{name:'Champion',ages:'Ages 9–12',readAloud:false}};
 let hurtMode=false;
-const aqPick=a=>a[R()*a.length|0];
-const aqShuf=a=>{for(let i=a.length-1;i>0;i--){const j=R()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
-const aqInt=(a,b)=>a+(R()*(b-a+1)|0);
+const aqR=(()=>{try{const buf=new Uint32Array(1);crypto.getRandomValues(buf);return()=>{crypto.getRandomValues(buf);return buf[0]/4294967296}}catch(e){return R}})();
+const aqPick=a=>a[aqR()*a.length|0];
+const aqBags=new Map();
+// Shuffle-bag: every item in a list comes up once before any repeats, and never twice in a row.
+function aqDraw(key,list){let bag=aqBags.get(key);if(!bag)aqBags.set(key,bag={items:[],last:null});
+  if(!bag.items.length){bag.items=aqShuf(list.slice());const n=bag.items.length;if(n>1&&bag.items[n-1]===bag.last)[bag.items[0],bag.items[n-1]]=[bag.items[n-1],bag.items[0]]}
+  bag.last=bag.items.pop();return bag.last}
+const aqShuf=a=>{for(let i=a.length-1;i>0;i--){const j=aqR()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+const aqInt=(a,b)=>a+(aqR()*(b-a+1)|0);
 function aqMC(correct,wrongs,n=3){const key=x=>JSON.stringify(x);const set=[correct];
   for(const w of aqShuf(wrongs.slice()))if(set.length<n&&!set.some(s=>key(s)===key(w)))set.push(w);
   aqShuf(set);return{choices:set,answer:set.findIndex(s=>key(s)===key(correct))}}
@@ -1469,8 +1475,8 @@ const FR_NUM=['zéro','un','deux','trois','quatre','cinq','six','sept','huit','n
 const FR_VOCAB=[['la bibliothèque','the library'],['la cuisine','the kitchen'],['le petit-déjeuner','breakfast'],['le souper','supper'],['la fenêtre','the window'],['les devoirs','homework'],['le lit','the bed'],['la chemise','the shirt'],['les chaussures','the shoes'],['l’école','the school'],['le vélo','the bike'],['la neige','the snow'],['la pluie','the rain'],['le soleil','the sun'],['aujourd’hui','today'],['demain','tomorrow'],['hier','yesterday'],['lundi','Monday'],['vendredi','Friday'],['janvier','January'],['juillet','July'],['le frère','the brother'],['la sœur','the sister'],['les grands-parents','the grandparents'],['manger','to eat'],['dormir','to sleep'],['nettoyer','to clean'],['jouer','to play'],['lire','to read'],['aider','to help']];
 const NAT_KID=[['What do plants need to grow?','sunlight',['candy','socks','music']],['How many legs does a spider have?','8',['6','4','10']],['Which animal is a mammal?','whale',['shark','frog','goldfish']],['What is frozen water called?','ice',['steam','sand','glass']],['Which planet do we live on?','Earth',['Mars','the Moon','the Sun']],['What do bees make?','honey',['milk','silk','bread']],['What is a baby frog called?','tadpole',['puppy','calf','chick']],['How many seasons are in a year?','4',['2','6','12']],['Which animal has a long trunk?','elephant',['giraffe','horse','lion']],['What do caterpillars turn into?','butterflies',['bees','birds','worms']],['Where do fish breathe from?','gills',['noses','ears','fins']],['What colour do you get mixing blue and yellow?','green',['purple','orange','pink']],['Which is a bird?','owl',['bat','whale','snake']],['What falls from clouds?','rain',['sand','leaves','rocks']],['What part of a plant is underground?','roots',['petals','leaves','flowers']]];
 const NAT_BIG=[['What is the largest planet?','Jupiter',['Saturn','Earth','Mars']],['Which organ pumps blood?','the heart',['the lungs','the brain','the liver']],['What is the capital of Canada?','Ottawa',['Toronto','Vancouver','Montréal']],['What is the capital of Ontario?','Toronto',['Ottawa','Kingston','Waterloo']],['At what temperature does water boil?','100 °C',['50 °C','0 °C','212 °C']],['Which planet is called the Red Planet?','Mars',['Venus','Jupiter','Mercury']],['How many provinces does Canada have?','10',['13','8','12']],['What do herbivores eat?','plants',['meat','both','insects']],['What gas do plants take in?','carbon dioxide',['oxygen','helium','nitrogen']],['What is the largest ocean?','Pacific',['Atlantic','Arctic','Indian']],['What is the fastest land animal?','cheetah',['lion','horse','antelope']],['What force pulls things to the ground?','gravity',['magnetism','friction','wind']],['How many bones are in an adult body?','206',['106','306','26']],['Animals active at night are called?','nocturnal',['diurnal','aquatic','dormant']],['A frog is which kind of animal?','amphibian',['reptile','mammal','fish']],['What is the closest star to Earth?','the Sun',['the North Star','Mars','the Moon']],['What are the three states of matter?','solid, liquid, gas',['hot, warm, cold','rock, paper, scissors','land, sea, air']],['Which layer of Earth is in the very middle?','inner core',['crust','mantle','outer core']],['What makes the food in a leaf?','photosynthesis',['digestion','evaporation','erosion']],['Which Canadian animal builds dams?','beaver',['moose','loon','bear']]];
-function misspell(w){const ops=[s=>{const i=1+(R()*(s.length-2)|0);return s.slice(0,i)+s.slice(i+1)},s=>{const i=R()*(s.length-1)|0;return s.slice(0,i)+s[i+1]+s[i]+s.slice(i+2)},
-  s=>{const i=1+(R()*(s.length-2)|0);return s.slice(0,i)+s[i]+s.slice(i)},s=>s.replace(/ie/,'ei').replace(/ce/,'se'),s=>s.replace(/ou/,'o').replace(/ph/,'f'),s=>s.replace(/(.)\1/,'$1')];
+function misspell(w){const ops=[s=>{const i=1+(aqR()*(s.length-2)|0);return s.slice(0,i)+s.slice(i+1)},s=>{const i=aqR()*(s.length-1)|0;return s.slice(0,i)+s[i+1]+s[i]+s.slice(i+2)},
+  s=>{const i=1+(aqR()*(s.length-2)|0);return s.slice(0,i)+s[i]+s.slice(i)},s=>s.replace(/ie/,'ei').replace(/ce/,'se'),s=>s.replace(/ou/,'o').replace(/ph/,'f'),s=>s.replace(/(.)\1/,'$1')];
   for(let t=0;t<12;t++){const m=aqPick(ops)(w);if(m!==w&&m.length>2)return m}return w+'e'}
 const LETTER_PETS={F:'frog',D:'duckling',P:'puppy',B:'bunny',C:'crab',T:'turtle',O:'owl',W:'whale',S:'shark',K:'kitten',H:'hamster'};
 /* Good Morals: [scenario, right choice, [wrong choices]] by level */
@@ -1514,54 +1520,58 @@ const MORALS={
   ['A friend tells you someone is getting hurt, and asks you to keep it secret. What should you do?','Tell a trusted adult. Safety comes first',['Keep the secret no matter what','Post about it online','Try to handle it all alone']],
   ['A parent comes home tired and stressed. What should you do?','Offer to help without being asked',['Ask for something you want right away','Complain about dinner','Leave your mess for them']],
   ['You borrowed a friend’s game and scratched it. What should you do?','Tell them and offer to replace it',['Return it and say nothing','Say it was already scratched','Keep it so they forget']]]};
-function makeQuestion(cat,lvl,k=0){const Q=(text,sayParts,res,vis)=>Object.assign({cat,text,say:sayParts||[aqEN(text)],vis:vis||null},res);
+function makeQuestionRaw(cat,lvl,k=0){const Q=(text,sayParts,res,vis)=>Object.assign({cat,text,say:sayParts||[aqEN(text)],vis:vis||null},res);
  if(cat==='math'){
   if(lvl==='little'){const n=aqInt(1,Math.min(8,4+k));return Q('How many apples?',null,aqMC(aqT(n),aqNear(n,2,1)),{apples:n})}
-  if(lvl==='kid'){const hard=k>3;if(R()<.5){const a=aqInt(1,hard?15:10),b=aqInt(1,hard?10:9);return Q(`${a} + ${b} = ?`,[aqEN(`${a} plus ${b}`)],aqMC(aqT(a+b),aqNear(a+b,3)))}
+  if(lvl==='kid'){const hard=k>3;if(aqR()<.5){const a=aqInt(1,hard?15:10),b=aqInt(1,hard?10:9);return Q(`${a} + ${b} = ?`,[aqEN(`${a} plus ${b}`)],aqMC(aqT(a+b),aqNear(a+b,3)))}
     const a=aqInt(5,hard?20:12),b=aqInt(1,a);return Q(`${a} − ${b} = ?`,[aqEN(`${a} minus ${b}`)],aqMC(aqT(a-b),aqNear(a-b,3)))}
-  const r=R(),hi=k>4?12:9;
+  const r=aqR(),hi=k>4?12:9;
   if(r<.45){const a=aqInt(2,hi),b=aqInt(2,hi);return Q(`${a} × ${b} = ?`,[aqEN(`${a} times ${b}`)],aqMC(aqT(a*b),[a*(b+1),a*(b-1),(a+1)*b,a*b+2,a*b-2].filter(x=>x>0&&x!==a*b).map(aqT),4))}
   if(r<.75){const b=aqInt(2,hi),q=aqInt(2,hi);return Q(`${b*q} ÷ ${b} = ?`,[aqEN(`${b*q} divided by ${b}`)],aqMC(aqT(q),aqNear(q,2,1),4))}
   const d=aqPick([2,3,4,5]),m=aqInt(2,8)*d;return Q(`What is 1/${d} of ${m}?`,[aqEN(`What is one ${['','','half','third','quarter','fifth'][d]} of ${m}?`)],aqMC(aqT(m/d),aqNear(m/d,3,1),4))}
  if(cat==='words'){
-  if(lvl==='little'){if(R()<.5){const L=aqPick(Object.keys(LETTER_PETS)),pk=LETTER_PETS[L];const others=Object.entries(LETTER_PETS).filter(([l])=>l!==L).map(([,p])=>({t:'pet',k:p}));
+  if(lvl==='little'){if(aqR()<.5){const L=aqDraw('little-letter-pet',Object.keys(LETTER_PETS)),pk=LETTER_PETS[L];const others=Object.entries(LETTER_PETS).filter(([l])=>l!==L).map(([,p])=>({t:'pet',k:p}));
       return Q(`Which one starts with ${L}?`,[aqEN(`Which one starts with the letter ${L}?`)],aqMC({t:'pet',k:pk},others))}
-    const L=String.fromCharCode(65+aqInt(0,25));const others='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').filter(x=>x!==L).map(aqT);return Q(`Tap the letter ${L}`,[aqEN(`Tap the letter ${L}`)],aqMC(aqT(L),others))}
-  if(lvl==='kid'){const w=aqPick(KID_WORDS);const wr=[];for(let i=0;i<8;i++)wr.push(misspell(w));return Q('Which word is spelled right?',[aqEN(`Which word is spelled right? ${w}.`)],aqMC(aqT(w),wr.filter(x=>x!==w).map(aqT)))}
-  const r=R();if(r<.5){const w=aqPick(BIG_WORDS);const wr=[];for(let i=0;i<10;i++)wr.push(misspell(w));return Q('Which word is spelled right?',[aqEN(`Which word is spelled right? ${w}.`)],aqMC(aqT(w),wr.filter(x=>x!==w).map(aqT),4))}
-  if(r<.8){const [w,a,b]=aqPick(SYN);return Q(`Which word means the same as "${w}"?`,null,aqMC(aqT(a),b.map(aqT),4))}
-  const [w,a,b]=aqPick(ANT);return Q(`Which word means the opposite of "${w}"?`,null,aqMC(aqT(a),b.map(aqT),4))}
+    const L=aqDraw('little-letter','ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''));const others='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').filter(x=>x!==L).map(aqT);return Q(`Tap the letter ${L}`,[aqEN(`Tap the letter ${L}`)],aqMC(aqT(L),others))}
+  if(lvl==='kid'){const w=aqDraw('kid-spell',[...new Set(KID_WORDS)]);const wr=[];for(let i=0;i<8;i++)wr.push(misspell(w));return Q('Which word is spelled right?',[aqEN(`Which word is spelled right? ${w}.`)],aqMC(aqT(w),wr.filter(x=>x!==w).map(aqT)))}
+  const r=aqR();if(r<.5){const w=aqDraw('big-spell',BIG_WORDS);const wr=[];for(let i=0;i<10;i++)wr.push(misspell(w));return Q('Which word is spelled right?',[aqEN(`Which word is spelled right? ${w}.`)],aqMC(aqT(w),wr.filter(x=>x!==w).map(aqT),4))}
+  if(r<.8){const [w,a,b]=aqDraw('big-syn',SYN);return Q(`Which word means the same as "${w}"?`,null,aqMC(aqT(a),b.map(aqT),4))}
+  const [w,a,b]=aqDraw('big-ant',ANT);return Q(`Which word means the opposite of "${w}"?`,null,aqMC(aqT(a),b.map(aqT),4))}
  if(cat==='french'){
-  if(lvl==='little'){const c=aqPick(COLOURS.slice(0,7));const others=COLOURS.filter(x=>x!==c).map(x=>({t:'swatch',c:x[2],v:x[0]}));
+  if(lvl==='little'){const c=aqDraw('little-colour',COLOURS.slice(0,7));const others=COLOURS.filter(x=>x!==c).map(x=>({t:'swatch',c:x[2],v:x[0]}));
     return Q(`Which colour is "${c[1]}"?`,[aqEN('Which colour is'),aqFR(c[1])],aqMC({t:'swatch',c:c[2],v:c[0]},others))}
-  if(lvl==='kid'){if(R()<.55){const [fr,pk]=aqPick(FR_ANIMALS);const others=FR_ANIMALS.filter(x=>x[1]!==pk).map(x=>({t:'pet',k:x[1]}));
+  if(lvl==='kid'){if(aqR()<.55){const [fr,pk]=aqDraw('kid-fr-animal',FR_ANIMALS);const others=FR_ANIMALS.filter(x=>x[1]!==pk).map(x=>({t:'pet',k:x[1]}));
       return Q(`Which one is "${fr}"?`,[aqEN('Which one is'),aqFR(fr)],aqMC({t:'pet',k:pk},others))}
-    const n=aqInt(1,12);return Q(`What number is "${FR_NUM[n]}"?`,[aqEN('What number is'),aqFR(FR_NUM[n])],aqMC(aqT(n),aqNear(n,3,0)))}
-  const [fr,en]=aqPick(FR_VOCAB);const others=FR_VOCAB.filter(x=>x[1]!==en).map(x=>aqT(x[1]));return Q(`What does "${fr}" mean?`,[aqEN('What does'),aqFR(fr),aqEN('mean?')],aqMC(aqT(en),others,4))}
+    const n=aqDraw('kid-fr-num',[1,2,3,4,5,6,7,8,9,10,11,12]);return Q(`What number is "${FR_NUM[n]}"?`,[aqEN('What number is'),aqFR(FR_NUM[n])],aqMC(aqT(n),aqNear(n,3,0)))}
+  const [fr,en]=aqDraw('big-fr-vocab',FR_VOCAB);const others=FR_VOCAB.filter(x=>x[1]!==en).map(x=>aqT(x[1]));return Q(`What does "${fr}" mean?`,[aqEN('What does'),aqFR(fr),aqEN('mean?')],aqMC(aqT(en),others,4))}
  if(cat==='nature'){
-  if(lvl==='little'){const r=R();
-    if(r<.5){const pk=aqPick(Object.keys(PET_WORDS));const others=Object.keys(PET_WORDS).filter(x=>x!==pk).map(x=>({t:'pet',k:x}));return Q(`Tap the ${PET_WORDS[pk]}`,null,aqMC({t:'pet',k:pk},others))}
-    if(r<.75){const yes=aqPick(['owl','dragon','duckling']);return Q('Which one can fly?',null,aqMC({t:'pet',k:yes},['turtle','frog','crab','puppy','kitten','whale'].map(x=>({t:'pet',k:x}))))}
-    const yes=aqPick(['whale','shark','crab']);return Q('Which one lives in the water?',null,aqMC({t:'pet',k:yes},['puppy','kitten','bunny','owl','hamster','unicorn'].map(x=>({t:'pet',k:x}))))}
-  const bank=lvl==='kid'?NAT_KID:NAT_BIG;const [q,a,w]=aqPick(bank);return Q(q,null,aqMC(aqT(a),w.map(aqT),lvl==='kid'?3:4))}
- if(cat==='morals'){const [q,a,w]=aqPick(MORALS[lvl]||MORALS.kid);const res=aqMC(aqT(a),w.map(aqT),lvl==='big'?4:3);
+  if(lvl==='little'){const r=aqR();
+    if(r<.5){const pk=aqDraw('little-tap-pet',Object.keys(PET_WORDS));const others=Object.keys(PET_WORDS).filter(x=>x!==pk).map(x=>({t:'pet',k:x}));return Q(`Tap the ${PET_WORDS[pk]}`,null,aqMC({t:'pet',k:pk},others))}
+    if(r<.75){const yes=aqDraw('little-fly',['owl','dragon','duckling']);return Q('Which one can fly?',null,aqMC({t:'pet',k:yes},['turtle','frog','crab','puppy','kitten','whale'].map(x=>({t:'pet',k:x}))))}
+    const yes=aqDraw('little-water',['whale','shark','crab']);return Q('Which one lives in the water?',null,aqMC({t:'pet',k:yes},['puppy','kitten','bunny','owl','hamster','unicorn'].map(x=>({t:'pet',k:x}))))}
+  const bank=lvl==='kid'?NAT_KID:NAT_BIG;const [q,a,w]=aqDraw('nature-'+lvl,bank);return Q(q,null,aqMC(aqT(a),w.map(aqT),lvl==='kid'?3:4))}
+ if(cat==='morals'){const [q,a,w]=aqDraw('morals-'+lvl,MORALS[lvl]||MORALS.kid);const res=aqMC(aqT(a),w.map(aqT),lvl==='big'?4:3);
   const opts=res.choices.map(c=>c.v);const say=[aqEN(q),aqEN('Is it: '+opts.slice(0,-1).join('? Or, ')+'? Or, '+opts[opts.length-1]+'?')];
   return Object.assign({cat,text:q,say,vis:null,layout:'list'},res)}
  /* puzzles */
- if(lvl==='little'){if(R()<.55){const s=aqPick(SHAPES);return Q(`Tap the ${s}`,null,aqMC({t:'shape',s},SHAPES.filter(x=>x!==s).map(x=>({t:'shape',s:x}))))}
+ if(lvl==='little'){if(aqR()<.55){const s=aqDraw('little-shape',SHAPES);return Q(`Tap the ${s}`,null,aqMC({t:'shape',s},SHAPES.filter(x=>x!==s).map(x=>({t:'shape',s:x}))))}
    const cs=aqShuf(COLOURS.slice(0,6)).slice(0,2);const seq=[0,1,0,1,0];return Q('What colour comes next?',null,aqMC({t:'swatch',c:cs[1][2],v:cs[1][0]},COLOURS.filter(x=>x!==cs[1]).map(x=>({t:'swatch',c:x[2],v:x[0]}))),{pattern:seq.map(i=>cs[i][2])})}
- if(lvl==='kid'){const r=R();
-   if(r<.4){const h=aqInt(1,12),half=R()<.5;const lab=(hh,m)=>`${hh}:${m?'30':'00'}`;const wr=[lab(h,!half),lab(h%12+1,half),lab((h+10)%12+1,half),lab(h%12+1,!half)];
+ if(lvl==='kid'){const r=aqR();
+   if(r<.4){const h=aqInt(1,12),half=aqR()<.5;const lab=(hh,m)=>`${hh}:${m?'30':'00'}`;const wr=[lab(h,!half),lab(h%12+1,half),lab((h+10)%12+1,half),lab(h%12+1,!half)];
      return Q('What time is it?',null,aqMC(aqT(lab(h,half)),wr.map(aqT)),{clock:[h,half?30:0]})}
    if(r<.7){const coins=[['a quarter',25],['a dime',10],['a nickel',5]];const a=aqPick(coins),b=aqPick(coins),tot=a[1]+b[1];
      return Q(`${a[0][0].toUpperCase()+a[0].slice(1)} and ${b[0]} make how many cents?`,null,aqMC(aqT(tot+'¢'),[tot+5,tot-5,tot+10,tot-10].filter(x=>x>0).map(x=>aqT(x+'¢'))))}
    const st=aqInt(1,10),d=aqPick([2,5,10]);const s=[0,1,2,3].map(i=>st+i*d);return Q(`What comes next?  ${s.join(', ')}, ?`,[aqEN(`What comes next? ${s.join(', ')}`)],aqMC(aqT(st+4*d),aqNear(st+4*d,d)))}
- const r=R();
+ const r=aqR();
  if(r<.35){const st=aqInt(2,5),m=aqPick([2,3]);const s=[0,1,2,3].map(i=>st*m**i);return Q(`What comes next?  ${s.join(', ')}, ?`,[aqEN(`What comes next? ${s.join(', ')}`)],aqMC(aqT(st*m**4),[st*m**4+st,st*m**3*2,st*m**4-m,s[3]+s[2]].filter(x=>x!==st*m**4).map(aqT),4))}
  if(r<.7){const h=aqInt(1,10),m=aqPick([0,15,30,45]),dh=aqInt(1,2),dm=aqPick([15,30,45]);let em=m+dm,eh=h+dh+Math.floor(em/60);em%=60;eh=(eh-1)%12+1;const f=(a,b)=>`${a}:${String(b).padStart(2,'0')}`;
    return Q(`A movie starts at ${f(h,m)} and lasts ${dh} h ${dm} min. When does it end?`,null,aqMC(aqT(f(eh,em)),[f(eh,(em+15)%60),f(eh%12+1,em),f((eh+10)%12+1,em),f(eh,(em+45)%60)].map(aqT),4))}
  const price=aqInt(5,19)*25,paid=price<=500?500:1000,ch=paid-price;const $=c=>'$'+(c/100).toFixed(2);
  return Q(`Something costs ${$(price)}. You pay ${$(paid)}. What is your change?`,null,aqMC(aqT($(ch)),[ch+25,ch-25,ch+100,ch-50].filter(x=>x>0).map(x=>aqT($(x))),4))}
+let aqLastKey='';
+function makeQuestion(cat,lvl,k=0){let q=null;
+  for(let t=0;t<12;t++){q=makeQuestionRaw(cat,lvl,k);const key=q.text+'|'+JSON.stringify(q.choices[q.answer]);if(key!==aqLastKey){aqLastKey=key;return q}}
+  aqLastKey=q.text+'|'+JSON.stringify(q.choices[q.answer]);return q}
 function choiceLabel(c){return c.t==='text'?c.v:c.t==='swatch'?c.v:c.t==='pet'?(PET_WORDS[c.k]||PETS[c.k]?.name||c.k):c.t==='shape'?c.s:''}
 /* pixel art for questions */
 const appleS=sprite(["...K...","..KG...",".KKKKK.","KRRRWRK","KRRRRRK","KRRRRRK",".KRRRK.","..KKK.."],{K,R:'#e04a4a',W:'#ffb0b0',G:'#3fa34d'});
