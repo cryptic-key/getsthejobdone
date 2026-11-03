@@ -321,6 +321,8 @@ const VOICE = {
   grumble: (p) => { tone({ type: "sawtooth", f: 140 * p, f2: 90 * p, dur: 0.18, vol: 0.18 }); tone({ type: "sawtooth", f: 120 * p, f2: 160 * p, dur: 0.16, vol: 0.16, at: 0.16 }); },
   chime: () => arp(["E6", "C6", "G5"], 0.09, { type: "triangle", vol: 0.14 }),
   laugh: (p) => { for (let i = 0; i < 4; i += 1) tone({ type: "square", f: (520 - i * 30) * p, f2: (420 - i * 30) * p, dur: 0.07, at: i * 0.1, vol: 0.14 }); },
+  // "Hi-YAH!" battle cry.
+  kiai: (p) => { tone({ type: "square", f: 520 * p, f2: 700 * p, dur: 0.06, vol: 0.18 }); tone({ type: "sawtooth", f: 880 * p, f2: 620 * p, dur: 0.22, at: 0.08, vol: 0.2 }); noise({ dur: 0.1, vol: 0.12, at: 0.08, lp: 5000, hp: 1500 }); },
   boing: (p) => { tone({ type: "sine", f: 160 * p, f2: 600 * p, dur: 0.15, vol: 0.28 }); tone({ type: "sine", f: 600 * p, f2: 200 * p, dur: 0.2, at: 0.15, vol: 0.2 }); },
 };
 /* Monster key -> [voice, pitch]. Covers trail and arena monsters. */
@@ -332,7 +334,7 @@ const MONSTER_SFX = {
   towels: ["ghost", 0.75], bookshelf: ["flap", 0.8], lunch: ["chomp", 0.9], coats: ["rustle", 0.8], groceries: ["grumble", 0.9],
   homework: ["laugh", 1.4], dressed: ["ghost", 1.2], petbrush: ["rustle", 1.2], leaves: ["rustle", 0.9], snow: ["brr", 1],
   outside: ["snore", 1], wood: ["grumble", 0.7], basketball: ["buzz", 1], bus: ["honk", 1], repair: ["clank", 1],
-  helping: ["laugh", 0.9], babysit: ["chime", 1], shirts: ["grumble", 1.2],
+  helping: ["laugh", 0.9], babysit: ["chime", 1], shirts: ["grumble", 1.2], karate: ["kiai", 1],
   calc: ["mech", 1], mime: ["laugh", 0.7], flask: ["gurgle", 1.3], alarm: ["ring", 1], robber: ["laugh", 0.8],
 };
 
@@ -356,6 +358,7 @@ const LOB = {
   block: () => tone({ type: "square", f: 300, f2: 500, dur: 0.06, vol: 0.12 }),
   pencil: () => noise({ dur: 0.08, vol: 0.16, lp: 8000, hp: 2500 }),
   paper: () => noise({ dur: 0.08, vol: 0.14, lp: 6000, hp: 1500 }),
+  shuriken: () => { tone({ type: "triangle", f: 2400, f2: 3400, dur: 0.12, vol: 0.1 }); noise({ dur: 0.12, vol: 0.14, lp: 12000, hp: 4000 }); },
 };
 
 // Pets cheering: species-style chirps.
