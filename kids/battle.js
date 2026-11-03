@@ -45,6 +45,7 @@ export const SPRITES = [
   { id: "helping", name: "Grabby Glove" },
   { id: "babysit", name: "Mobile Menace" },
   { id: "shirts", name: "Shirt Shredder" },
+  { id: "karate", name: "Karate Master" },
 ];
 
 const SPRITE_IDS = new Set(SPRITES.map((sprite) => sprite.id));
@@ -55,6 +56,7 @@ export function normalizeSprite(value) {
 
 export function guessSprite(title) {
   const text = String(title || "").toLowerCase();
+  if (/karate|martial art|taekwondo|tae kwon do|judo|kung fu|\bdojo\b|ninja/.test(text)) return "karate";
   if (/sleep|bedtime|went to bed|lights out/.test(text)) return "sleep";
   if (/diaper|dry all night|potty/.test(text)) return "dry";
   if (/breakfast|toast|cereal/.test(text)) return "breakfast";
@@ -943,6 +945,51 @@ function shirtFrame(flap, open) {
 }
 const shirtA = shirtFrame(false, false);
 const shirtB = shirtFrame(true, true);
+/* Karate Master: white gi, black belt, red headband with tails that flap behind him. Faces left. */
+const karatePal = { K, H: "#2a1a10", R: "#d63c3c", r: "#a32222", S: "#f4c89c", s: "#d39a6c", W: "#ffffff", w: "#c8d0e0", B: "#1a1c2c", E: K };
+const karateHead = [
+  "......KKKK......",
+  ".....KHHHHK.....",
+  "....KRRRRRRK....",
+  "....KSSSSSSKRr..",
+  "....KEKSSEKK.Rr.",
+  "....KSSSSSSK..r.",
+  ".....KSKKSK.....",
+];
+const karateLegs = [
+  ".....KBBBBBBK...",
+  ".....KWWWWWKB...",
+  "....KWWK.KWWKB..",
+  "...KWWK...KWWK..",
+  "..KWWK.....KWWK.",
+  "..KSSK.....KSSK.",
+  ".KKKK.......KKKK",
+];
+const karateA = sprite([
+  ...karateHead,
+  "...KKKWWWWKKK...",
+  "..KSKWWwWWWKSK..",
+  ".KSSKWWwWWWKSSK.",
+  ".KKK.KWwWWWKKKK.",
+  ...karateLegs,
+], karatePal);
+// Throwing frame: arm snaps out to the left, headband tails fly up.
+const karateB = sprite([
+  "......KKKK......",
+  ".....KHHHHK..R..",
+  "....KRRRRRRKRr..",
+  "....KSSSSSSKr...",
+  "....KEKSSEKK....",
+  "....KSSSSSSK....",
+  ".....KSKKSK.....",
+  "...KKKWWWWKKK...",
+  "KSSSSKWwWWWKSK..",
+  "KKKK.KWwWWWKSSK.",
+  ".....KWwWWW.KKK.",
+  ...karateLegs,
+], karatePal);
+const shurikenS = sprite(["..K..", ".KWK.", "KWwWK", ".KWK.", "..K.."], { K, W: "#e6ecf4", w: "#7a8296" });
+
 const buttonS = sprite([".KKK.", "KWWWK", "KWKWK", "KWWWK", ".KKK."], { K, W: "#f4efdc" });
 const mStar = sprite(["..K..", ".KYK.", "KYYYK", ".KYK.", ".K.K."], { K, Y: "#f4d742" });
 const mMoon = sprite([".KK.", "KMMK", "KMK.", "KMMK", ".KK."], { K, M: "#bfe3ff" });
@@ -1081,6 +1128,25 @@ const MON = {
         { s: rattleS, y: G - 16, vx: -80, vy: -50, gap: 0.16 },
         { s: pacifierS, y: G - 16, vx: -86, vy: -30 },
       ]);
+    },
+  },
+  karate: {
+    name: "Karate Master",
+    w: 16,
+    h: 18,
+    hit: ["#d63c3c", "#ffffff", "#f4c542"],
+    // Bounces on his toes in a fighting stance.
+    yoff: (m) => (m.idle ? -(((m.t * 4) | 0) % 2) : 0),
+    draw(g, x, y, m) { g.drawImage(m.open > 0.5 ? karateB : karateA, x, y); },
+    async attack(m, api) {
+      for (let i = 0; i < 3; i += 1) {
+        m.openT = 1;
+        if (!(await api.wait(0.12))) return;
+        api.projectiles.push({ k: "spr", s: shurikenS, x: m.x, y: G - 10 - (i % 2) * 3, vx: -rnd(95, 110), vy: -rnd(4, 14), g: 25, spin: true, snd: "shuriken" });
+        if (!(await api.wait(0.14))) return;
+        m.openT = 0;
+        if (!(await api.wait(0.08))) return;
+      }
     },
   },
   shirts: {
@@ -5501,7 +5567,7 @@ function update(dt) {
   time += dt;
   if (projectiles.length > projSeen) {
     const p = projectiles[projectiles.length - 1];
-    sfx(`lob:${p?.k === "spr" ? "toss" : p?.k || "toss"}`);
+    sfx(`lob:${p?.snd || (p?.k === "spr" ? "toss" : p?.k || "toss")}`);
   }
   projSeen = projectiles.length;
   updateStorm(dt);
