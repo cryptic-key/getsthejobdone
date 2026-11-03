@@ -1,8 +1,9 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=64";
-import { gearSpecials, gearedLook } from "./gear.js?v=64";
+import { createChoreQuest } from "./chore-quest.js?v=65";
+import { gearSpecials, gearedLook } from "./gear.js?v=65";
 import { music, play as sfx } from "./sound.js";
+import { petArt } from "./pets.js";
 
 let host = null;
 let quest = null;
@@ -62,6 +63,15 @@ function startEngine() {
     idleText: "The Monster Arena awaits...",
     sound: sfx,
   });
+  // Legendary pets live in pets.js; hand their art to the arena engine.
+  const key = ctx.pet();
+  if (key && !quest.hasPet?.(key)) {
+    const art = petArt(key);
+    if (art) {
+      quest.addPet?.(key, art);
+      quest.setPet?.(key);
+    }
+  }
 }
 
 /* Show the kid's helmet and armour on the arena hero. */

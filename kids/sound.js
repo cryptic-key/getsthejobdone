@@ -374,12 +374,17 @@ const PET_CRY = {
   whale: () => tone({ type: "sine", f: 300, f2: 600, dur: 0.6, vol: 0.2, attack: 0.1 }),
   plop: () => tone({ type: "sine", f: 600, f2: 200, dur: 0.1, vol: 0.2 }),
   rock: () => noise({ dur: 0.06, vol: 0.18, lp: 1200 }),
+  sparkle: () => { arp(["C6", "E6", "G6", "B6", "D7"], 0.04, { type: "triangle", vol: 0.14 }); MAT.sparkle(); },
+  phoenix: () => { tone({ type: "sawtooth", f: 900, f2: 1600, dur: 0.18, vol: 0.14 }); noise({ dur: 0.35, vol: 0.16, lp: 3000, hp: 400 }); },
+  cosmic: () => { tone({ type: "sine", f: 400, f2: 1200, dur: 0.4, vol: 0.14, attack: 0.05 }); arp(["G6", "D7"], 0.08, { type: "triangle", vol: 0.1, at: 0.2 }); },
+  storm: () => { PET_CRY.bark(); noise({ dur: 0.08, vol: 0.3, lp: 12000, hp: 3000, at: 0.05 }); },
 };
 const PET_SFX = {
   puppy: "bark", kitten: "meow", bunny: "squeak", hamster: "squeak", duckling: "quack", frog: "ribbit", fox: "bark",
   turtle: "plop", penguin: "chirp", owl: "hoot", ghost: "blob", robot: "beep", slime: "blob", unicorn: "chirp",
   dragon: "roar", rock: "rock", himalayan: "meow", tuxedo: "meow", crab: "click", betta: "plop", gecko: "click",
   platypus: "quack", shark: "roar", whale: "whale",
+  rainbowshark: "sparkle", phoenix: "phoenix", galaxycat: "cosmic", stormpup: "storm", glowjelly: "blob",
 };
 
 /* Resolve "kind:key" names to a sound. */

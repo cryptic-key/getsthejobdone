@@ -145,13 +145,109 @@ petDefs.betta.extra=(x,y,c=ctx)=>{const ph=time*1.2,fx=Math.round(3.5+Math.sin(p
   c.save();if(right)c.drawImage(bettaR,x+fx,y+fy);else{c.translate(x+fx+6,y+fy);c.scale(-1,1);c.drawImage(bettaR,0,0);}c.restore();
   if((time*2|0)%3===0)px(c,x+fx+(right?6:-1),y+fy-2,'#ffffff');px(c,x+10,y+5,'#ffffff')};
 
+/* ---------- Legendary pets: special effects ---------- */
+const kit = petDefs.kitten;
+const pup = petDefs.puppy;
+const shk = petDefs.shark;
+function darken(hex, f = 0.65) {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v) => Math.round(v * f).toString(16).padStart(2, "0");
+  return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+}
+// Fixed star spots on the Galaxy Cat's fur.
+const CAT_STARS = [[6, 3], [8, 5], [10, 4], [5, 6], [9, 7], [7, 8], [3, 7]];
+Object.assign(petDefs, {
+  rainbowshark: {
+    name: "Rainbow Shark", price: 300, fly: true, cheer: "rainbow", rainbow: true,
+    pal: { ...shk.pal }, top: shk.top, a: shk.a, b: shk.b,
+    extra(x, y, c = ctx) {
+      // A white glint that sweeps across the body.
+      const sx = ((time * 14) | 0) % 22 - 3;
+      if (sx >= 4 && sx <= 12) { px(c, x + sx, y + 3, "#ffffff"); px(c, x + sx - 1, y + 4, "#ffffff"); }
+    },
+    trail(spawn, x, y, P) {
+      spawn({ x: x + rnd(-1, 3), y: y + rnd(2, P.h - 2), vx: rnd(-14, -6), vy: rnd(-6, 6), g: 0, life: rnd(0.35, 0.6), c: RAINBOW[(R() * 6) | 0] }, 14);
+      spawn({ x: x + rnd(0, P.w), y: y + rnd(-2, P.h), vx: 0, vy: -4, g: 0, life: 0.25, c: "#ffffff" }, 3);
+    },
+  },
+  phoenix: {
+    name: "Phoenix", price: 300, fly: true, cheer: ["#f4862e", "#f4d742", "#e04a2a"],
+    pal: { K, R: "#e04a2a", O: "#f4862e", Y: "#f4d742", E: K },
+    top: [],
+    a: ["....K.K.......", "...KOKOK..KKK.", "..KORYROKKYYEK", "KK.KRRRRKYYYYO", "KRKKRRRRRRYYK.", ".KRRRRRRRRRK..", "KOKKRRRRRK....", "KK..KKKKK....."],
+    b: ["..............", "..........KKK.", "....KKKK.KYYEK", "KK.KRRRRKYYYYO", "KRKKRRRRRRYYK.", ".KRRRYRYRRRK..", "KOKKKORORK....", "KK...KKKK....."],
+    extra(x, y, c = ctx) {
+      // Flickering flame crest on the head.
+      const f = ((time * 10) | 0) % 3;
+      px(c, x + 11, y - (f === 0 ? 1 : 0), "#f4d742");
+      px(c, x + 12, y - (f === 1 ? 2 : 1), "#f4862e");
+      if (f !== 2) px(c, x + 10, y, "#e04a2a");
+    },
+    trail(spawn, x, y, P) {
+      spawn({ x: x + rnd(0, 3), y: y + rnd(4, 7), vx: rnd(-16, -6), vy: rnd(-18, -6), g: -10, life: rnd(0.3, 0.6), c: ["#f4d742", "#f4862e", "#e04a2a", "#fff3a8"][(R() * 4) | 0] }, 18);
+    },
+  },
+  galaxycat: {
+    name: "Galaxy Cat", price: 250, cheer: ["#7fe0ff", "#ff8ad8", "#ffffff"],
+    pal: { ...kit.pal, G: "#2e2560", g: "#1a1438", E: "#7fe0ff", P: "#ff8ad8" },
+    top: kit.top, a: kit.a, b: kit.b,
+    extra(x, y, c = ctx) {
+      CAT_STARS.forEach(([sx, sy], i) => {
+        const on = ((time * 3 + i * 1.7) | 0) % 3;
+        if (on === 0) return;
+        if (sy >= 0 && sy < (kit.top.length + kit.a.length)) px(c, x + sx, y + sy, on === 1 ? "#ffffff" : "#b8a8ff");
+      });
+    },
+    trail(spawn, x, y, P) {
+      // Now and then a shooting star zips over the cat.
+      spawn({ x: x + P.w + 4, y: y - 6, vx: -40, vy: 10, g: 0, life: 0.5, c: "#fff3a8", s: 1 }, 0.7);
+      spawn({ x: x + rnd(0, P.w), y: y + rnd(-4, P.h), vx: rnd(-3, 3), vy: -6, g: 0, life: 0.4, c: ["#7fe0ff", "#ff8ad8", "#ffffff"][(R() * 3) | 0] }, 4);
+    },
+  },
+  stormpup: {
+    name: "Storm Pup", price: 250, cheer: ["#f4d742", "#7fe0ff", "#ffffff"],
+    pal: { ...pup.pal, B: "#f4d742", d: "#3a6ad8", P: "#7fe0ff", N: "#3a6ad8" },
+    top: pup.top, a: pup.a, b: pup.b,
+    extra(x, y, c = ctx) {
+      // Little lightning bolts crackle around the pup.
+      const slot = (time * 5) | 0;
+      if (slot % 3 === 2) return;
+      const side = slot % 2;
+      const bx = side ? x + 12 : x - 2;
+      const by = y + 1 + (slot % 4);
+      const col = slot % 2 ? "#ffffff" : "#7fe0ff";
+      px(c, bx, by, col); px(c, bx + (side ? -1 : 1), by + 1, col); px(c, bx, by + 2, col); px(c, bx + (side ? -1 : 1), by + 3, "#f4d742");
+    },
+    trail(spawn, x, y, P) {
+      spawn({ x: x + rnd(0, P.w), y: y + rnd(0, P.h), vx: rnd(-20, 20), vy: rnd(-20, 5), g: 30, life: 0.2, c: R() < 0.5 ? "#7fe0ff" : "#f4d742" }, 8);
+    },
+  },
+  glowjelly: {
+    name: "Glow Jelly", price: 200, fly: true, cheer: ["#c77dff", "#7fe0ff", "#ffffff"],
+    pal: { K, P: "#c77dff", p: "#9b5ad6", W: "#ffffff", E: K, T: "#7fe0ff" },
+    top: [],
+    a: ["...KKKKK...", "..KPPWPPK..", ".KPWPPPPPK.", ".KPEPPPEPK.", ".KpppppppK.", ".KKKKKKKKK.", "..T.T.T.T..", "..T..T..T..", ".T..T..T...", "..T...T..T."],
+    b: ["...KKKKK...", "..KPPWPPK..", ".KPWPPPPPK.", ".KPEPPPEPK.", ".KpppppppK.", "KKKKKKKKKKK", ".T.T.T.T.T.", "..T.T..T...", "...T..T..T.", ".T..T......"],
+    extra(x, y, c = ctx) {
+      // Pulsing glow around the bell.
+      const a = 0.18 + 0.14 * Math.sin(time * 4);
+      c.save();
+      c.globalAlpha = Math.max(0.05, a);
+      rect(c, x - 1, y - 1, 13, 7, "#e0b0ff");
+      c.restore();
+    },
+    trail(spawn, x, y, P) {
+      spawn({ x: x + rnd(2, P.w - 2), y: y + P.h, vx: rnd(-3, 3), vy: rnd(-18, -10), g: -4, life: rnd(0.6, 1), c: R() < 0.5 ? "#bfefff" : "#e0b0ff" }, 6);
+    },
+  },
+});
+
 const PETS = {};
 for (const [k, p] of Object.entries(petDefs)) {
   const A = p.canvas || sprite([...p.top, ...p.a], p.pal);
   const B = p.canvas || sprite([...p.top, ...p.b], p.pal);
   PETS[k] = {
     name: p.name,
-    price: 50,
     fly: !!p.fly,
     hop: !!p.hop,
     glide: !!p.glide,
@@ -161,14 +257,48 @@ for (const [k, p] of Object.entries(petDefs)) {
     w: A.width,
     h: A.height,
     extra: p.extra || null,
+    trail: p.trail || null,
+    price: p.price || 50,
+    legend: (p.price || 50) > 50,
+    // Rainbow pets swap their body colour every few frames.
+    frames: p.rainbow
+      ? RAINBOW.map((col) => {
+          const pal = { ...p.pal, G: col, g: darken(col) };
+          return [sprite([...p.top, ...p.a], pal), sprite([...p.top, ...p.b], pal)];
+        })
+      : null,
   };
+  if (PETS[k].frames) {
+    PETS[k].a = PETS[k].frames[0][0];
+    PETS[k].b = PETS[k].frames[0][1];
+  }
+}
+
+function petFrame(P, flap) {
+  if (P.frames) {
+    const f = P.frames[((time * 8) | 0) % P.frames.length];
+    return flap ? f[1] : f[0];
+  }
+  return flap ? P.b : P.a;
 }
 
 export const DEFAULT_PET_PRICE = 50;
 export const PET_KEYS = Object.keys(PETS);
 export const PET_CATALOG = Object.fromEntries(
-  Object.entries(PETS).map(([k, p]) => [k, { name: p.name, price: DEFAULT_PET_PRICE, fly: p.fly, hop: p.hop, glide: p.glide }])
+  Object.entries(PETS).map(([k, p]) => [k, { name: p.name, price: p.price || DEFAULT_PET_PRICE, legend: p.legend, fly: p.fly, hop: p.hop, glide: p.glide }])
 );
+
+/* A pet's art for the arena engine. Effects read the clock themselves there. */
+export function petArt(key) {
+  const P = PETS[normalizePet(key)];
+  if (!P) return null;
+  const tick = () => { time = performance.now() / 1000; };
+  return {
+    ...P,
+    extra: P.extra ? (x, y, c) => { tick(); P.extra(x, y, c); } : null,
+    trail: P.trail ? (spawn, x, y, Q) => { tick(); P.trail(spawn, x, y, Q); } : null,
+  };
+}
 
 export function normalizePet(key) {
   return PETS[key] ? key : null;
@@ -195,7 +325,8 @@ export function drawPetIcon(target, key) {
   g.save();
   g.translate(x, y);
   g.scale(scale, scale);
-  g.drawImage(p.a, 0, 0);
+  if (p.frames || p.legend) time = performance.now() / 1000;
+  g.drawImage(petFrame(p, false), 0, 0);
   if (p.extra) p.extra(0, 0, g);
   g.restore();
 }
@@ -209,7 +340,7 @@ export function drawPetAt(drawCtx, key, x, groundY, opts = {}) {
   time = t;
   ctx = drawCtx;
   G = groundY;
-  const fr = (P.fly ? ((t * 6) | 0) % 2 : moving && ((t * 8) | 0) % 2) ? P.b : P.a;
+  const fr = petFrame(P, P.fly ? ((t * 6) | 0) % 2 : moving && ((t * 8) | 0) % 2);
   const pxX = Math.round(x);
   const py = groundY - (P.h - 1) + (P.fly ? -10 + Math.round(Math.sin(t * 3) * 2) : 0);
   if (opts.shadow !== false && opts.shadow !== "none") {
@@ -265,6 +396,11 @@ export function createPetFollower(api) {
         pet.hopV += 300 * dt;
         if (pet.hopY >= 0) { pet.hopY = 0; pet.hopV = 0; }
       }
+      if (P.trail) {
+        const y = api.G - (P.h - 1) + Math.round(pet.hopY) + (P.fly ? -10 + Math.round(Math.sin(time * 3) * 2) : 0);
+        // spawn(particle, perSecond): legendary pets leave their special-effect trail.
+        P.trail((part, rate) => { if (R() < dt * rate) api.particles.push(part); }, Math.round(pet.x), y, P);
+      }
       if (api.grounded?.() && R() < dt * 0.6) {
         api.particles.push({ x: pet.x + P.w - 3, y: api.G - P.h + 3, vx: 0, vy: 10, g: 80, life: 0.4, c: "#7fd0ff" });
       }
@@ -276,7 +412,7 @@ export function createPetFollower(api) {
       time = api.time();
       const P = PETS[petKey];
       const moving = api.scroll() > 2 || Math.abs(api.heroX() - P.w - 1 - pet.x) > 1.5;
-      const fr = (P.fly ? (time * 6 | 0) % 2 : moving && (time * 8 | 0) % 2) ? P.b : P.a;
+      const fr = petFrame(P, P.fly ? (time * 6 | 0) % 2 : moving && (time * 8 | 0) % 2);
       const x = Math.round(pet.x);
       const y = G - (P.h - 1) + Math.round(pet.hopY) + (P.fly ? -10 + Math.round(Math.sin(time * 3) * 2) : 0);
       rect(drawCtx, x + 2, G, Math.max(3, P.w - 4), 1, "#3e8c2c");
