@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=66";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=66";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=66";
-import { createChoreQuest } from "./chore-quest.js?v=66";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=66";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=66";
+import { APP_VERSION } from "./version.js?v=67";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=67";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=67";
+import { createChoreQuest } from "./chore-quest.js?v=67";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=67";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=67";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -568,6 +568,7 @@ async function loadParent() {
       ungroundPoints: Number(me.households.unground_points) || 0,
       arenaEntry: Number(me.households.arena_entry ?? 2),
       arenaPerKill: Number(me.households.arena_per_kill ?? 1),
+      arenaNextEntry: Number(me.households.arena_entry ?? 2),
     },
     parents: parents.data.map((person) => ({
       ...person,
@@ -634,6 +635,7 @@ async function loadKid() {
       ungroundPoints: Number(snap.family.unground_points) || 0,
       arenaEntry: Number(snap.family.arena_entry ?? 2),
       arenaPerKill: Number(snap.family.arena_per_kill ?? 1),
+      arenaNextEntry: Number(snap.family.arena_next_entry ?? snap.family.arena_entry ?? 2),
     },
     parents: [],
     kids: [mapKid(snap.kid)],
@@ -1302,8 +1304,11 @@ function arenaContext() {
       const child = kid();
       if (child) child.points = value;
     },
-    entry: () => Number(db.family?.arenaEntry ?? 2),
+    entry: () => Number(db.family?.arenaNextEntry ?? db.family?.arenaEntry ?? 2),
     perKill: () => Number(db.family?.arenaPerKill ?? 1),
+    setNextEntry: (value) => {
+      if (db.family) db.family.arenaNextEntry = Math.max(0, Number(value) || 0);
+    },
     level: () => kid()?.arenaLevel || "kid",
     grounded: () => Boolean(grounded(kid())),
     priority: () => priorityLocked(),
@@ -3058,9 +3063,9 @@ const views = {
         </section>
         <section class="card">
           <h2 class="page-title">Monster Arena</h2>
-          <p class="lede">Kids pay an entry fee, then answer questions for their age to beat monsters. Each monster beaten pays coins. The run ends when their hearts run out. Set a birthday for each kid on the Family page.</p>
+          <p class="lede">Kids pay the entry fee below for their first run each day. Every try after that doubles until tomorrow (so 2, then 4, then 8…). Each monster beaten pays coins. The run ends when their hearts run out. Set a birthday for each kid on the Family page.</p>
           <form class="two" data-action="save-arena">
-            <label>Entry fee (coins)<input name="entry" type="number" min="0" max="1000" value="${Number(db.family.arenaEntry ?? 2)}"></label>
+            <label>First entry today (coins)<input name="entry" type="number" min="0" max="1000" value="${Number(db.family.arenaEntry ?? 2)}"></label>
             <label>Coins per monster<input name="perKill" type="number" min="0" max="100" value="${Number(db.family.arenaPerKill ?? 1)}"></label>
             <button class="btn ghost" type="submit">Save arena</button>
           </form>
