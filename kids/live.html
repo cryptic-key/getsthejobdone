@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Family Adventure Tasks: live quest board</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <style>
+    /* A stage-only page for the portfolio: the real quest-board scene, playing demo fights on a loop. */
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #4f9fe0; }
+    .stage { position: fixed; inset: 0; background: #4f9fe0; line-height: 0; overflow: hidden; }
+    .quest-canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+    .quest-panel { position: absolute; left: 3%; top: 4%; width: 62%; max-height: 52%; display: grid; gap: 4px; pointer-events: none; z-index: 2; }
+    .quest-dialog {
+      box-sizing: border-box; min-height: 2.6em; padding: 7px 8px;
+      background: rgba(16, 18, 28, 0.88); color: #f4f0e4;
+      font-family: "Press Start 2P", monospace; font-size: clamp(6px, 1.35vw, 9px);
+      line-height: 1.45; white-space: normal; overflow-wrap: anywhere; border: 2px solid #f4f0e4;
+    }
+    .quest-hearts { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; pointer-events: none; }
+    .quest-actions { display: none !important; }
+    .roster {
+      position: fixed; left: 2%; right: 2%; bottom: 2.5%; z-index: 3;
+      display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; line-height: 1;
+    }
+    .roster span {
+      display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px;
+      background: rgba(16, 18, 28, 0.62); color: rgba(244, 240, 228, 0.7);
+      font-family: "Press Start 2P", monospace; font-size: clamp(5px, 1.1vw, 8px);
+      border: 2px solid transparent; transition: background 0.3s, color 0.3s, border-color 0.3s;
+    }
+    .roster span i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: block; }
+    .roster span.on { background: rgba(16, 18, 28, 0.9); color: #fff; border-color: #f4f0e4; }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div class="roster" id="roster" aria-hidden="true"></div>
+  <script type="module" src="live.js?v=65"></script>
+</body>
+</html>

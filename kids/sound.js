@@ -28,7 +28,18 @@ let seq = null;
 const lastPlayed = new Map();
 const listeners = new Set();
 
+/* Hard mute for embeds (the portfolio's live demo): no audio context is ever created and nothing is saved. */
+let silent = false;
+export function setSilent(on = true) {
+  silent = Boolean(on);
+  if (silent) {
+    stopMusic();
+    try { ac?.suspend(); } catch { /* ignore */ }
+  }
+}
+
 function ctx() {
+  if (silent) return null;
   if (ac) return ac;
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;

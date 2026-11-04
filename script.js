@@ -332,6 +332,26 @@
     }
   }
 
+  // Live quest board (Kid's Chore and Learning Application): load the demo only when it is near the screen.
+  const liveFrame = document.querySelector(".kids-live-frame iframe[data-src]");
+  if (liveFrame) {
+    const startLive = () => {
+      if (liveFrame.src) return;
+      liveFrame.src = liveFrame.dataset.src;
+    };
+    if ("IntersectionObserver" in window) {
+      const watch = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          startLive();
+          watch.disconnect();
+        }
+      }, { rootMargin: "300px 0px" });
+      watch.observe(liveFrame);
+    } else {
+      startLive();
+    }
+  }
+
   if (reduceMotion) return;
 
   // Pointer effects (desktop only)
