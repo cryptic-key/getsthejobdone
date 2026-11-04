@@ -2102,3 +2102,8 @@ body.play .brand .portrait { animation: bob 2.2s ease-in-out infinite; }
 .calc-key.fn { background: #f4c542; }
 .calc-key.wide { grid-column: 1 / -1; height: 42px; font-size: 0.8rem; background: #7fc6e8; }
 .calc-go { font-family: "Press Start 2P", monospace; font-size: 0.8rem; padding: 14px; }
+
+/* Legendary pets in the Market */
+.pet-loot.legend { position: relative; background: linear-gradient(90deg, rgba(255, 138, 198, 0.12), rgba(127, 224, 255, 0.12), rgba(244, 197, 66, 0.12)); border-radius: 12px; }
+.pet-loot.legend strong { background: linear-gradient(90deg, #e04a4a, #f4862e, #c9a227, #3a9d4a, #3b6fd9, #9b6ad6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.pet-loot.legend .pet-thumb { box-shadow: 0 0 0 2px #f4c542; border-radius: 6px; }

@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=65";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=65";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=65";
-import { createChoreQuest } from "./chore-quest.js?v=65";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=65";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=65";
+import { APP_VERSION } from "./version.js?v=68";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=68";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=68";
+import { createChoreQuest } from "./chore-quest.js?v=68";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=68";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=68";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -513,7 +513,7 @@ const ARENA_LEVEL_NAMES = { little: "Little Explorer · ages 3–5", kid: "Adven
 
 function petPrice(key) {
   const custom = Number(db.petPrices?.[key]);
-  return custom > 0 ? custom : DEFAULT_PET_PRICE;
+  return custom > 0 ? custom : PET_CATALOG[key]?.price || DEFAULT_PET_PRICE;
 }
 
 function afterReset(chore, child) {
@@ -568,6 +568,7 @@ async function loadParent() {
       ungroundPoints: Number(me.households.unground_points) || 0,
       arenaEntry: Number(me.households.arena_entry ?? 2),
       arenaPerKill: Number(me.households.arena_per_kill ?? 1),
+      arenaNextEntry: Number(me.households.arena_entry ?? 2),
     },
     parents: parents.data.map((person) => ({
       ...person,
@@ -634,6 +635,7 @@ async function loadKid() {
       ungroundPoints: Number(snap.family.unground_points) || 0,
       arenaEntry: Number(snap.family.arena_entry ?? 2),
       arenaPerKill: Number(snap.family.arena_per_kill ?? 1),
+      arenaNextEntry: Number(snap.family.arena_next_entry ?? snap.family.arena_entry ?? 2),
     },
     parents: [],
     kids: [mapKid(snap.kid)],
@@ -1302,8 +1304,11 @@ function arenaContext() {
       const child = kid();
       if (child) child.points = value;
     },
-    entry: () => Number(db.family?.arenaEntry ?? 2),
+    entry: () => Number(db.family?.arenaNextEntry ?? db.family?.arenaEntry ?? 2),
     perKill: () => Number(db.family?.arenaPerKill ?? 1),
+    setNextEntry: (value) => {
+      if (db.family) db.family.arenaNextEntry = Math.max(0, Number(value) || 0);
+    },
     level: () => kid()?.arenaLevel || "kid",
     grounded: () => Boolean(grounded(kid())),
     priority: () => priorityLocked(),
@@ -1363,21 +1368,36 @@ function ownedPets() {
   return [...new Set([...fromBoard, ...fromSnap])].filter((key) => PET_CATALOG[key]);
 }
 
+// Legendary pet thumbnails keep animating (rainbow colours, flames, stars).
+let liveThumbTimer = null;
+function animateLiveThumbs() {
+  if (liveThumbTimer) return;
+  liveThumbTimer = setInterval(() => {
+    const live = document.querySelectorAll("canvas.pet-thumb.live, canvas.portrait-pet");
+    if (!live.length) return;
+    live.forEach((canvas) => {
+      const key = canvas.dataset.pet || canvas.dataset.portraitPet;
+      if (key && PET_CATALOG[key]?.legend) drawPetIcon(canvas, key);
+    });
+  }, 125);
+}
+
 function petMarketBoard(child) {
   const coins = Math.max(0, Number(child?.points) || 0);
   const owned = new Set(ownedPets());
   const equipped = normalizePet(child?.pet || db.hero?.pet) || "";
-  const rows = PET_KEYS.map((key) => {
+  const keys = [...PET_KEYS].sort((a, b) => Number(Boolean(PET_CATALOG[b].legend)) - Number(Boolean(PET_CATALOG[a].legend)));
+  const rows = keys.map((key) => {
     const info = PET_CATALOG[key];
     const cost = petPrice(key);
     const have = owned.has(key);
     const ready = coins >= cost;
-    const tag = [info.fly ? "flies" : "", info.hop ? "hops" : ""].filter(Boolean).join(" · ");
+    const tag = [info.legend ? "★ Legendary" : "", info.fly ? "flies" : "", info.hop ? "hops" : ""].filter(Boolean).join(" · ");
     let action = `<button class="btn small leaf" data-action="buy-pet" data-pet="${esc(key)}" ${ready ? "" : "disabled"}>Buy</button>`;
     if (equipped === key) action = `<span class="chip">Equipped</span>`;
     else if (have) action = `<button class="btn small" data-action="set-pet" data-pet="${esc(key)}">Equip</button>`;
-    return `<div class="item loot pet-loot${have || ready || equipped === key ? " ready" : ""}">
-      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+    return `<div class="item loot pet-loot${info.legend ? " legend" : ""}${have || ready || equipped === key ? " ready" : ""}">
+      <canvas class="pet-thumb${info.legend ? " live" : ""}" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
       <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${equipped === key ? "Equipped" : have ? "Owned" : `${cost} coins`}${tag ? ` · ${tag}` : ""}</div>${have || equipped === key ? "" : meter(coins, cost)}</div>
       ${action}
     </div>`;
@@ -1518,7 +1538,8 @@ function gearCard({ weapons = [], worn = {}, owned = [], look, weaponKey, lede }
 }
 
 function parentPetPricesBoard() {
-  const rows = PET_KEYS.map((key) => {
+  const keys = [...PET_KEYS].sort((a, b) => Number(Boolean(PET_CATALOG[b].legend)) - Number(Boolean(PET_CATALOG[a].legend)));
+  const rows = keys.map((key) => {
     const info = PET_CATALOG[key];
     const cost = petPrice(key);
     return `<form class="item pet-price" data-action="save-pet-price" data-pet="${esc(key)}">
@@ -2446,6 +2467,7 @@ function render() {
   paintSpriteIcons(app);
   paintQuestArt(app);
   paintPortraits(app);
+  animateLiveThumbs();
   mountQuestWalkers(app);
   app.querySelectorAll("canvas[data-look]").forEach((icon) =>
     paintHeroBadge(
@@ -3041,9 +3063,9 @@ const views = {
         </section>
         <section class="card">
           <h2 class="page-title">Monster Arena</h2>
-          <p class="lede">Kids pay an entry fee, then answer questions for their age to beat monsters. Each monster beaten pays coins. The run ends when their hearts run out. Set a birthday for each kid on the Family page.</p>
+          <p class="lede">Kids pay the entry fee below for their first run each day. Every try after that doubles until tomorrow (so 2, then 4, then 8…). Each monster beaten pays coins. The run ends when their hearts run out. Set a birthday for each kid on the Family page.</p>
           <form class="two" data-action="save-arena">
-            <label>Entry fee (coins)<input name="entry" type="number" min="0" max="1000" value="${Number(db.family.arenaEntry ?? 2)}"></label>
+            <label>First entry today (coins)<input name="entry" type="number" min="0" max="1000" value="${Number(db.family.arenaEntry ?? 2)}"></label>
             <label>Coins per monster<input name="perKill" type="number" min="0" max="100" value="${Number(db.family.arenaPerKill ?? 1)}"></label>
             <button class="btn ghost" type="submit">Save arena</button>
           </form>

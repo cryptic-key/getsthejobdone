@@ -216,13 +216,14 @@ const PETS={};for(const [k,p] of Object.entries(petDefs)){const A=p.canvas||spri
     PETS[k].variants=['#e04a4a','#f4862e','#f4c542','#5cc96a','#4aa3ff','#9b6ad6'].map((c,i)=>[sprite([...p.top,...p.a],{...p.pal,G:c,g:shade[i]}),sprite([...p.top,...p.b],{...p.pal,G:c,g:shade[i]})]);
     PETS[k].a=PETS[k].variants[0][0];PETS[k].b=PETS[k].variants[0][1]}}
 let petKey=opts.pet||null;const pet={x:4,hopY:0,hopV:0};
-function petCheer(big){if(!petKey)return;const P=PETS[petKey];pet.hopV=big?-80:-55;const cols=P.cheer==='rainbow'?RAINBOW:P.cheer;
+function petCheer(big){const P=PETS[petKey];if(!P)return;pet.hopV=big?-80:-55;const cols=P.cheer==='rainbow'?RAINBOW:P.cheer;
   for(let i=0;i<(big?8:4);i++)particles.push({x:pet.x+P.w/2,y:G-P.h-(P.fly?10:0),vx:rnd(-20,20),vy:-rnd(20,45),g:40,life:.6,c:cols[i%cols.length]})}
-function updatePet(dt){if(!petKey)return;const P=PETS[petKey];const tx=heroX()-P.w-1;pet.x+=(tx-pet.x)*Math.min(1,dt*(busy?4:6));
+function updatePet(dt){const P=PETS[petKey];if(!P)return;const tx=heroX()-P.w-1;pet.x+=(tx-pet.x)*Math.min(1,dt*(busy?4:6));
   if(P.hop&&scroll>2&&pet.hopY===0&&pet.hopV===0&&R()<dt*3)pet.hopV=-45;
   if(pet.hopV||pet.hopY){pet.hopY+=pet.hopV*dt;pet.hopV+=300*dt;if(pet.hopY>=0){pet.hopY=0;pet.hopV=0}}
+  if(P.trail){const ty=G-(P.h-1)+Math.round(pet.hopY)+(P.fly?-10+Math.round(Math.sin(time*3)*2):0);P.trail((part,rate)=>{if(R()<dt*rate)particles.push(part)},Math.round(pet.x),ty,P)}
   if(grounded&&R()<dt*.6)particles.push({x:pet.x+P.w-3,y:G-P.h+3,vx:0,vy:10,g:80,life:.4,c:'#7fd0ff'})}
-function drawPet(){if(!petKey)return;const P=PETS[petKey];const moving=scroll>2||Math.abs(heroX()-P.w-1-pet.x)>1.5;
+function drawPet(){const P=PETS[petKey];if(!P)return;const moving=scroll>2||Math.abs(heroX()-P.w-1-pet.x)>1.5;
   let fr=(P.fly?(time*6|0)%2:moving&&(time*8|0)%2)?P.b:P.a;
   if(P.variants){const v=P.variants[(time*8|0)%P.variants.length];fr=fr===P.b?v[1]:v[0];if(R()<.5)particles.push({x:pet.x+rnd(10,15),y:G-(P.h-1)-10+rnd(2,7),vx:-rnd(5,15),vy:rnd(-4,4),g:0,life:.4,c:RAINBOW[R()*6|0]})}const x=Math.round(pet.x);
   const y=G-(P.h-1)+Math.round(pet.hopY)+(P.fly?-10+Math.round(Math.sin(time*3)*2):0);
@@ -1961,7 +1962,10 @@ return {
   setHeroLook:look=>{heroLookOverride=look&&look.a?look:null},
   heroFrames(key){const h=HEROES[key];return h?{a:pixelCanvas(h.a,1),b:pixelCanvas(h.b,1)}:null},
   weaponIcon(key,scale=4){const w=WEAPONS[key];return w?pixelCanvas(w.icon,scale):null},
-  setPet:k=>{petKey=PETS[k]?k:null},   // pet that follows the hero; null for none
+  setPet:k=>{petKey=PETS[k]?k:null},
+  // Register a pet drawn by pets.js (legendary pets): {name,w,h,a,b,fly,hop,cheer,extra,trail,frames}.
+  addPet:(k,def)=>{if(!k||!def)return;PETS[k]={...def,variants:def.frames||null};if(opts.pet===k&&!petKey)petKey=k},
+  hasPet:k=>Boolean(PETS[k]),   // pet that follows the hero; null for none
   getPet:()=>petKey,
   pets:Object.fromEntries(Object.entries(PETS).map(([k,p])=>[k,{name:p.name,price:p.price,flies:p.fly,hops:p.hop}])),
   petIcon(key,scale=3){const p=PETS[key];if(!p)return null;const c=pixelCanvas(p.a,scale);if(p.extra)p.extra(0,0,c.getContext('2d'));return c},

@@ -1,8 +1,9 @@
 /* Monster Arena: kids pay an entry fee, then answer age-level questions to beat monsters for coins. */
 
-import { createChoreQuest } from "./chore-quest.js?v=65";
-import { gearSpecials, gearedLook } from "./gear.js?v=65";
+import { createChoreQuest } from "./chore-quest.js?v=68";
+import { gearSpecials, gearedLook } from "./gear.js?v=68";
 import { music, play as sfx } from "./sound.js";
+import { petArt } from "./pets.js";
 
 let host = null;
 let quest = null;
@@ -62,6 +63,15 @@ function startEngine() {
     idleText: "The Monster Arena awaits...",
     sound: sfx,
   });
+  // Legendary pets live in pets.js; hand their art to the arena engine.
+  const key = ctx.pet();
+  if (key && !quest.hasPet?.(key)) {
+    const art = petArt(key);
+    if (art) {
+      quest.addPet?.(key, art);
+      quest.setPet?.(key);
+    }
+  }
 }
 
 /* Show the kid's helmet and armour on the arena hero. */
@@ -156,7 +166,7 @@ function paintLobby(message = "", tone = "error") {
   const locked = ctx.grounded();
   const priority = !locked && Boolean(ctx.priority?.());
   el.innerHTML = `<h2 class="page-title">Monster Arena</h2>
-    <p class="lede">Answer questions to beat the monsters. Each monster takes 3 hits. A wrong answer costs a heart, and the run ends when your 3 hearts are gone. Beat 3 monsters in a row without losing a heart to level up to harder questions.</p>
+    <p class="lede">Answer questions to beat the monsters. Each monster takes 3 hits. A wrong answer costs a heart, and the run ends when your 3 hearts are gone. Beat 3 monsters in a row without losing a heart to level up to harder questions. Entry doubles each try today, then resets tomorrow.</p>
     <div class="arena-facts">
       <span><b>${fee}</b> coin${fee === 1 ? "" : "s"} to enter</span>
       <span><b>+${per}</b> per monster</span>
@@ -386,6 +396,7 @@ async function playRun() {
   run = { id: start.run_id, kills: 0, won: 0 };
   A.config.entry = Number(start.entry) || 0;
   A.config.perKill = Number(start.per_kill) || 0;
+  if (start.next_entry != null) ctx.setNextEntry?.(start.next_entry);
   run.level = A.levels[start.level] ? start.level : "kid";
   run.streak = 0;
   run.top = run.level;
