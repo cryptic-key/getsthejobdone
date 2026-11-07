@@ -794,6 +794,56 @@ begin
 end;
 $$;
 
+create or replace function private.edit_grounding(
+  p_kid uuid,
+  p_until timestamptz,
+  p_progress integer
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  hid uuid := private.require_household();
+  child public.kids%rowtype;
+  goal integer;
+  next_progress integer := greatest(coalesce(p_progress, 0), 0);
+begin
+  if p_until is null then
+    raise exception 'pick an end time';
+  end if;
+  if p_until <= now() then
+    raise exception 'pick an end time in the future';
+  end if;
+  select * into child from public.kids where id = p_kid and household_id = hid;
+  if child.id is null then
+    raise exception 'kid not found';
+  end if;
+  if not private.is_grounded(child.grounded_until) then
+    raise exception 'that hero is not grounded';
+  end if;
+  select unground_points into goal from public.households where id = hid;
+  update public.kids
+  set grounded_until = p_until,
+      ground_progress = next_progress
+  where id = child.id;
+  insert into public.activity (household_id, kid_id, body)
+  values (
+    hid,
+    child.id,
+    child.name || '''s cage was updated: until '
+      || to_char(p_until, 'Dy Mon DD HH12:MI AM')
+      || ', cage coins ' || next_progress || '.'
+  );
+  if coalesce(goal, 0) > 0 and next_progress >= goal then
+    perform private.free_kid(child.id);
+    return true;
+  end if;
+  return false;
+end;
+$$;
+
 create or replace function private.save_rates(p_per_dollar integer, p_per_30 integer)
 returns void
 language plpgsql
@@ -1451,6 +1501,10 @@ create or replace function public.lift_grounding(p_kid uuid)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.lift_grounding(p_kid); end $$;
 
+create or replace function public.edit_grounding(p_kid uuid, p_until timestamptz, p_progress integer)
+returns boolean language sql security invoker set search_path = ''
+as $$ select private.edit_grounding(p_kid, p_until, p_progress) $$;
+
 create or replace function public.save_rates(p_per_dollar integer, p_per_30 integer)
 returns void language plpgsql security invoker set search_path = ''
 as $$ begin perform private.save_rates(p_per_dollar, p_per_30); end $$;
@@ -1549,6 +1603,7 @@ begin
     'private.spend_balance(uuid, integer, integer, integer, text)',
     'private.ground_kid(uuid, timestamptz, text, boolean)',
     'private.lift_grounding(uuid)',
+    'private.edit_grounding(uuid, timestamptz, integer)',
     'private.save_rates(integer, integer)',
     'private.add_item(text, integer)',
     'private.remove_item(uuid)',
@@ -1572,6 +1627,7 @@ begin
     'public.spend_balance(uuid, integer, integer, integer, text)',
     'public.ground_kid(uuid, timestamptz, text, boolean)',
     'public.lift_grounding(uuid)',
+    'public.edit_grounding(uuid, timestamptz, integer)',
     'public.save_rates(integer, integer)',
     'public.add_item(text, integer)',
     'public.remove_item(uuid)',
@@ -1619,6 +1675,7 @@ grant execute on function private.grant_reward(uuid, integer, integer, integer, 
 grant execute on function private.spend_balance(uuid, integer, integer, integer, text) to authenticated;
 grant execute on function private.ground_kid(uuid, timestamptz, text, boolean) to authenticated;
 grant execute on function private.lift_grounding(uuid) to authenticated;
+grant execute on function private.edit_grounding(uuid, timestamptz, integer) to authenticated;
 grant execute on function private.save_rates(integer, integer) to authenticated;
 grant execute on function private.add_item(text, integer) to authenticated;
 grant execute on function private.remove_item(uuid) to authenticated;
@@ -1643,6 +1700,7 @@ grant execute on function public.grant_reward(uuid, integer, integer, integer, t
 grant execute on function public.spend_balance(uuid, integer, integer, integer, text) to authenticated;
 grant execute on function public.ground_kid(uuid, timestamptz, text, boolean) to authenticated;
 grant execute on function public.lift_grounding(uuid) to authenticated;
+grant execute on function public.edit_grounding(uuid, timestamptz, integer) to authenticated;
 grant execute on function public.save_rates(integer, integer) to authenticated;
 grant execute on function public.add_item(text, integer) to authenticated;
 grant execute on function public.remove_item(uuid) to authenticated;

@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=69";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=69";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=69";
-import { createChoreQuest } from "./chore-quest.js?v=69";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=69";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=69";
+import { APP_VERSION } from "./version.js?v=70";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=70";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=70";
+import { createChoreQuest } from "./chore-quest.js?v=70";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=70";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=70";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -94,6 +94,7 @@ function activityType(text) {
   if (/^Approval undone/.test(t)) return "undo";
   if (/ got a reward/.test(t)) return "reward";
   if (/ is grounded until /.test(t)) return "ground";
+  if (/ cage was updated: /.test(t)) return "ground";
   if (/ warned /.test(t)) return "warn";
   if (/ gave .+ a heart back\./.test(t)) return "heart";
   if (/ is free\. Three hearts/.test(t)) return "lift";
@@ -155,6 +156,14 @@ function when(iso) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function localInputValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function grounded(child) {
@@ -415,6 +424,9 @@ function nice(error) {
   if (/section name required/i.test(msg)) return "Give the section a name.";
   if (/pick at least one day/i.test(msg)) return "Pick at least one day for the section.";
   if (/use Lift to open the cage/i.test(msg)) return "That hero is in the cage. Use Lift to free them.";
+  if (/that hero is not grounded/i.test(msg)) return "That hero is not in the cage right now.";
+  if (/pick an end time in the future/i.test(msg)) return "Pick an end time in the future.";
+  if (/pick an end time/i.test(msg)) return "Pick an end time.";
   if (/hearts are full/i.test(msg)) return "All three hearts are already full.";
   if (/pick a real birthday/i.test(msg)) return "Pick a real birthday.";
   if (/arena run over/i.test(msg)) return "That arena run already ended.";
@@ -2948,7 +2960,7 @@ const views = {
                     <div class="kid-column-balances">${balances(child)}</div>
                     ${
                       grounded(child)
-                        ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button></div>`
+                        ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <span class="row"><button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button><button class="btn small ghost" data-action="open-edit-ground" data-id="${child.id}">Edit</button></span></div>`
                         : ""
                     }
                   </section>`;
@@ -3001,6 +3013,17 @@ const views = {
               <label>Reason<input name="reason" required placeholder="What happened"></label>
               <label class="row" style="font-weight:700"><input type="checkbox" name="clearMinutes" style="width:auto"> Clear device minutes</label>
               <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Save grounding</button><button class="btn ghost" type="button" data-action="close-ground">Cancel</button></span>
+            </form>
+          </dialog>
+          <dialog class="balance-dialog edit-ground-dialog">
+            <form class="stack" data-action="edit-ground">
+              <div class="section-title"><h2>Edit cage</h2><button type="button" class="btn small ghost" data-action="close-edit-ground">Close</button></div>
+              <p class="lede">Change the end time, or raise or lower the cage coin progress. Match any new end time in Screen Time.</p>
+              <input type="hidden" name="kidId">
+              <label>Until<input name="until" type="datetime-local" required></label>
+              <label>Cage coins<input name="progress" type="number" min="0" step="1" required></label>
+              <p class="tiny muted">Goal is ${Number(db.family.ungroundPoints) || 0} coins. Hitting the goal frees them.</p>
+              <span class="row"><button class="btn clay" type="submit">Save</button><button class="btn ghost" type="button" data-action="close-edit-ground">Cancel</button></span>
             </form>
           </dialog>
           <h2 class="page-title">Cage release</h2>
@@ -3430,6 +3453,19 @@ app.addEventListener("click", (event) => {
     render();
   }
   if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Cage open. Three hearts are back. Turn it off in Screen Time too.");
+  if (action === "open-edit-ground") {
+    const dialog = document.querySelector(".edit-ground-dialog");
+    const child = kidById(btn.dataset.id);
+    if (!dialog || !child) return;
+    const kidField = dialog.querySelector('input[name="kidId"]');
+    const untilField = dialog.querySelector('input[name="until"]');
+    const progressField = dialog.querySelector('input[name="progress"]');
+    if (kidField) kidField.value = child.id;
+    if (untilField) untilField.value = localInputValue(child.groundedUntil);
+    if (progressField) progressField.value = String(Math.max(0, Number(child.groundProgress) || 0));
+    if (!dialog.open) dialog.showModal();
+  }
+  if (action === "close-edit-ground") document.querySelector(".edit-ground-dialog")?.close();
   if (action === "warn-kid") {
     let warnNote = "Warning saved. One heart is gone.";
     const kidId = btn.dataset.id;
@@ -4030,6 +4066,26 @@ app.addEventListener("submit", (event) => {
           p_clear: Boolean(data.clearMinutes),
         }),
       "Grounding saved. Set the same end time in Screen Time.",
+      "chart"
+    );
+  }
+  if (action === "edit-ground") {
+    document.querySelector(".edit-ground-dialog")?.close();
+    let freed = false;
+    run(
+      async () => {
+        freed = Boolean(
+          await rpc("edit_grounding", {
+            p_kid: data.kidId,
+            p_until: new Date(data.until).toISOString(),
+            p_progress: Math.max(0, Number(data.progress) || 0),
+          })
+        );
+      },
+      () =>
+        freed
+          ? "Cage coins hit the goal. Three hearts are back. Turn it off in Screen Time too."
+          : "Cage updated. Match any new end time in Screen Time.",
       "chart"
     );
   }
