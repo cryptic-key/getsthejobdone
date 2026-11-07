@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=68";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=68";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=68";
-import { createChoreQuest } from "./chore-quest.js?v=68";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=68";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=68";
+import { APP_VERSION } from "./version.js?v=69";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=69";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=69";
+import { createChoreQuest } from "./chore-quest.js?v=69";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=69";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=69";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -99,7 +99,7 @@ function activityType(text) {
   if (/ is free\. Three hearts/.test(t)) return "lift";
   if (/ was reset/.test(t)) return "reset";
   if (/Monster Arena/.test(t)) return "arena";
-  if (/ asked for | points went back to | bought 30 device| cashed .+ points for \$1| bought the .+ for \d+ coins/.test(t)) return "shop";
+  if (/ asked for | saved \d+ coins toward | points went back to | bought 30 device| cashed .+ points for \$1| bought the .+ for \d+ coins/.test(t)) return "shop";
   if (/ got (?!a reward)/.test(t)) return "shop";
   if (/ spent | cashed in | had a balance taken off| was paid \$/.test(t)) return "deduct";
   if (/PIN|joined as a parent|was removed/.test(t)) return "family";
@@ -270,27 +270,44 @@ function contributeDialogHtml() {
   </dialog>`;
 }
 
+let calcKind = "family";
+
+function itemSaved(itemId) {
+  const row = (db.itemSavings || []).find((entry) => entry.item_id === itemId);
+  return Math.max(0, Number(row?.amount) || 0);
+}
+
+function calcTarget() {
+  if (calcKind === "item") {
+    const item = (db.items || []).find((entry) => entry.id === calcReward);
+    if (!item) return null;
+    return { title: item.name, need: Math.max(0, (Number(item.cost) || 0) - itemSaved(item.id)), verb: "Save" };
+  }
+  const reward = (db.familyRewards || []).find((item) => item.id === calcReward);
+  if (!reward) return null;
+  return { title: reward.title, need: Math.max(0, (Number(reward.goal) || 0) - (Number(reward.total) || 0)), verb: "Contribute" };
+}
+
 function calcLimit() {
   const child = kid();
-  const reward = (db.familyRewards || []).find((item) => item.id === calcReward);
-  if (!child || !reward) return 0;
-  const need = Math.max(0, (Number(reward.goal) || 0) - (Number(reward.total) || 0));
-  return Math.max(0, Math.min(Number(child.points) || 0, need));
+  const target = calcTarget();
+  if (!child || !target) return 0;
+  return Math.max(0, Math.min(Number(child.points) || 0, target.need));
 }
 
 function paintCalc() {
   const dialog = document.querySelector(".calc-dialog");
   if (!dialog) return;
-  const reward = (db.familyRewards || []).find((item) => item.id === calcReward);
+  const target = calcTarget();
   const child = kid();
   const amount = Number(calcValue) || 0;
   const limit = calcLimit();
-  dialog.querySelector(".calc-title").textContent = reward ? reward.title : "";
+  dialog.querySelector(".calc-title").textContent = target ? target.title : "";
   dialog.querySelector(".calc-value").textContent = String(amount);
   dialog.querySelector(".calc-hint").textContent = `You have ${Number(child?.points) || 0} · Max ${limit}`;
   const go = dialog.querySelector(".calc-go");
   go.disabled = amount < 1 || amount > limit;
-  go.textContent = amount > limit ? "Too many coins" : `Contribute ${amount || ""}`.trim();
+  go.textContent = amount > limit ? "Too many coins" : `${target?.verb || "Contribute"} ${amount || ""}`.trim();
 }
 
 function proofDialogHtml() {
@@ -542,7 +559,7 @@ async function loadParent() {
   if (!me?.households) return false;
   await rpc("ensure_today");
   const day = torontoToday();
-  const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices] = await Promise.all([
+  const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices, savings] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet,helmet,armor").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,warn_kind,hero,weapon,pet,birth_date").order("created_at"),
     supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
@@ -553,6 +570,7 @@ async function loadParent() {
     supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(200),
     supabase.rpc("door_ready"),
     supabase.from("pet_prices").select("pet_key,cost"),
+    supabase.from("item_savings").select("kid_id,item_id,amount").gt("amount", 0),
   ]);
   const familyRewards = await loadFamilyRewards("family_rewards");
   for (const result of [parents, kids, chores, templates, sections, items, requests, activity]) {
@@ -612,6 +630,7 @@ async function loadParent() {
     pets: [],
     petPrices: Object.fromEntries(((petPrices.error ? [] : petPrices.data) || []).map((row) => [row.pet_key, Number(row.cost) || DEFAULT_PET_PRICE])),
     familyRewards,
+    itemSavings: savings.error ? [] : savings.data || [],
     session: { role: "parent", id: me.id },
   };
   return true;
@@ -670,6 +689,7 @@ async function loadKid() {
     gear: await loadGear(token),
     fights: await loadFights(token),
     familyRewards: await loadFamilyRewards("kid_family_rewards", { p_token: token }),
+    itemSavings: await loadItemSavings(token),
     pets: Array.isArray(snap.pets) ? snap.pets.filter((key) => PET_CATALOG[key]) : [],
     petPrices: snap.pet_prices && typeof snap.pet_prices === "object" ? snap.pet_prices : {},
     session: { role: "kid", id: snap.kid.id },
@@ -687,6 +707,16 @@ async function loadKid() {
 async function loadFamilyRewards(name, args) {
   try {
     const res = await supabase.rpc(name, args);
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data;
+  } catch {
+    return [];
+  }
+}
+
+async function loadItemSavings(token) {
+  try {
+    const res = await supabase.rpc("kid_item_savings", { p_token: token });
     if (res.error || !Array.isArray(res.data)) return [];
     return res.data;
   } catch {
@@ -3086,7 +3116,13 @@ const views = {
         </section>
         <section class="card">
           <div class="section-title"><h2>Custom items</h2></div>
-          ${db.items.map((item) => `<div class="item"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} points</div></div><button class="btn ghost small" data-action="remove-item" data-id="${item.id}">Remove</button></div>`).join("") || `<p class="muted">Add something they can ask for.</p>`}
+          ${db.items.map((item) => {
+            const savers = (db.itemSavings || [])
+              .filter((row) => row.item_id === item.id)
+              .map((row) => `${esc(kidById(row.kid_id)?.name || "A kid")} ${Number(row.amount) || 0}`)
+              .join(", ");
+            return `<div class="item"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} points${savers ? ` · Saved: ${savers}` : ""}</div></div><button class="btn ghost small" data-action="remove-item" data-id="${item.id}">Remove</button></div>`;
+          }).join("") || `<p class="muted">Add something they can ask for.</p>`}
           <form class="two" data-action="add-item" style="margin-top:12px">
             <label>Item<input name="name" required placeholder="Ice cream"></label>
             <label>Point cost<input name="cost" type="number" min="1" value="15" required></label>
@@ -3150,6 +3186,7 @@ const views = {
         </section>
         <section class="card">
           <h2 class="page-title">Treasure</h2>
+          ${db.items.length ? `<p class="lede">Save coins toward a treasure a little at a time. When it's full, a parent gets your ask.</p>` : ""}
           ${
             db.items.length
               ? db.items
@@ -3157,9 +3194,12 @@ const views = {
                     const held = db.requests.some((req) => req.itemId === item.id && req.status === "pending");
                     const coins = Math.max(0, Number(child.points) || 0);
                     const cost = Math.max(1, Number(item.cost) || 1);
-                    const ready = coins >= cost;
-                    return `<div class="item loot${ready ? " ready" : ""}"><div class="loot-copy"><strong>${esc(item.name)}</strong><div class="tiny muted">${cost} coins</div>${meter(coins, cost)}</div>${
-                      held ? `<span class="chip">Asked</span>` : `<button class="btn small" data-action="ask" data-id="${item.id}" ${ready ? "" : "disabled"}>Ask</button>`
+                    const saved = itemSaved(item.id);
+                    const ready = coins + saved >= cost;
+                    return `<div class="item loot${ready ? " ready" : ""}"><div class="loot-copy"><strong>${esc(item.name)}</strong><div class="tiny muted">${cost} coins${saved ? ` · ${saved} saved` : ""}</div>${meter(saved, cost)}</div>${
+                      held
+                        ? `<span class="chip">Asked</span>`
+                        : `<span class="row"><button class="btn small sun" type="button" data-action="open-save-item" data-id="${item.id}" ${coins > 0 ? "" : "disabled"}>Save</button><button class="btn small" data-action="ask" data-id="${item.id}" ${ready ? "" : "disabled"}>Ask</button></span>`
                     }</div>`;
                   })
                   .join("")
@@ -3533,7 +3573,8 @@ app.addEventListener("click", (event) => {
     if (!dialog.open) dialog.showModal();
   }
   if (action === "close-proof") document.querySelector(".proof-dialog")?.close();
-  if (action === "open-contribute") {
+  if (action === "open-contribute" || action === "open-save-item") {
+    calcKind = action === "open-save-item" ? "item" : "family";
     calcReward = btn.dataset.id || null;
     calcValue = "";
     paintCalc();
@@ -3555,6 +3596,30 @@ app.addEventListener("click", (event) => {
     const rewardId = calcReward;
     if (!rewardId || amount < 1) return;
     document.querySelector(".calc-dialog")?.close();
+    if (calcKind === "item") {
+      const item = (db.items || []).find((row) => row.id === rewardId);
+      const child = kid();
+      let note = "Coins saved!";
+      run(async () => {
+        const result = await rpc("kid_save_item", { p_token: kidToken(), p_item: rewardId, p_amount: amount });
+        sfx("coin");
+        if (result?.asked) {
+          note = `${item?.name || "Your treasure"} is fully saved! A parent has your ask.`;
+          marketThrow({ type: "gift", text: `${item?.name || "Your treasure"} is fully saved!`, thanks: "A parent will hand it over soon." });
+          await sendAdventurePush(supabase, {
+            audience: "parents",
+            kid_token: kidToken(),
+            title: "Market ask",
+            body: `${child?.name || "A kid"} saved up for ${item?.name || "an item"}.`,
+            url: "./",
+            tag: "market-ask",
+          });
+        } else {
+          marketThrow({ type: "money", text: `${result?.given ?? amount} coins in the bank. ${Math.max(0, (Number(result?.cost) || 0) - (Number(result?.saved) || 0))} to go!` });
+        }
+      }, () => note);
+      return;
+    }
     let note = "Coins added to the family goal!";
     run(async () => {
       const result = await rpc("kid_contribute", { p_token: kidToken(), p_reward: rewardId, p_amount: amount });

@@ -1,7 +1,7 @@
 /* Live demo for the portfolio: the real quest-board stage, with a pretend family taking turns
    beating random chore monsters on a loop. No sign-in, no network, nothing is saved. */
 
-import { PET_KEYS, normalizePet, setStageScene, stageElement } from "./battle.js?v=68";
+import { PET_KEYS, normalizePet, setStageScene, stageElement } from "./battle.js?v=69";
 import createChoreQuest from "./chore-quest.js";
 import { setSilent } from "./sound.js";
 
