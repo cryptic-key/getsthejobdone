@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=70";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=70";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=70";
-import { createChoreQuest } from "./chore-quest.js?v=70";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=70";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=70";
+import { APP_VERSION } from "./version.js?v=71";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71";
+import { createChoreQuest } from "./chore-quest.js?v=71";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=71";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=71";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -574,7 +574,7 @@ async function loadParent() {
   const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices, savings] = await Promise.all([
     supabase.from("parents").select("id,name,email,color,hero,weapon,pet,helmet,armor").order("created_at"),
     supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,warn_kind,hero,weapon,pet,birth_date").order("created_at"),
-    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
+    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),status.eq.submitted,and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
     supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority,first_come").order("sort_order").order("created_at"),
     supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
     supabase.from("shop_items").select("id,name,cost").order("created_at"),
@@ -617,6 +617,7 @@ async function loadParent() {
       cashCents: chore.cash_cents,
       proofPath: chore.proof_path || "",
       special: chore.chore_day == null,
+      choreDay: chore.chore_day || null,
     })),
     templates: (templates.data || []).map((row) => ({
       ...row,
@@ -676,6 +677,7 @@ async function loadKid() {
       cashCents: chore.cash_cents,
       proofPath: chore.proof_path || "",
       special: Boolean(chore.special),
+      choreDay: chore.chore_day || null,
       sectionId: chore.section_id || null,
       sectionTitle: chore.section_title || "",
       sectionStart: chore.section_start,
@@ -965,8 +967,12 @@ let battleLine = [];
 let playChores = [];
 let finishedIds = new Set();
 let lineIds = [];
+let approvedOrder = [];
+let summonWanted = new Set();
 let pollTimer = 0;
 let lastKidSig = "";
+let parentPollTimer = 0;
+let lastParentSig = "";
 
 function battleStore() {
   try {
@@ -1862,22 +1868,38 @@ function paintQuestArt(root) {
   root.querySelectorAll("canvas[data-quest-badge]").forEach((slot) => swap(slot, quest.badgeIcon(slot.dataset.questBadge, 3)));
 }
 
+function noteApprovals(line) {
+  const serverRank = new Map((db.fights || []).map((fight, index) => [fight.id, index]));
+  const fresh = line
+    .filter((chore) => chore.approved && !approvedOrder.includes(chore.id))
+    .sort((a, b) => (serverRank.get(a.id) ?? Infinity) - (serverRank.get(b.id) ?? Infinity));
+  const inLine = new Set(line.map((chore) => chore.id));
+  approvedOrder = [...approvedOrder.filter((id) => inLine.has(id)), ...fresh.map((chore) => chore.id)];
+}
+
 function applyBattleLine(line) {
   battleLine = line.filter((chore) => chore?.id && !finishedIds.has(chore.id));
   lineIds = battleLine.map((chore) => chore.id);
-  playChores = splitBattleLine(battleLine).plays;
+  noteApprovals(battleLine);
+  playChores = splitBattleLine(battleLine, approvedOrder).plays;
   const kidId = db.session?.role === "kid" ? db.session.id : "";
-  if (kidId) saveTracked(kidId, playChores.length ? battleLine.slice(1) : battleLine);
+  const onStage = playChores[0]?.id;
+  if (kidId) saveTracked(kidId, battleLine.filter((chore) => chore.id !== onStage));
   paintStage();
 }
 
 function resetBattleMemory() {
   clearInterval(pollTimer);
   pollTimer = 0;
+  clearInterval(parentPollTimer);
+  parentPollTimer = 0;
+  lastParentSig = "";
   battleLine = [];
   playChores = [];
   finishedIds = new Set();
   lineIds = [];
+  approvedOrder = [];
+  summonWanted = new Set();
   lastKidSig = "";
 }
 
@@ -1933,26 +1955,96 @@ function syncBattles() {
     finished: [...finishedIds],
   });
   const fleeIds = new Set(fleeing.map((chore) => chore.id));
+  const before = new Set(playChores.map((chore) => chore.id));
   applyBattleLine([...fleeing, ...line.filter((chore) => !fleeIds.has(chore.id))]);
+  for (const chore of playChores) if (!before.has(chore.id) && !chore.flee) summonWanted.add(chore.id);
+}
+
+const SUMMON_ROUTES = new Set(["today", "hero", "kid-shop", "me"]);
+
+/* A parent approved while the app is open: bring the kid to the Quest board, scrolled to the top, so the fight plays.
+   Inside the arena (or with a dialog open) it waits and tries again on the next poll. */
+function summonBattle() {
+  const playing = new Set(playChores.map((chore) => chore.id));
+  summonWanted = new Set([...summonWanted].filter((id) => playing.has(id)));
+  if (!summonWanted.size || busy || db.session?.role !== "kid") return;
+  const child = kid();
+  if (!SUMMON_ROUTES.has(route.name) || grounded(child) || pendingWarn(child) || document.querySelector("dialog[open]")) return;
+  summonWanted.clear();
+  if (route.name !== "today") go("today");
+  const scroller = document.getElementById("scroller");
+  scroller?.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function pollKid() {
+  if (busy || db.session?.role !== "kid") return;
+  const ok = await loadKid();
+  if (!ok || db.session?.role !== "kid") return;
+  const me = kid();
+  const sig = `${me?.points}|${me?.hearts}|${me?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
+  syncBattles();
+  if (sig !== lastKidSig) {
+    lastKidSig = sig;
+    render();
+  } else {
+    paintStage();
+  }
+  summonBattle();
 }
 
 function ensurePoll() {
   if (pollTimer || db.session?.role !== "kid") return;
-  pollTimer = setInterval(async () => {
-    if (busy || db.session?.role !== "kid") return;
-    const ok = await loadKid();
-    if (!ok || db.session?.role !== "kid") return;
-    const me = kid();
-    const sig = `${me?.points}|${me?.hearts}|${me?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
-    syncBattles();
-    if (sig !== lastKidSig) {
-      lastKidSig = sig;
-      render();
-    } else {
-      paintStage();
-    }
-  }, 5000);
+  pollTimer = setInterval(pollKid, 5000);
 }
+
+function parentSig() {
+  return [
+    (db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(","),
+    (db.requests || []).map((req) => req.id).join(","),
+    (db.kids || []).map((child) => `${child.id}:${child.points}:${child.hearts}:${child.groundedUntil || ""}:${child.groundProgress}:${child.cashCents}:${child.minutes}`).join(","),
+    (db.familyRewards || []).map((reward) => `${reward.id}:${reward.total}:${reward.status}`).join(","),
+  ].join("|");
+}
+
+/* Parents never had to tap Done, so nothing reloaded their screen: check for new tasks in the background.
+   Never redraw while a parent is typing, has a dialog open, or is playing the practice arena. */
+function parentCanRedraw() {
+  if (busy || db.session?.role !== "parent" || document.hidden || route.name === "arena" || dragState) return false;
+  if (document.querySelector("dialog[open]")) return false;
+  const tag = document.activeElement?.tagName;
+  return tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT";
+}
+
+let parentPolling = false;
+async function pollParent() {
+  if (parentPolling || !parentCanRedraw()) return;
+  parentPolling = true;
+  try {
+    const ok = await loadParent();
+    if (!ok) return;
+    const sig = parentSig();
+    if (sig === lastParentSig) return;
+    if (!parentCanRedraw()) return;
+    lastParentSig = sig;
+    render();
+  } catch {
+    /* try again on the next tick */
+  } finally {
+    parentPolling = false;
+  }
+}
+
+function ensureParentPoll() {
+  if (parentPollTimer || db.session?.role !== "parent") return;
+  parentPollTimer = setInterval(pollParent, 10000);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  if (db.session?.role === "parent") pollParent();
+  else if (db.session?.role === "kid") pollKid();
+});
 
 function hudStats(child) {
   return `<div class="hud-stats">
@@ -2071,6 +2163,20 @@ function balances(child) {
 
 function torontoToday() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(new Date());
+}
+
+/* A daily task from an earlier day is only still around while it waits for a parent (or to show a rejection). */
+function fromPastDay(chore) {
+  return Boolean(chore?.choreDay) && chore.choreDay < torontoToday();
+}
+
+function pastDayLabel(chore) {
+  if (!fromPastDay(chore)) return "";
+  const yesterday = new Date(`${torontoToday()}T12:00:00`);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (chore.choreDay === ymd(yesterday)) return "From yesterday";
+  return `From ${new Date(`${chore.choreDay}T12:00:00`).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" })}`;
 }
 
 function torontoMidnightIso() {
@@ -2339,7 +2445,7 @@ function dragHandle() {
 /* Open Priority Tasks for the signed-in kid. While any are open, every other Done button and the arena are locked. */
 function openPriority(child = kid()) {
   if (!child) return [];
-  return (db.chores || []).filter((chore) => chore.kidId === child.id && chore.priority && chore.status === "open");
+  return (db.chores || []).filter((chore) => chore.kidId === child.id && chore.priority && chore.status === "open" && !fromPastDay(chore));
 }
 
 function priorityLocked(child = kid()) {
@@ -2354,7 +2460,7 @@ function questBlock(list, empty, locked = false) {
       const waiting = chore.status === "submitted";
       return `<div class="quest${waiting ? " waiting-quest" : ""}">
         <span class="quest-pay">+${Number(chore.points) || 0}</span>
-        <div class="quest-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}${chore.firstCome ? " · First come, first served!" : ""}</div></div>
+        <div class="quest-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}${chore.firstCome ? " · First come, first served!" : ""}${fromPastDay(chore) ? ` · ${esc(pastDayLabel(chore))}` : ""}</div></div>
         <div class="quest-lane" aria-hidden="true">
           <canvas data-quest-walker="${esc(sprite)}" width="96" height="44"></canvas>
         </div>
@@ -2505,6 +2611,10 @@ function render() {
     ensurePoll();
   } else {
     paintStage();
+    if (db.session?.role === "parent") {
+      lastParentSig = parentSig();
+      ensureParentPoll();
+    }
   }
   paintSpriteIcons(app);
   paintQuestArt(app);
@@ -2926,7 +3036,7 @@ const views = {
                     const thumb = proofUrl(chore.proofPath || chore.proof_path);
                     return `<div class="chore waiting">
                       <div class="waiting-copy">
-                        <div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}</div></div>
+                        <div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}${fromPastDay(chore) ? ` · <b>${esc(pastDayLabel(chore))}</b>` : ""}</div></div>
                         <span class="row"><button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button><button class="btn small clay" data-action="reject-chore" data-id="${chore.id}">Reject</button></span>
                       </div>
                       ${
@@ -3161,7 +3271,7 @@ const views = {
 
   today() {
     const child = kid();
-    const mine = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "approved");
+    const mine = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "approved" && !(fromPastDay(chore) && chore.status === "open"));
     const rest = mine.filter((chore) => !chore.priority);
     const locked = priorityLocked(child);
     return shell(

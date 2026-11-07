@@ -1,5 +1,5 @@
-/* The battle line stays in the order chores were marked done.
-   Approving a later chore does not jump it ahead of the one on screen. */
+/* The battle line keeps waiting chores in the order they were marked done.
+   Approved chores fight in the order they were approved, even if an older chore is still waiting. */
 
 export function mergeBattleLine({ order = [], stored = [], memory = [], submitted = [], finished = [] } = {}) {
   const done = new Set(finished);
@@ -38,11 +38,11 @@ export function mergeBattleLine({ order = [], stored = [], memory = [], submitte
   });
 }
 
-export function splitBattleLine(line) {
-  const plays = [];
-  for (const chore of line) {
-    if (!chore?.approved) break;
-    plays.push(chore);
-  }
-  return { plays, waiting: line.slice(plays.length) };
+export function splitBattleLine(line, approvedOrder = []) {
+  const rank = (chore) => {
+    const at = approvedOrder.indexOf(chore.id);
+    return at < 0 ? approvedOrder.length : at;
+  };
+  const plays = line.filter((chore) => chore?.approved).sort((a, b) => rank(a) - rank(b));
+  return { plays, waiting: line.filter((chore) => chore && !chore.approved) };
 }
