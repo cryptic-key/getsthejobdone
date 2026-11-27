@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Family Adventure Tasks">
+  <defs>
+    <linearGradient id="leaf" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3f8f63"/>
+      <stop offset="0.55" stop-color="#2f6b4a"/>
+      <stop offset="1" stop-color="#24553a"/>
+    </linearGradient>
+    <linearGradient id="steel" x1="16" y1="8" x2="48" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c9d9d0"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="24" y1="16" x2="40" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffe08a"/>
+      <stop offset="1" stop-color="#e3a31a"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#leaf)"/>
+
+  <!-- left sword (behind shield), tip top-left, hilt bottom-right -->
+  <g transform="rotate(-45 32 32)">
+    <path d="M32 8 L35.2 14 L35.2 42 L28.8 42 L28.8 14 Z" fill="url(#steel)" stroke="#1b3d2c" stroke-width="1.4" stroke-linejoin="round"/>
+    <rect x="26.2" y="41.2" width="11.6" height="3.4" rx="1.2" fill="#ffe08a" stroke="#1b3d2c" stroke-width="1.3"/>
+    <rect x="30.2" y="44.4" width="3.6" height="9.2" rx="1.4" fill="#c58a12" stroke="#1b3d2c" stroke-width="1.3"/>
+    <circle cx="32" cy="55.2" r="2.3" fill="#ffe08a" stroke="#1b3d2c" stroke-width="1.3"/>
+  </g>
+
+  <!-- right sword (behind shield), tip top-right, hilt bottom-left -->
+  <g transform="rotate(45 32 32)">
+    <path d="M32 8 L35.2 14 L35.2 42 L28.8 42 L28.8 14 Z" fill="url(#steel)" stroke="#1b3d2c" stroke-width="1.4" stroke-linejoin="round"/>
+    <rect x="26.2" y="41.2" width="11.6" height="3.4" rx="1.2" fill="#ffe08a" stroke="#1b3d2c" stroke-width="1.3"/>
+    <rect x="30.2" y="44.4" width="3.6" height="9.2" rx="1.4" fill="#c58a12" stroke="#1b3d2c" stroke-width="1.3"/>
+    <circle cx="32" cy="55.2" r="2.3" fill="#ffe08a" stroke="#1b3d2c" stroke-width="1.3"/>
+  </g>
+
+  <!-- shield (front) -->
+  <path d="M32 15.8 C40.2 15.8 46.4 18.8 48 21 C48 34 42.2 44.2 32 50.4 C21.8 44.2 16 34 16 21 C17.6 18.8 23.8 15.8 32 15.8 Z" fill="url(#gold)" stroke="#1b3d2c" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M32 19.6 C38 19.6 42.6 21.6 43.8 23 C43.8 32.8 39.6 40.4 32 45.2 C24.4 40.4 20.2 32.8 20.2 23 C21.4 21.6 26 19.6 32 19.6 Z" fill="#fff8e6" stroke="#1b3d2c" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M32 23.2 V42.2" fill="none" stroke="#e3a31a" stroke-width="2.1" stroke-linecap="round"/>
+  <path d="M24.2 29.6 H39.8" fill="none" stroke="#e3a31a" stroke-width="2.1" stroke-linecap="round"/>
+</svg>

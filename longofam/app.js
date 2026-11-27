@@ -1,0 +1,4536 @@
+import "./storage-ns.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
+import { APP_VERSION } from "./version.js?v=71";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71";
+import { createChoreQuest } from "./chore-quest.js?v=71";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=71";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=71";
+import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
+import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
+
+const COLORS = ["leaf", "sun", "sky", "clay", "plum", "teal", "rose", "cobalt", "coral", "indigo", "mustard", "mint"];
+const COLOR_HEX = {
+  leaf: "#2f7d5a",
+  sun: "#e3a31a",
+  sky: "#3c7f92",
+  clay: "#a24b34",
+  plum: "#6e6284",
+  teal: "#2f6f6a",
+  rose: "#d45d8c",
+  cobalt: "#3b6fd9",
+  coral: "#e06b5c",
+  indigo: "#5a4fcf",
+  mustard: "#c9a227",
+  mint: "#3faf8c",
+};
+const PLAY_ROUTES = new Set(["welcome", "loading", "kid-gate", "today", "hero", "kid-shop", "arena", "me"]);
+const KID_TOKEN = "chart-kid-token";
+const BATTLE_KEY = "chart-battle-v1";
+
+function kidToken() {
+  return localStorage.getItem(KID_TOKEN) || sessionStorage.getItem(KID_TOKEN) || "";
+}
+
+function setKidToken(token) {
+  if (!token) return;
+  localStorage.setItem(KID_TOKEN, token);
+  sessionStorage.removeItem(KID_TOKEN);
+}
+
+function clearKidToken() {
+  localStorage.removeItem(KID_TOKEN);
+  sessionStorage.removeItem(KID_TOKEN);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const sideAuth = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    storageKey: "chart-side-auth",
+  },
+});
+
+const app = document.querySelector("#app");
+let schemaReady = false;
+let db = blank();
+let gateKids = [];
+let gateParents = [];
+let route = { name: "loading" };
+let draft = {};
+let notice = "";
+let busy = false;
+let libraryOpen = false;
+let logKidFilter = "";
+let logTypeFilter = "";
+let heroExpand = { choose: false, achievements: false };
+const KID_HEROES = ["knight", "princess"];
+
+const LOG_TYPES = [
+  ["approve", "Approved"],
+  ["done", "Marked done"],
+  ["reject", "Sent back"],
+  ["undo", "Undo approval"],
+  ["reward", "Reward"],
+  ["deduct", "Deduct"],
+  ["warn", "Warn"],
+  ["heart", "Heart back"],
+  ["ground", "Ground"],
+  ["lift", "Lift"],
+  ["shop", "Shop"],
+  ["arena", "Arena"],
+  ["reset", "Reset"],
+  ["family", "Family"],
+  ["other", "Other"],
+];
+
+function activityType(text) {
+  const t = String(text || "");
+  if (/was paid for /.test(t)) return "approve";
+  if (/ marked .+ done\./.test(t)) return "done";
+  if (/was sent back on /.test(t)) return "reject";
+  if (/^Approval undone/.test(t)) return "undo";
+  if (/ got a reward/.test(t)) return "reward";
+  if (/ is grounded until /.test(t)) return "ground";
+  if (/ cage was updated: /.test(t)) return "ground";
+  if (/ warned /.test(t)) return "warn";
+  if (/ gave .+ a heart back\./.test(t)) return "heart";
+  if (/ is free\. Three hearts/.test(t)) return "lift";
+  if (/ was reset/.test(t)) return "reset";
+  if (/Monster Arena/.test(t)) return "arena";
+  if (/ asked for | saved \d+ coins toward | points went back to | bought 30 device| cashed .+ points for \$1| bought the .+ for \d+ coins/.test(t)) return "shop";
+  if (/ got (?!a reward)/.test(t)) return "shop";
+  if (/ spent | cashed in | had a balance taken off| was paid \$/.test(t)) return "deduct";
+  if (/PIN|joined as a parent|was removed/.test(t)) return "family";
+  return "other";
+}
+
+function activityTypeLabel(type) {
+  return LOG_TYPES.find(([id]) => id === type)?.[1] || "Other";
+}
+
+function filteredActivity() {
+  return (db.activity || []).filter((row) => {
+    if (logKidFilter && row.kidId !== logKidFilter) return false;
+    if (logTypeFilter && activityType(row.text) !== logTypeFilter) return false;
+    return true;
+  });
+}
+
+function blank() {
+  return { family: null, parents: [], kids: [], chores: [], templates: [], sections: [], items: [], requests: [], activity: [], week: [], hero: null, pets: [], petPrices: {}, session: null };
+}
+
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function parent() {
+  return db.parents.find((p) => p.id === db.session?.id) || null;
+}
+
+function kid() {
+  return db.kids.find((k) => k.id === db.session?.id) || db.kids[0] || null;
+}
+
+function kidById(id) {
+  return db.kids.find((k) => k.id === id) || gateKids.find((k) => k.id === id) || null;
+}
+
+function money(cents) {
+  return `$${(Number(cents) / 100).toFixed(2)}`;
+}
+
+function when(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function localInputValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function grounded(child) {
+  return child?.groundedUntil && new Date(child.groundedUntil).getTime() > Date.now();
+}
+
+async function rpc(name, args) {
+  const { data, error } = await supabase.rpc(name, args);
+  if (error) throw error;
+  return data;
+}
+
+function proofUrl(path) {
+  if (!path) return "";
+  return `${SUPABASE_URL}/storage/v1/object/public/chore-proofs/${encodeURI(path)}`;
+}
+
+/* ---------- Family Rewards: shared goals the kids fill together, one colour per kid ---------- */
+function familyBar(reward) {
+  const goal = Math.max(1, Number(reward.goal) || 1);
+  const segs = (reward.shares || [])
+    .map((share) => {
+      const pct = Math.min(100, (Number(share.amount) / goal) * 100);
+      return `<i style="width:${pct.toFixed(2)}%;background:${COLOR_HEX[share.color] || COLOR_HEX.leaf}" title="${esc(share.name)}: ${Number(share.amount)}"></i>`;
+    })
+    .join("");
+  const total = Math.min(goal, Number(reward.total) || 0);
+  return `<div class="fam-bar${reward.status !== "open" ? " full" : ""}" role="img" aria-label="${total} of ${goal} coins">${segs}<span>${total} / ${goal}</span></div>`;
+}
+
+function familyLegend(reward) {
+  const goal = Math.max(1, Number(reward.goal) || 1);
+  const shares = reward.shares || [];
+  if (!shares.length) return `<p class="tiny muted">Nobody has chipped in yet. Be the first!</p>`;
+  return `<div class="fam-legend">${shares
+    .map((share) => {
+      const amount = Number(share.amount) || 0;
+      const pct = Math.round((amount / goal) * 100);
+      return `<div class="fam-row"><i style="background:${COLOR_HEX[share.color] || COLOR_HEX.leaf}"></i><strong>${esc(share.name)}</strong><span>${amount} coin${amount === 1 ? "" : "s"}</span><b>${pct}%</b></div>`;
+    })
+    .join("")}</div>`;
+}
+
+function familyRewardCard(reward, actions) {
+  const goal = Math.max(1, Number(reward.goal) || 1);
+  const total = Math.min(goal, Number(reward.total) || 0);
+  const status = reward.status === "claimed" ? "Unlocked!" : reward.status === "reached" ? "Goal reached!" : `${goal - total} coins to go`;
+  return `<div class="fam-reward ${esc(reward.status)}">
+    <div class="fam-head"><strong>${esc(reward.title)}</strong><span class="chip">${esc(status)}</span></div>
+    ${familyBar(reward)}
+    ${familyLegend(reward)}
+    ${actions}
+  </div>`;
+}
+
+function familyRewardsBoard(child) {
+  const rewards = db.familyRewards || [];
+  if (!rewards.length) return "";
+  const locked = grounded(child);
+  return `<section class="card stack fam-card">
+    <h2 class="page-title">Family Rewards</h2>
+    <p class="lede">Team up! Everyone's coins fill the same bar.</p>
+    ${rewards
+      .map((reward) => {
+        const action = reward.status === "open"
+          ? locked
+            ? `<div class="banner">You can chip in after you break out of the cage.</div>`
+            : `<button class="btn sun" type="button" data-action="open-contribute" data-id="${esc(reward.id)}" ${Number(child.points) > 0 ? "" : "disabled"}>Contribute</button>`
+          : reward.status === "reached"
+            ? `<p class="tiny muted">The family did it! A parent will make it happen.</p>`
+            : "";
+        return familyRewardCard(reward, action);
+      })
+      .join("")}
+  </section>`;
+}
+
+function parentFamilyRewardsBoard() {
+  const rewards = db.familyRewards || [];
+  return `<section class="card stack fam-card">
+    <div class="section-title"><h2>Family Rewards</h2></div>
+    <p class="lede">Set a reward the kids save up for together. Each kid's coins show in their colour.</p>
+    ${rewards
+      .map((reward) =>
+        familyRewardCard(
+          reward,
+          `<div class="row">${reward.status === "reached" ? `<button class="btn small leaf" type="button" data-action="claim-family" data-id="${esc(reward.id)}">Mark as given</button>` : ""}<button class="btn small ghost" type="button" data-action="remove-family" data-id="${esc(reward.id)}">${reward.status === "open" ? "Remove (refund coins)" : "Remove"}</button></div>`
+        )
+      )
+      .join("") || `<p class="muted">No family rewards yet.</p>`}
+    <form class="two" data-action="add-family">
+      <label>Reward<input name="title" required placeholder="Pizza night"></label>
+      <label>Total coins<input name="goal" type="number" min="1" value="300" required></label>
+      <button class="btn leaf" type="submit">Add family reward</button>
+    </form>
+  </section>`;
+}
+
+let calcValue = "";
+let calcReward = null;
+
+function contributeDialogHtml() {
+  return `<dialog class="calc-dialog">
+    <div class="calc">
+      <div class="calc-top"><b class="calc-title"></b><button type="button" class="calc-x" data-action="close-contribute" aria-label="Close">✕</button></div>
+      <div class="calc-screen"><span class="calc-hint"></span><output class="calc-value">0</output></div>
+      <div class="calc-keys">
+        ${["7", "8", "9", "4", "5", "6", "1", "2", "3", "C", "0", "⌫"].map((k) => `<button type="button" class="calc-key${k === "C" || k === "⌫" ? " fn" : ""}" data-action="calc-key" data-k="${k}">${k}</button>`).join("")}
+        <button type="button" class="calc-key fn wide" data-action="calc-key" data-k="max">MAX</button>
+      </div>
+      <button type="button" class="btn sun wide calc-go" data-action="calc-submit">Contribute</button>
+    </div>
+  </dialog>`;
+}
+
+let calcKind = "family";
+
+function itemSaved(itemId) {
+  const row = (db.itemSavings || []).find((entry) => entry.item_id === itemId);
+  return Math.max(0, Number(row?.amount) || 0);
+}
+
+function calcTarget() {
+  if (calcKind === "item") {
+    const item = (db.items || []).find((entry) => entry.id === calcReward);
+    if (!item) return null;
+    return { title: item.name, need: Math.max(0, (Number(item.cost) || 0) - itemSaved(item.id)), verb: "Save" };
+  }
+  const reward = (db.familyRewards || []).find((item) => item.id === calcReward);
+  if (!reward) return null;
+  return { title: reward.title, need: Math.max(0, (Number(reward.goal) || 0) - (Number(reward.total) || 0)), verb: "Contribute" };
+}
+
+function calcLimit() {
+  const child = kid();
+  const target = calcTarget();
+  if (!child || !target) return 0;
+  return Math.max(0, Math.min(Number(child.points) || 0, target.need));
+}
+
+function paintCalc() {
+  const dialog = document.querySelector(".calc-dialog");
+  if (!dialog) return;
+  const target = calcTarget();
+  const child = kid();
+  const amount = Number(calcValue) || 0;
+  const limit = calcLimit();
+  dialog.querySelector(".calc-title").textContent = target ? target.title : "";
+  dialog.querySelector(".calc-value").textContent = String(amount);
+  dialog.querySelector(".calc-hint").textContent = `You have ${Number(child?.points) || 0} · Max ${limit}`;
+  const go = dialog.querySelector(".calc-go");
+  go.disabled = amount < 1 || amount > limit;
+  go.textContent = amount > limit ? "Too many coins" : `${target?.verb || "Contribute"} ${amount || ""}`.trim();
+}
+
+function proofDialogHtml() {
+  return `<dialog class="proof-dialog">
+    <form method="dialog" class="card stack proof-card">
+      <h2 class="page-title">Show your work</h2>
+      <p class="lede">Take a photo or pick one so a parent can see you finished.</p>
+      <input type="hidden" name="choreId" value="">
+      <button class="btn leaf" type="button" data-action="proof-camera">Take photo</button>
+      <button class="btn ghost" type="button" data-action="proof-library">Choose photo</button>
+      <button class="btn ghost" type="button" data-action="close-proof">Cancel</button>
+    </form>
+  </dialog>`;
+}
+
+function pickProofFile({ camera = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    if (camera) input.setAttribute("capture", "environment");
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener("focus", onFocus);
+      fn(value);
+    };
+    const onFocus = () => {
+      setTimeout(() => {
+        if (!settled && !input.files?.length) finish(reject, new Error("Pick a photo to mark it done."));
+      }, 700);
+    };
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (file) finish(resolve, file);
+      else finish(reject, new Error("Pick a photo to mark it done."));
+    });
+    window.addEventListener("focus", onFocus);
+    input.click();
+  });
+}
+
+async function compressProof(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("Could not read that photo. Try another one.");
+  }
+  const max = 1280;
+  let width = bitmap.width;
+  let height = bitmap.height;
+  if (Math.max(width, height) > max) {
+    const scale = max / Math.max(width, height);
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+  if (!blob) throw new Error("Could not save that photo. Try another one.");
+  return blob;
+}
+
+async function uploadChoreProof(choreId, blob) {
+  const path = `${choreId}/${crypto.randomUUID().replace(/-/g, "")}.jpg`;
+  const { error } = await supabase.storage.from("chore-proofs").upload(path, blob, {
+    contentType: "image/jpeg",
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
+function nice(error) {
+  const msg = error?.message || "Something went wrong";
+  if (/wrong pin/i.test(msg)) return "That PIN does not match.";
+  if (/too many tries/i.test(msg)) return "Too many tries. Wait a few minutes.";
+  if (/email not confirmed/i.test(msg)) return "Confirm that email first, then sign in.";
+  if (/not a parent/i.test(msg)) return "This login is not on a family yet.";
+  if (/already has an account/i.test(msg)) return "That email already has an account. They can sign in.";
+  if (/^grounded$/i.test(msg)) return "Device time is locked while you are grounded.";
+  if (/not enough points/i.test(msg)) return "Not enough coins for that.";
+  if (/already owned/i.test(msg)) return "You already have that.";
+  if (/unknown gear/i.test(msg)) return "That gear is not in the market.";
+  if (/gear locked/i.test(msg)) return "Buy that gear in the Market first.";
+  if (/wrong slot/i.test(msg)) return "That piece goes in the other slot.";
+  if (/pet locked/i.test(msg)) return "Buy that pet in the Market first.";
+  if (/unknown pet/i.test(msg)) return "That pet is not in the market.";
+  if (/not enough coins/i.test(msg)) return "Not enough coins to take off.";
+  if (/not enough minutes/i.test(msg)) return "Not enough screen time to cash in.";
+  if (/not enough cash/i.test(msg)) return "Not enough cash to take off.";
+  if (/enter coins, cash, or minutes/i.test(msg)) return "Enter coins, cash, or minutes to take off.";
+  if (/already asked/i.test(msg)) return "You already asked for that.";
+  if (/sign in again/i.test(msg)) return "Sign in again.";
+  if (/weapon locked/i.test(msg)) return "That weapon is still locked.";
+  if (/pick a hero/i.test(msg)) return "Pick a hero from the choices.";
+  if (/pick a color/i.test(msg)) return "Pick one of the colors under your hero.";
+  if (/unknown weapon/i.test(msg)) return "That weapon is not in the armory.";
+  if (/section name required/i.test(msg)) return "Give the section a name.";
+  if (/pick at least one day/i.test(msg)) return "Pick at least one day for the section.";
+  if (/use Lift to open the cage/i.test(msg)) return "That hero is in the cage. Use Lift to free them.";
+  if (/that hero is not grounded/i.test(msg)) return "That hero is not in the cage right now.";
+  if (/pick an end time in the future/i.test(msg)) return "Pick an end time in the future.";
+  if (/pick an end time/i.test(msg)) return "Pick an end time.";
+  if (/hearts are full/i.test(msg)) return "All three hearts are already full.";
+  if (/pick a real birthday/i.test(msg)) return "Pick a real birthday.";
+  if (/arena run over/i.test(msg)) return "That arena run already ended.";
+  if (/chore not found/i.test(msg) && db.session?.role === "kid") return "Someone else got that one first!";
+  if (/priority first/i.test(msg)) return "Finish your Priority Quest first!";
+  if (/goal already reached/i.test(msg)) return "That goal is already full!";
+  if (/enter an amount/i.test(msg)) return "Tap in how many coins first.";
+  if (/reward name required/i.test(msg)) return "Give the reward a name.";
+  if (/goal must be at least 1/i.test(msg)) return "Set the total to at least 1 coin.";
+  if (/use a time like/i.test(msg)) return "Use times like 07:00 and 09:00.";
+  if (/section not found/i.test(msg)) return "That schedule section is gone. Refresh and try again.";
+  if (/photo required/i.test(msg)) return "Take or choose a photo to mark it done.";
+  if (/pick a photo/i.test(msg)) return "Take or choose a photo to mark it done.";
+  return msg;
+}
+
+function go(name, extra) {
+  route = { name, ...(extra || {}) };
+  draft = {};
+  notice = extra?.notice || "";
+  render();
+}
+
+async function enableDevicePush() {
+  try {
+    await registerAdventureWorker();
+    if (db.session?.role === "parent") {
+      await ensurePushSubscription({ role: "parent", supabase });
+    } else if (db.session?.role === "kid") {
+      await ensurePushSubscription({ role: "kid", supabase, kidToken: kidToken() });
+    }
+  } catch {
+    /* notifications are optional */
+  }
+}
+
+async function boot() {
+  try {
+    armAudio();
+    registerAdventureWorker();
+    const legacyKid = sessionStorage.getItem(KID_TOKEN);
+    if (legacyKid && !localStorage.getItem(KID_TOKEN)) setKidToken(legacyKid);
+    const { error } = await supabase.rpc("list_kids", { p_code: "" });
+    schemaReady = !error || (error.code !== "PGRST202" && error.code !== "PGRST205" && !/schema cache/i.test(error.message || ""));
+    if (!schemaReady) {
+      route = { name: "welcome" };
+      render();
+      return;
+    }
+    await loadPlayers();
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      const ok = await loadParent();
+      route = { name: ok ? "chart" : "parent-auth", mode: "signin" };
+      if (!ok) notice = "Sign in with a parent account on this family.";
+      if (ok) enableDevicePush();
+    } else if (kidToken()) {
+      const ok = await loadKid();
+      route = { name: ok ? "today" : "welcome" };
+      if (ok) enableDevicePush();
+    } else {
+      route = { name: "welcome" };
+    }
+    render();
+  } catch (error) {
+    notice = nice(error);
+    route = { name: route.name || "welcome" };
+    try {
+      render();
+    } catch (renderError) {
+      notice = nice(renderError);
+      app.innerHTML = `<div class="card stack"><h2 class="page-title">Something went wrong</h2><p class="error">${esc(notice)}</p><button class="btn leaf" type="button" onclick="location.reload()">Reload</button></div>`;
+    }
+  }
+}
+
+function mapKid(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    points: row.points,
+    cashCents: row.cash_cents,
+    minutes: row.minutes,
+    groundedUntil: row.grounded_until,
+    progressResetAt: row.progress_reset_at || null,
+    hearts: Math.max(0, Math.min(3, Number(row.hearts ?? 3))),
+    groundProgress: Math.max(0, Number(row.ground_progress) || 0),
+    warnParent: row.warn_parent || "",
+    warnSeq: Number(row.warn_seq) || 0,
+    warnKind: row.warn_kind === "heart" ? "heart" : "warn",
+    hero: row.hero || "knight",
+    weapon: row.weapon || "broom",
+    pet: normalizePet(row.pet) || "",
+    birthDate: row.birth_date || "",
+    arenaLevel: row.arena_level || arenaLevelFor(row.birth_date),
+  };
+}
+
+function arenaLevelFor(birthDate) {
+  if (!birthDate) return "kid";
+  const today = new Date(`${torontoToday()}T00:00:00`);
+  const born = new Date(`${birthDate}T00:00:00`);
+  let age = today.getFullYear() - born.getFullYear();
+  if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age -= 1;
+  if (age <= 5) return "little";
+  if (age <= 8) return "kid";
+  if (age <= 12) return "big";
+  return "teen";
+}
+
+const ARENA_LEVEL_NAMES = { little: "Little Explorer · ages 3–5", kid: "Adventurer · ages 6–8", big: "Champion · ages 9–12", teen: "Legend · ages 13–16" };
+
+function petPrice(key) {
+  const custom = Number(db.petPrices?.[key]);
+  return custom > 0 ? custom : PET_CATALOG[key]?.price || DEFAULT_PET_PRICE;
+}
+
+function afterReset(chore, child) {
+  if (!child?.progressResetAt || chore.status !== "approved") return true;
+  if (!chore.approved_at) return false;
+  return new Date(chore.approved_at) > new Date(child.progressResetAt);
+}
+
+function heartMarks(count) {
+  const n = Math.max(0, Math.min(3, Number(count) || 0));
+  return `<span class="hearts" aria-label="${n} heart${n === 1 ? "" : "s"} left">${[0, 1, 2]
+    .map((i) => `<i class="${i < n ? "on" : "off"}" aria-hidden="true"></i>`)
+    .join("")}</span>`;
+}
+
+async function loadParent() {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return false;
+  const { data: me, error } = await supabase
+    .from("parents")
+    .select("id,name,email,color,hero,weapon,pet,household_id,households(name,code,points_per_dollar,points_per_30,unground_points,arena_entry,arena_per_kill)")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!me?.households) return false;
+  await rpc("ensure_today");
+  const day = torontoToday();
+  const [parents, kids, chores, templates, sections, items, requests, activity, doorPins, petPrices, savings] = await Promise.all([
+    supabase.from("parents").select("id,name,email,color,hero,weapon,pet,helmet,armor").order("created_at"),
+    supabase.from("kids").select("id,name,color,points,cash_cents,minutes,grounded_until,progress_reset_at,hearts,ground_progress,warn_parent,warn_seq,warn_kind,hero,weapon,pet,birth_date").order("created_at"),
+    supabase.from("chores").select("id,kid_id,title,points,cash_cents,minutes,status,chore_day,sprite,approved_at,verdict,proof_path").or(`and(status.neq.approved,or(chore_day.is.null,chore_day.eq.${day})),status.eq.submitted,and(status.eq.approved,approved_at.gte."${torontoMidnightIso()}")`).order("created_at"),
+    supabase.from("chore_templates").select("id,title,points,kind,sprite,active,assignee_id,section_id,sort_order,priority,first_come").order("sort_order").order("created_at"),
+    supabase.from("chore_sections").select("id,title,start_minute,end_minute,sort_order,days,kid_ids").order("sort_order").order("created_at"),
+    supabase.from("shop_items").select("id,name,cost").order("created_at"),
+    supabase.from("requests").select("id,kid_id,item_id,cost,status").eq("status", "pending"),
+    supabase.from("activity").select("id,kid_id,body,created_at").order("created_at", { ascending: false }).limit(200),
+    supabase.rpc("door_ready"),
+    supabase.from("pet_prices").select("pet_key,cost"),
+    supabase.from("item_savings").select("kid_id,item_id,amount").gt("amount", 0),
+  ]);
+  const familyRewards = await loadFamilyRewards("family_rewards");
+  for (const result of [parents, kids, chores, templates, sections, items, requests, activity]) {
+    if (result.error) throw result.error;
+  }
+  const readyPins = new Set((doorPins.data || []).map((row) => row.parent_id));
+  db = {
+    family: {
+      name: me.households.name,
+      code: me.households.code,
+      pointsPerDollar: me.households.points_per_dollar,
+      pointsPer30: me.households.points_per_30,
+      ungroundPoints: Number(me.households.unground_points) || 0,
+      arenaEntry: Number(me.households.arena_entry ?? 2),
+      arenaPerKill: Number(me.households.arena_per_kill ?? 1),
+      arenaNextEntry: Number(me.households.arena_entry ?? 2),
+    },
+    parents: parents.data.map((person) => ({
+      ...person,
+      color: COLORS.includes(person.color) ? person.color : "teal",
+      hero: parentLook(person.hero, person.name),
+      weapon: person.weapon || "broom",
+      pet: normalizePet(person.pet) || "",
+      helmet: normalizeGear(person.helmet, "head"),
+      armor: normalizeGear(person.armor, "body"),
+      hasPin: readyPins.has(person.id),
+    })),
+    kids: kids.data.map(mapKid),
+    chores: chores.data.map((chore) => ({
+      ...chore,
+      kidId: chore.kid_id,
+      cashCents: chore.cash_cents,
+      proofPath: chore.proof_path || "",
+      special: chore.chore_day == null,
+      choreDay: chore.chore_day || null,
+    })),
+    templates: (templates.data || []).map((row) => ({
+      ...row,
+      assigneeId: row.assignee_id,
+      sectionId: row.section_id || null,
+      sortOrder: Number(row.sort_order) || 0,
+      active: row.active !== false,
+      priority: Boolean(row.priority),
+      firstCome: Boolean(row.first_come),
+    })),
+    sections: (sections.data || []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      startMinute: Number(row.start_minute) || 0,
+      endMinute: Number(row.end_minute) || 0,
+      sortOrder: Number(row.sort_order) || 0,
+      days: Array.isArray(row.days) ? row.days : ALL_DAYS,
+      kidIds: Array.isArray(row.kid_ids) ? row.kid_ids : [],
+    })),
+    items: items.data,
+    requests: requests.data.map((req) => ({ ...req, kidId: req.kid_id, itemId: req.item_id })),
+    activity: activity.data.map((row) => ({ id: row.id, kidId: row.kid_id, text: row.body, at: row.created_at })),
+    pets: [],
+    petPrices: Object.fromEntries(((petPrices.error ? [] : petPrices.data) || []).map((row) => [row.pet_key, Number(row.cost) || DEFAULT_PET_PRICE])),
+    familyRewards,
+    itemSavings: savings.error ? [] : savings.data || [],
+    session: { role: "parent", id: me.id },
+  };
+  return true;
+}
+
+async function loadKid() {
+  const token = kidToken();
+  if (!token) return false;
+  const { data, error } = await supabase.rpc("kid_snapshot", { p_token: token });
+  if (error) {
+    clearKidToken();
+    return false;
+  }
+  const snap = data;
+  db = {
+    family: {
+      name: snap.family.name,
+      code: snap.family.code,
+      pointsPerDollar: snap.family.points_per_dollar,
+      pointsPer30: snap.family.points_per_30,
+      ungroundPoints: Number(snap.family.unground_points) || 0,
+      arenaEntry: Number(snap.family.arena_entry ?? 2),
+      arenaPerKill: Number(snap.family.arena_per_kill ?? 1),
+      arenaNextEntry: Number(snap.family.arena_next_entry ?? snap.family.arena_entry ?? 2),
+    },
+    parents: [],
+    kids: [mapKid(snap.kid)],
+    chores: snap.chores.map((chore) => ({
+      ...chore,
+      kidId: snap.kid.id,
+      cashCents: chore.cash_cents,
+      proofPath: chore.proof_path || "",
+      special: Boolean(chore.special),
+      choreDay: chore.chore_day || null,
+      sectionId: chore.section_id || null,
+      sectionTitle: chore.section_title || "",
+      sectionStart: chore.section_start,
+      sectionEnd: chore.section_end,
+      sortOrder: Number(chore.sort_order) || 0,
+      priority: Boolean(chore.priority),
+      firstCome: Boolean(chore.first_come),
+    })),
+    items: snap.items,
+    requests: snap.requests.map((req) => ({ ...req, kidId: snap.kid.id, itemId: req.item_id })),
+    activity: snap.activity.map((row) => ({ id: row.id, text: row.body, at: row.created_at })),
+    templates: [],
+    sections: (snap.sections || []).map((row) => ({
+      id: row.id,
+      title: row.title,
+      startMinute: Number(row.start_minute) || 0,
+      endMinute: Number(row.end_minute) || 0,
+      open: row.open !== false,
+      sortOrder: Number(row.sort_order) || 0,
+    })),
+    week: snap.week || [],
+    hero: await loadHeroBoard(token),
+    gear: await loadGear(token),
+    fights: await loadFights(token),
+    familyRewards: await loadFamilyRewards("kid_family_rewards", { p_token: token }),
+    itemSavings: await loadItemSavings(token),
+    pets: Array.isArray(snap.pets) ? snap.pets.filter((key) => PET_CATALOG[key]) : [],
+    petPrices: snap.pet_prices && typeof snap.pet_prices === "object" ? snap.pet_prices : {},
+    session: { role: "kid", id: snap.kid.id },
+  };
+  if (Array.isArray(db.hero?.pets)) {
+    db.pets = [...new Set([...db.pets, ...db.hero.pets])].filter((key) => PET_CATALOG[key]);
+  }
+  const equippedPet = normalizePet(db.hero?.pet || db.kids[0]?.pet) || "";
+  if (db.kids[0]) db.kids[0].pet = equippedPet;
+  if (db.hero) db.hero.pet = equippedPet || null;
+  return true;
+}
+
+/* Armour: owned helmets/armour, what is equipped, and household prices (see gear.js + 20261102_armour_gear.sql). */
+async function loadFamilyRewards(name, args) {
+  try {
+    const res = await supabase.rpc(name, args);
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data;
+  } catch {
+    return [];
+  }
+}
+
+async function loadItemSavings(token) {
+  try {
+    const res = await supabase.rpc("kid_item_savings", { p_token: token });
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data;
+  } catch {
+    return [];
+  }
+}
+
+async function loadGear(token) {
+  const res = await supabase.rpc("kid_gear", { p_token: token });
+  if (res.error || !res.data) return { head: null, body: null, owned: [], prices: {} };
+  const data = res.data;
+  return {
+    head: normalizeGear(data.head, "head"),
+    body: normalizeGear(data.body, "body"),
+    owned: Array.isArray(data.owned) ? data.owned.filter((key) => GEAR[key]) : [],
+    prices: data.prices && typeof data.prices === "object" ? data.prices : {},
+  };
+}
+
+/* Chores a parent approved that this kid has not watched the monster fight for yet (see 20261102_fight_pending.sql). */
+async function loadFights(token) {
+  try {
+    const res = await supabase.rpc("kid_pending_fights", { p_token: token });
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data.filter((chore) => chore?.id);
+  } catch {
+    return [];
+  }
+}
+
+async function loadHeroBoard(token) {
+  await supabase.rpc("kid_sync_rewards", { p_token: token });
+  const board = await supabase.rpc("kid_hero_board", { p_token: token });
+  if (board.error) return null;
+  return board.data;
+}
+
+async function run(work, message, next) {
+  if (busy) return;
+  busy = true;
+  try {
+    await work();
+    if (db.session?.role === "kid") await loadKid();
+    else if (db.session?.role === "parent") await loadParent();
+    notice = typeof message === "function" ? message() || "" : message || "";
+    if (next) route = { name: next };
+    else route = { ...route, error: "" };
+    draft = {};
+    render();
+    if (db.session?.role === "kid" && notice && !/marked done/i.test(notice)) celebrate();
+  } catch (error) {
+    route = { ...route, error: nice(error) };
+    render();
+  } finally {
+    busy = false;
+  }
+}
+
+function mark() {
+  return `<img class="mark" src="icon.svg" width="48" height="48" alt="" decoding="async">`;
+}
+
+const BRAND_TITLE = "Longo Family Adventure";
+const BRAND_TAGLINE = "Work together to defeat the task monsters";
+
+/* Header avatar: the kid's hero in a gold pixel frame, wearing their helmet, with the pet peeking in. */
+function heroPortrait(child) {
+  const pet = normalizePet(db.hero?.pet || child?.pet) || "";
+  return `<span class="portrait" aria-hidden="true"><canvas class="portrait-frame" width="20" height="20" data-portrait></canvas>${pet ? `<canvas class="portrait-pet" width="14" height="12" data-portrait-pet="${esc(pet)}"></canvas>` : ""}</span>`;
+}
+
+function paintPortraits(root) {
+  const child = db.session?.role === "kid" ? kid() : null;
+  if (!child) return;
+  root.querySelectorAll("canvas[data-portrait]").forEach((canvas) =>
+    paintHeroPortrait(canvas, kidHero(db.hero?.hero || child.hero), COLOR_HEX[heroColorName()] || COLOR_HEX.leaf, db.gear?.head || null, db.gear?.body || null)
+  );
+  root.querySelectorAll("canvas[data-portrait-pet]").forEach((canvas) => drawPetIcon(canvas, canvas.dataset.portraitPet));
+}
+
+function face(color) {
+  const fill = COLOR_HEX[color] || COLOR_HEX.leaf;
+  return `<svg class="face" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="34" r="26" fill="${fill}"/><circle cx="22" cy="30" r="4" fill="#fff"/><circle cx="42" cy="30" r="4" fill="#fff"/><circle cx="23" cy="31" r="2" fill="#24312c"/><circle cx="43" cy="31" r="2" fill="#24312c"/><path d="M22 42 Q32 50 42 42" fill="none" stroke="#24312c" stroke-width="3" stroke-linecap="round"/></svg>`;
+}
+
+const PARENT_HEROES = {
+  knight: { name: "Adventurer" },
+  princess: { name: "Princess" },
+  king: { name: "King" },
+  queen: { name: "Queen" },
+};
+
+function parentHeroFallback(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (key === "alex") return "king";
+  if (key === "jackie") return "queen";
+  return "knight";
+}
+
+function parentHero(name) {
+  return parentHeroFallback(name);
+}
+
+function parentLook(hero, name) {
+  return PARENT_HEROES[hero] ? hero : parentHero(name);
+}
+
+function kidHero(hero) {
+  return hero === "princess" ? "princess" : "knight";
+}
+
+function doorPeople() {
+  return [
+    ...gateKids.map((child) => ({
+      id: child.id,
+      name: child.name,
+      color: child.color,
+      kind: "kid",
+      hasPin: true,
+      hero: kidHero(child.hero),
+      weapon: child.weapon || "broom",
+      pet: normalizePet(child.pet) || "",
+    })),
+    ...gateParents.map((person) => ({
+      id: person.id,
+      name: person.name,
+      color: person.color || "teal",
+      kind: "parent",
+      hasPin: person.hasPin,
+      hero: parentLook(person.hero, person.name),
+      weapon: person.weapon || "broom",
+      pet: normalizePet(person.pet) || "",
+    })),
+  ];
+}
+
+function heldWeapon(key) {
+  const quest = questCatalog();
+  const chosen = quest.weapons[key] ? key : "broom";
+  return { key: chosen, ...quest.weaponSprite(chosen) };
+}
+
+function pinPad(title) {
+  return `<div class="card pin-card">
+    <h2 class="page-title">${title}</h2>
+    <div class="pin-dots">${[0, 1, 2, 3].map((i) => `<i class="${(draft.pin || "").length > i ? "on" : ""}"></i>`).join("")}</div>
+    ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+    <div class="pad">
+      ${["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "go"]
+        .map((key) => `<button type="button" data-action="pin" data-key="${key}">${key === "clear" ? "⌫" : key === "go" ? "Go" : key}</button>`)
+        .join("")}
+    </div>
+    <button class="btn ghost wide" type="button" data-action="close-pin">Back</button>
+  </div>`;
+}
+
+function pinDialog(inner) {
+  return `<dialog class="pin-dialog">${inner}</dialog>`;
+}
+
+function roster() {
+  const people = doorPeople();
+  const selected = people.find((person) => person.id === route.playerId);
+  const pad = !selected
+    ? ""
+    : pinDialog(selected.kind === "parent" && !selected.hasPin
+      ? `<form class="card stack" data-action="parent-auth-submit">
+          <h2 class="page-title">${esc(selected.name)}</h2>
+          <p class="lede">This parent does not have a door PIN yet. Sign in once, then set one on the Family page.</p>
+          <label>Email<input name="email" type="email" autocomplete="username" required value="${esc(draft.email || "")}"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+          ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+          <button class="btn leaf" type="submit">Sign in</button>
+          <button class="btn ghost wide" type="button" data-action="close-pin">Back</button>
+        </form>`
+      : pinPad(`PIN for ${esc(selected.name)}`));
+  return `<div class="stack">
+    <div class="roster">${people
+      .map((person) => {
+        const pet = normalizePet(person.pet) || "";
+        return `<button class="kid-pick" data-action="pick-player" data-id="${person.id}" data-kind="${person.kind}" aria-pressed="${selected?.id === person.id}">
+          <canvas class="hero-icon" data-look="${esc(person.hero)}" data-weapon="${esc(person.weapon)}" data-color="${esc(COLOR_HEX[person.color] || COLOR_HEX.leaf)}"${pet ? ` data-pet="${esc(pet)}"` : ""} width="40" height="34" aria-hidden="true"></canvas>
+          <strong>${esc(person.name)}</strong>
+          ${person.kind === "parent" ? `<span class="role">Parent</span>` : ""}
+        </button>`;
+      })
+      .join("")}</div>
+    ${pad}
+  </div>`;
+}
+
+async function loadPlayers() {
+  gateKids = [];
+  gateParents = [];
+  const { data, error } = await supabase.rpc("list_players");
+  if (!error && data) {
+    gateKids = data.filter((row) => row.kind === "kid").map((row) => ({
+      ...row,
+      pet: normalizePet(row.pet) || "",
+    }));
+    gateParents = data.filter((row) => row.kind === "parent").map((row) => ({
+      id: row.id,
+      name: row.name,
+      color: COLORS.includes(row.color) ? row.color : "teal",
+      hero: parentLook(row.hero, row.name),
+      weapon: row.weapon || "broom",
+      pet: normalizePet(row.pet) || "",
+      hasPin: Boolean(row.has_pin),
+    }));
+    return;
+  }
+  const kids = await supabase.rpc("list_kids", { p_code: "" });
+  if (!kids.error) gateKids = kids.data || [];
+}
+
+function worldScene(color) {
+  return `<div class="stage-slot" data-color="${esc(color || "leaf")}"></div>`;
+}
+
+function mountStage() {
+  const slot = app.querySelector(".stage-slot");
+  const host = stageElement();
+  if (slot) {
+    host.dataset.color = slot.dataset.color || "leaf";
+    host.hidden = false;
+    slot.replaceWith(host);
+  } else if (host.isConnected) {
+    host.hidden = true;
+    if (host.parentElement !== document.body) document.body.appendChild(host);
+  }
+}
+
+let battleLine = [];
+let playChores = [];
+let finishedIds = new Set();
+let lineIds = [];
+let approvedOrder = [];
+let summonWanted = new Set();
+let pollTimer = 0;
+let lastKidSig = "";
+let parentPollTimer = 0;
+let lastParentSig = "";
+
+function battleStore() {
+  try {
+    const data = JSON.parse(localStorage.getItem(BATTLE_KEY) || "{}");
+    if (data && data.kids && typeof data.kids === "object" && !Array.isArray(data.kids)) return data.kids;
+    if (data && data.kidId && Array.isArray(data.chores)) return { [data.kidId]: data.chores };
+  } catch {
+    /* keep an empty board if storage is unreadable */
+  }
+  return {};
+}
+
+function loadTracked(kidId) {
+  const chores = battleStore()[kidId];
+  return Array.isArray(chores) ? chores.filter((chore) => chore && chore.id) : [];
+}
+
+function saveTracked(kidId, chores) {
+  const kids = battleStore();
+  kids[kidId] = chores;
+  localStorage.setItem(BATTLE_KEY, JSON.stringify({ kids }));
+}
+
+function taskSprite(chore) {
+  if (!chore) return "dust";
+  return normalizeSprite(chore.sprite || guessSprite(chore.title));
+}
+
+function spriteName(id) {
+  return SPRITES.find((sprite) => sprite.id === normalizeSprite(id))?.name || "Dust Bunny";
+}
+
+function actor(chore) {
+  return {
+    id: chore.id,
+    title: chore.title,
+    points: Number(chore.points) || 0,
+    sprite: taskSprite(chore),
+  };
+}
+
+const CAGE_SEEN = "chart-cage-seen";
+const CAGE_HELD = "chart-cage-held";
+const MARKET_SEEN = "chart-market-seen";
+const WARN_SEEN = "chart-warn-seen";
+const PARENT_WARN_SEEN = "chart-parent-warn-seen";
+const PARENT_WARN_PENDING = "chart-parent-warn-pending";
+
+function pendingWarn(child) {
+  if (!child?.warnParent || !child.warnSeq) return null;
+  const key = `${child.warnSeq}:${child.warnParent}`;
+  if (sessionStorage.getItem(WARN_SEEN) === key) return null;
+  const parent = (db.parents || []).find((person) => person.name === child.warnParent);
+  return {
+    parent: child.warnParent,
+    hero: parent ? parentLook(parent.hero, parent.name) : parentHeroFallback(child.warnParent),
+    color: COLOR_HEX[parent?.color] || COLOR_HEX.teal,
+    hearts: child.hearts,
+    seq: child.warnSeq,
+    gift: child.warnKind === "heart",
+    kidName: child.name,
+    locked: child.warnKind !== "heart" && grounded(child),
+    lockKey: child.warnKind !== "heart" && grounded(child) ? String(child.groundedUntil || child.id) : "",
+  };
+}
+
+function readParentWarnPending() {
+  try {
+    const raw = sessionStorage.getItem(PARENT_WARN_PENDING);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.kidId || !data?.seq) return null;
+    const key = `${data.seq}:${data.kidId}`;
+    if (sessionStorage.getItem(PARENT_WARN_SEEN) === key) {
+      sessionStorage.removeItem(PARENT_WARN_PENDING);
+      return null;
+    }
+    return data;
+  } catch {
+    sessionStorage.removeItem(PARENT_WARN_PENDING);
+    return null;
+  }
+}
+
+function queueParentWarn(kidId, result, kind = "warn") {
+  const me = parent();
+  const child = kidById(kidId);
+  const seq = Number(result?.warn_seq) || Number(child?.warnSeq) || Date.now();
+  const payload = {
+    kidId,
+    seq,
+    kind,
+    hearts: Number(result?.hearts ?? child?.hearts ?? 0),
+    locked: Boolean(result?.locked) || grounded({ ...child, groundedUntil: result?.grounded_until || child?.groundedUntil }),
+    parent: result?.parent || me?.name || "Parent",
+    lockKey: String(result?.grounded_until || child?.groundedUntil || kidId),
+  };
+  sessionStorage.setItem(PARENT_WARN_PENDING, JSON.stringify(payload));
+  if (child) {
+    child.warnParent = payload.parent;
+    child.warnSeq = payload.seq;
+    child.warnKind = kind;
+    child.hearts = payload.hearts;
+    if (payload.locked && result?.grounded_until) child.groundedUntil = result.grounded_until;
+  }
+  return payload;
+}
+
+function pendingParentWarn() {
+  const me = parent();
+  if (!me?.name) return null;
+  const queued = readParentWarnPending();
+  const child = queued ? kidById(queued.kidId) : null;
+  if (queued && child) {
+    return {
+      view: "parent",
+      parent: queued.parent || me.name,
+      hero: parentLook(me.hero, me.name),
+      color: COLOR_HEX[me.color] || COLOR_HEX.teal,
+      weapon: heldWeapon(me.weapon || "broom"),
+      hearts: queued.hearts,
+      seq: queued.seq,
+      gift: queued.kind === "heart",
+      locked: queued.kind !== "heart" && queued.locked,
+      lockKey: queued.locked ? queued.lockKey : "",
+      kidId: child.id,
+      kidName: child.name,
+    };
+  }
+  const kids = (db.kids || [])
+    .filter((row) => row.warnParent === me.name && row.warnSeq)
+    .sort((a, b) => (b.warnSeq || 0) - (a.warnSeq || 0));
+  const next = kids[0];
+  if (!next) return null;
+  const key = `${next.warnSeq}:${next.id}`;
+  if (sessionStorage.getItem(PARENT_WARN_SEEN) === key) return null;
+  return {
+    view: "parent",
+    parent: me.name,
+    hero: parentLook(me.hero, me.name),
+    color: COLOR_HEX[me.color] || COLOR_HEX.teal,
+    weapon: heldWeapon(me.weapon || "broom"),
+    hearts: next.hearts,
+    seq: next.warnSeq,
+    gift: next.warnKind === "heart",
+    locked: next.warnKind !== "heart" && grounded(next),
+    lockKey: grounded(next) ? String(next.groundedUntil || next.id) : "",
+    kidId: next.id,
+    kidName: next.name,
+  };
+}
+
+function kidStageGear(child) {
+  if (!child) return null;
+  const quest = questCatalog();
+  const weaponKey = quest.weapons[child.weapon] ? child.weapon : "broom";
+  return { weapon: quest.weaponSprite(weaponKey), pet: normalizePet(child.pet) || null };
+}
+
+function parentGuardian() {
+  const me = parent();
+  return {
+    name: me?.name || "Parent",
+    hero: parentLook(me?.hero, me?.name),
+    color: COLOR_HEX[me?.color] || COLOR_HEX.teal,
+    weapon: heldWeapon(me?.weapon || "broom"),
+    pet: normalizePet(me?.pet) || null,
+    head: me?.helmet || null,
+    body: me?.armor || null,
+  };
+}
+
+function paintStage() {
+  const host = document.querySelector(".stage");
+  if (!host || host.hidden) return;
+  if (db.session?.role === "parent" && route.name === "chart") {
+    const guardian = parentGuardian();
+    const parentWarn = pendingParentWarn();
+    if (parentWarn) {
+      const child = kidById(parentWarn.kidId);
+      setStageScene({
+        color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+        hero: kidHero(child?.hero),
+        waiting: [],
+        plays: [],
+        onDone: onFightDone,
+        gear: kidStageGear(child),
+        hearts: parentWarn.gift ? Math.max(0, (child?.hearts ?? 1) - 1) : Math.min(3, (child?.hearts ?? 0) + 1),
+        guardian,
+        warn: parentWarn,
+        onWarn: (info) => {
+          const key = `${info?.seq || parentWarn.seq}:${info?.kidId || parentWarn.kidId}`;
+          sessionStorage.setItem(PARENT_WARN_SEEN, key);
+          sessionStorage.removeItem(PARENT_WARN_PENDING);
+          paintStage();
+        },
+        onLockup: (mode) => {
+          if (mode === "held" && parentWarn.lockKey) sessionStorage.setItem(CAGE_SEEN, parentWarn.lockKey);
+        },
+      });
+      return;
+    }
+    const seen = seenFlee();
+    const fleeing = (db.chores || []).filter((chore) => chore.verdict === "flee" && !seen.has(chore.id) && !finishedIds.has(chore.id));
+    if (fleeing.length) {
+      const child = kidById(fleeing[0].kidId);
+      setStageScene({
+        color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+        hero: kidHero(child?.hero),
+        waiting: [],
+        plays: fleeing.map((chore) => ({ ...actor(chore), flee: true, approved: true })),
+        onDone: onFightDone,
+        gear: kidStageGear(child),
+        hearts: child?.hearts ?? 3,
+        guardian,
+      });
+      return;
+    }
+    const waiting = (db.chores || []).filter((chore) => chore.status === "submitted");
+    const chore = waiting[0];
+    if (chore) {
+      const child = kidById(chore.kidId);
+      const review = {
+        ...actor(chore),
+        kidName: child?.name || "Hero",
+        hero: kidHero(child?.hero),
+        parentName: guardian.name,
+        parentHero: guardian.hero,
+        parentColor: guardian.color,
+        parentWeapon: guardian.weapon,
+        parentHead: guardian.head,
+        parentBody: guardian.body,
+      };
+      setStageScene({
+        color: COLOR_HEX[child?.color || host.dataset.color] || COLOR_HEX.leaf,
+        hero: kidHero(child?.hero),
+        waiting: [],
+        plays: [],
+        onDone: onFightDone,
+        gear: kidStageGear(child),
+        hearts: child?.hearts ?? 3,
+        guardian,
+        review,
+        onReviewApprove: (id) => {
+          run(() => rpc("approve_chore", { p_chore: id }), "Approved. Add any new device minutes in Screen Time.");
+        },
+        onReviewDecline: (id) => {
+          markFleeSeen(id);
+          run(() => rpc("reject_chore", { p_chore: id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
+        },
+      });
+      return;
+    }
+    setStageScene({
+      color: guardian.color,
+      hero: "",
+      waiting: [],
+      plays: [],
+      gear: null,
+      hearts: null,
+      guardian,
+    });
+    return;
+  }
+  if (!db.session && route.name === "welcome") {
+    setStageScene({
+      parade: doorPeople().map((person) => ({
+        id: person.id,
+        name: person.name,
+        hero: person.hero,
+        color: COLOR_HEX[person.color] || COLOR_HEX.leaf,
+        weaponKey: person.weapon,
+        weapon: heldWeapon(person.weapon),
+        pet: normalizePet(person.pet) || null,
+      })),
+      hearts: 3,
+    });
+    return;
+  }
+  const name = host.dataset.color || "leaf";
+  const child = db.session?.role === "kid" ? kid() : null;
+  const heroKey = child ? kidHero(db.hero?.hero) : "";
+  const warn = child ? pendingWarn(child) : null;
+  const locked = child && grounded(child) && !warn;
+  const lockKey = child && grounded(child) ? String(child.groundedUntil || child.id) : "";
+  let lockup = null;
+  if (locked) {
+    lockup = sessionStorage.getItem(CAGE_SEEN) === lockKey ? "held" : "arrive";
+    sessionStorage.setItem(CAGE_HELD, lockKey);
+  } else if (!warn && sessionStorage.getItem(CAGE_HELD)) {
+    lockup = "free";
+  }
+  const atMarket = route.name === "kid-shop" && !locked && !warn;
+  if (!atMarket) sessionStorage.removeItem(MARKET_SEEN);
+  const marketVisit = child ? `${child.id}:market` : "";
+  const market = atMarket
+    ? sessionStorage.getItem(MARKET_SEEN) === marketVisit
+      ? "shop"
+      : "arrive"
+    : null;
+  const playing = new Set(playChores.map((chore) => chore.id));
+  // Landmarks: Quests shows the Quest Board when no monsters are on the trail, My Hero walks to the
+  // treasure chest, and Arena walks through the colosseum gate before the arena opens.
+  const free = child && !locked && !warn;
+  const trailBusy = battleLine.length > 0 || playChores.length > 0;
+  const spot = !free ? null
+    : route.name === "today" && !trailBusy ? "board"
+    : route.name === "hero" ? "chest"
+    : route.name === "arena" && !arenaRevealed() ? "gate"
+    : null;
+  const atSpot = spot === "chest" || spot === "gate";
+  // A grounded or warned kid never walks through the gate, so open the arena lobby to show why it's closed.
+  if (child && !free && route.name === "arena" && !arenaRevealed()) revealArena();
+  const shownHearts = warn
+    ? warn.gift ? Math.max(0, (child?.hearts ?? 1) - 1) : Math.min(3, (child?.hearts ?? 0) + 1)
+    : child?.hearts ?? 3;
+  setStageScene({
+    color: COLOR_HEX[name] || COLOR_HEX.leaf,
+    hero: heroKey,
+    waiting: locked || warn || atMarket || atSpot ? [] : battleLine.filter((chore) => !playing.has(chore.id)).map((chore) => ({ ...actor(chore), ready: Boolean(chore.approved) })),
+    plays: locked || warn || atMarket || atSpot
+      ? []
+      : playChores.map((chore) => ({
+          ...actor(chore),
+          flee: Boolean(chore.flee),
+          approved: Boolean(chore.approved),
+        })),
+    onDone: onFightDone,
+    gear: heroGear(),
+    pet: normalizePet(child?.pet || db.hero?.pet) || null,
+    hearts: shownHearts,
+    lockup,
+    lockKey,
+    market,
+    spot,
+    priority: Boolean(child && openPriority(child).length),
+    gateClosed: Boolean(child && priorityLocked(child)),
+    onSpot: (kind, mode) => {
+      if (kind === "gate" && mode === "entered" && route.name === "arena") {
+        revealArena();
+        render();
+      }
+    },
+    warn,
+    onWarn: (info) => {
+      const key = `${info?.seq || child?.warnSeq || ""}:${info?.parent || child?.warnParent || ""}`;
+      sessionStorage.setItem(WARN_SEEN, key);
+      if (child) {
+        child.warnParent = "";
+        // The request only goes out once the builder is awaited or chained, so chain it.
+        supabase.rpc("kid_ack_warn", { p_token: kidToken(), p_seq: info?.seq || child.warnSeq }).then(() => {}, () => {});
+      }
+      paintStage();
+    },
+    onLockup: (mode) => {
+      if (mode === "held") sessionStorage.setItem(CAGE_SEEN, lockKey);
+      if (mode === "free") {
+        sessionStorage.removeItem(CAGE_HELD);
+        sessionStorage.removeItem(CAGE_SEEN);
+      }
+    },
+    onMarket: (mode) => {
+      if (mode === "shop" && marketVisit) sessionStorage.setItem(MARKET_SEEN, marketVisit);
+    },
+  });
+}
+
+let leavingArena = false;
+
+function arenaContext() {
+  return {
+    rpc,
+    nice,
+    token: () => kidToken(),
+    points: () => Number(kid()?.points) || 0,
+    setPoints: (value) => {
+      const child = kid();
+      if (child) child.points = value;
+    },
+    entry: () => Number(db.family?.arenaNextEntry ?? db.family?.arenaEntry ?? 2),
+    perKill: () => Number(db.family?.arenaPerKill ?? 1),
+    setNextEntry: (value) => {
+      if (db.family) db.family.arenaNextEntry = Math.max(0, Number(value) || 0);
+    },
+    level: () => kid()?.arenaLevel || "kid",
+    grounded: () => Boolean(grounded(kid())),
+    priority: () => priorityLocked(),
+    hero: () => kidHero(db.hero?.hero || kid()?.hero),
+    weapon: () => db.hero?.weapon || kid()?.weapon || "broom",
+    pet: () => normalizePet(kid()?.pet || db.hero?.pet) || null,
+    gear: () => ({ head: db.gear?.head || null, body: db.gear?.body || null }),
+    refresh: () => run(async () => {}, ""),
+  };
+}
+
+/* Parent practice arena: free, no coins, no server calls. */
+function parentArenaContext() {
+  const me = parent();
+  const guardian = parentGuardian();
+  return {
+    practice: true,
+    rpc: async () => ({}),
+    nice,
+    token: () => "",
+    points: () => 0,
+    setPoints: () => {},
+    entry: () => 0,
+    perKill: () => 0,
+    level: () => "kid",
+    grounded: () => false,
+    priority: () => false,
+    hero: () => guardian.hero,
+    weapon: () => (questCatalog().weapons[me?.weapon] ? me.weapon : "broom"),
+    pet: () => guardian.pet,
+    gear: () => ({ head: guardian.head, body: guardian.body }),
+    refresh: () => {},
+  };
+}
+
+let questEngine = null;
+function questCatalog() {
+  if (!questEngine) {
+    const canvas = document.createElement("canvas");
+    questEngine = createChoreQuest(canvas, {});
+    questEngine.destroy();
+  }
+  return questEngine;
+}
+
+function heroGear() {
+  if (db.session?.role !== "kid" || !db.hero) return null;
+  const quest = questCatalog();
+  const weaponKey = quest.weapons[db.hero.weapon] ? db.hero.weapon : "broom";
+  const pet = normalizePet(db.hero.pet || kid()?.pet) || null;
+  return { weapon: quest.weaponSprite(weaponKey), pet, head: db.gear?.head || null, body: db.gear?.body || null };
+}
+
+function ownedPets() {
+  const fromBoard = Array.isArray(db.hero?.pets) ? db.hero.pets : [];
+  const fromSnap = Array.isArray(db.pets) ? db.pets : [];
+  return [...new Set([...fromBoard, ...fromSnap])].filter((key) => PET_CATALOG[key]);
+}
+
+// Legendary pet thumbnails keep animating (rainbow colours, flames, stars).
+let liveThumbTimer = null;
+function animateLiveThumbs() {
+  if (liveThumbTimer) return;
+  liveThumbTimer = setInterval(() => {
+    const live = document.querySelectorAll("canvas.pet-thumb.live, canvas.portrait-pet");
+    if (!live.length) return;
+    live.forEach((canvas) => {
+      const key = canvas.dataset.pet || canvas.dataset.portraitPet;
+      if (key && PET_CATALOG[key]?.legend) drawPetIcon(canvas, key);
+    });
+  }, 125);
+}
+
+function petMarketBoard(child) {
+  const coins = Math.max(0, Number(child?.points) || 0);
+  const owned = new Set(ownedPets());
+  const equipped = normalizePet(child?.pet || db.hero?.pet) || "";
+  const keys = [...PET_KEYS].sort((a, b) => Number(Boolean(PET_CATALOG[b].legend)) - Number(Boolean(PET_CATALOG[a].legend)));
+  const rows = keys.map((key) => {
+    const info = PET_CATALOG[key];
+    const cost = petPrice(key);
+    const have = owned.has(key);
+    const ready = coins >= cost;
+    const tag = [info.legend ? "★ Legendary" : "", info.fly ? "flies" : "", info.hop ? "hops" : ""].filter(Boolean).join(" · ");
+    let action = `<button class="btn small leaf" data-action="buy-pet" data-pet="${esc(key)}" ${ready ? "" : "disabled"}>Buy</button>`;
+    if (equipped === key) action = `<span class="chip">Equipped</span>`;
+    else if (have) action = `<button class="btn small" data-action="set-pet" data-pet="${esc(key)}">Equip</button>`;
+    return `<div class="item loot pet-loot${info.legend ? " legend" : ""}${have || ready || equipped === key ? " ready" : ""}">
+      <canvas class="pet-thumb${info.legend ? " live" : ""}" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${equipped === key ? "Equipped" : have ? "Owned" : `${cost} coins`}${tag ? ` · ${tag}` : ""}</div>${have || equipped === key ? "" : meter(coins, cost)}</div>
+      ${action}
+    </div>`;
+  }).join("");
+  return `<section class="card">
+    <h2 class="page-title">Pets</h2>
+    <p class="lede">Buy a buddy that battles beside you on the trail. Buying equips it right away. Parents can change the coin price later.</p>
+    ${equipped ? `<p class="hint">Equipped: ${esc(PET_CATALOG[equipped]?.name || equipped)}. <button class="btn small ghost" data-action="set-pet" data-pet="">Unequip</button></p>` : ""}
+    <div class="pet-market">${rows}</div>
+  </section>`;
+}
+
+function gearPrice(key) {
+  const custom = Number(db.gear?.prices?.[key]);
+  return custom > 0 ? custom : GEAR[key]?.price || 0;
+}
+
+function gearSpecialLine(key) {
+  const ability = ABILITIES[GEAR[key]?.ability];
+  return ability ? `Special: ${ability.name} – ${ability.desc}` : "";
+}
+
+function gearMarketBoard(child) {
+  const coins = Math.max(0, Number(child?.points) || 0);
+  const owned = new Set(db.gear?.owned || []);
+  const wearing = new Set([db.gear?.head, db.gear?.body].filter(Boolean));
+  const row = (key) => {
+    const info = GEAR[key];
+    const cost = gearPrice(key);
+    const have = owned.has(key);
+    const ready = coins >= cost;
+    let action = `<button class="btn small leaf" type="button" data-action="buy-gear" data-gear="${esc(key)}" ${ready ? "" : "disabled"}>Buy</button>`;
+    if (wearing.has(key)) action = `<span class="chip">Wearing</span>`;
+    else if (have) action = `<span class="chip">Owned</span>`;
+    return `<div class="item loot pet-loot gear-loot${have || ready ? " ready" : ""}">
+      <span class="gear-thumb"><canvas data-gear="${esc(key)}" width="14" height="12" aria-hidden="true"></canvas></span>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${esc(gearSpecialLine(key))}</div><div class="tiny muted">${have ? "Owned" : `${cost} coins`}</div>${have ? "" : meter(coins, cost)}</div>
+      ${action}
+    </div>`;
+  };
+  const group = (slot) => GEAR_KEYS.filter((key) => GEAR[key].slot === slot).map(row).join("");
+  return `<section class="card stack">
+    <h2 class="page-title">Helmets &amp; Armour</h2>
+    <p class="lede">Each piece gives a special you can use once per Monster Arena run. Buying puts it on right away. Swap pieces on My Hero.</p>
+    <h3 class="gear-group">Helmets</h3>
+    <div class="pet-market">${group("head")}</div>
+    <h3 class="gear-group">Armour</h3>
+    <div class="pet-market">${group("body")}</div>
+  </section>`;
+}
+
+function weaponSlotCard(weapons) {
+  const open = Boolean(heroExpand["gear-weapon"]);
+  const current = weapons.find((entry) => entry.equipped) || weapons[0];
+  const unlocked = weapons.filter((entry) => entry.open).length;
+  const options = open
+    ? `<div class="gear-options">
+        ${weapons.map(({ key, weapon, progress, open: have, equipped }) => have
+          ? `<button type="button" class="gear-option${equipped ? " on" : ""}" data-action="set-weapon" data-weapon="${esc(key)}" aria-pressed="${equipped ? "true" : "false"}">
+              <span class="gear-thumb"><canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas></span>
+              <span><strong>${esc(weapon.name)}</strong><small>${esc(weapon.perk || weapon.unlock || "")}</small></span>
+            </button>`
+          : `<div class="gear-option locked" aria-disabled="true">
+              <span class="gear-thumb"><canvas data-quest-weapon="${esc(key)}" width="16" height="8" aria-hidden="true"></canvas></span>
+              <span><strong>${esc(weapon.name)}</strong><small>Locked · ${esc(weapon.unlock || "")}</small>${meter(progress.value, progress.goal)}</span>
+            </div>`).join("")}
+      </div>`
+    : "";
+  return `<div class="gear-slot">
+    <button type="button" class="gear-slot-head" data-action="open-gear-slot" data-slot="weapon" aria-expanded="${open ? "true" : "false"}">
+      <span class="gear-thumb">${current ? `<canvas data-quest-weapon="${esc(current.key)}" width="16" height="8" aria-hidden="true"></canvas>` : ""}</span>
+      <span class="gear-slot-copy">
+        <span class="field-label">Weapon</span>
+        <strong>${esc(current?.weapon.name || "Broom Sword")}</strong>
+        <small class="tiny muted">${esc(current?.weapon.perk || "")}${current?.weapon.perk ? " · " : ""}${unlocked} of ${weapons.length} unlocked</small>
+      </span>
+      <span class="gear-slot-chev" aria-hidden="true"></span>
+    </button>
+    ${options}
+  </div>`;
+}
+
+function heroGearBoard(child, weapons = []) {
+  return gearCard({
+    weapons,
+    worn: { head: db.gear?.head || null, body: db.gear?.body || null },
+    owned: db.gear?.owned || [],
+    look: kidHero(db.hero?.hero || child?.hero),
+    weaponKey: db.hero?.weapon || "broom",
+    lede: "Tap a slot to swap. Weapons unlock as you do chores. Helmets and armour each give one special per Monster Arena run.",
+  });
+}
+
+function gearCard({ weapons = [], worn = {}, owned = [], look, weaponKey, lede }) {
+  const slots = [
+    { slot: "head", label: "Helmet" },
+    { slot: "body", label: "Armour" },
+  ];
+  const cards = slots.map(({ slot, label }) => {
+    const current = normalizeGear(worn[slot], slot);
+    const open = Boolean(heroExpand[`gear-${slot}`]);
+    const mine = owned.filter((key) => GEAR[key]?.slot === slot);
+    const options = open
+      ? `<div class="gear-options">
+          ${mine.map((key) => `<button type="button" class="gear-option${key === current ? " on" : ""}" data-action="set-gear" data-slot="${slot}" data-gear="${esc(key)}" aria-pressed="${key === current ? "true" : "false"}">
+            <span class="gear-thumb"><canvas data-gear="${esc(key)}" width="14" height="12" aria-hidden="true"></canvas></span>
+            <span><strong>${esc(GEAR[key].name)}</strong><small>${esc(ABILITIES[GEAR[key].ability]?.name || "")}</small></span>
+          </button>`).join("")}
+          <button type="button" class="gear-option${current ? "" : " on"}" data-action="set-gear" data-slot="${slot}" data-gear="" aria-pressed="${current ? "false" : "true"}">
+            <span class="gear-thumb empty" aria-hidden="true"></span>
+            <span><strong>None</strong><small>Take it off</small></span>
+          </button>
+          ${mine.length ? "" : `<p class="tiny muted">You don't own any ${slot === "head" ? "helmets" : "armour"} yet. Buy one in the Market.</p>`}
+        </div>`
+      : "";
+    return `<div class="gear-slot">
+      <button type="button" class="gear-slot-head" data-action="open-gear-slot" data-slot="${slot}" aria-expanded="${open ? "true" : "false"}">
+        <span class="gear-thumb${current ? "" : " empty"}">${current ? `<canvas data-gear="${esc(current)}" width="14" height="12" aria-hidden="true"></canvas>` : ""}</span>
+        <span class="gear-slot-copy">
+          <span class="field-label">${label}</span>
+          <strong>${current ? esc(GEAR[current].name) : "Empty"}</strong>
+          <small class="tiny muted">${current ? esc(gearSpecialLine(current)) : "Tap to put something on."}</small>
+        </span>
+        <span class="gear-slot-chev" aria-hidden="true"></span>
+      </button>
+      ${options}
+    </div>`;
+  }).join("");
+  const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
+  return `<section class="card stack">
+    <h2 class="page-title">Gear</h2>
+    <p class="lede">${esc(lede)}</p>
+    <div class="gear-board">
+      <canvas class="hero-icon gear-preview" data-look="${esc(look)}" data-weapon="${esc(weaponKey)}" data-color="${esc(tint)}" data-head="${esc(worn.head || "")}" data-body="${esc(worn.body || "")}" width="40" height="34" aria-hidden="true"></canvas>
+      <div class="gear-slots">${weapons.length ? weaponSlotCard(weapons) : ""}${cards}</div>
+    </div>
+  </section>`;
+}
+
+function parentPetPricesBoard() {
+  const keys = [...PET_KEYS].sort((a, b) => Number(Boolean(PET_CATALOG[b].legend)) - Number(Boolean(PET_CATALOG[a].legend)));
+  const rows = keys.map((key) => {
+    const info = PET_CATALOG[key];
+    const cost = petPrice(key);
+    return `<form class="item pet-price" data-action="save-pet-price" data-pet="${esc(key)}">
+      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">Market pet</div></div>
+      <label class="pet-cost"><span class="sr-only">Price</span><input name="cost" type="number" min="1" value="${cost}" required></label>
+      <button class="btn small ghost" type="submit">Save</button>
+    </form>`;
+  }).join("");
+  return `<section class="card">
+    <div class="section-title"><h2>Pet prices</h2></div>
+    <p class="lede">Kids buy these in the Market. Default is ${DEFAULT_PET_PRICE} coins each.</p>
+    <div class="pet-market">${rows}</div>
+  </section>`;
+}
+
+function heroColorName() {
+  if (db.session?.role === "parent") {
+    const me = parent();
+    return COLORS.includes(me?.color) ? me.color : "teal";
+  }
+  const child = kid();
+  return COLORS.includes(child?.color) ? child.color : "leaf";
+}
+
+function heroStats() {
+  const stats = db.hero?.stats || {};
+  return {
+    battles: Number(stats.battles) || 0,
+    coins: Number(stats.coins) || 0,
+    earlyBird: Number(stats.earlyBird) || 0,
+    streak: Number(stats.streak) || 0,
+    bestStreak: Number(stats.bestStreak) || 0,
+    chores: stats.chores || {},
+  };
+}
+
+function meter(value, goal) {
+  const safeGoal = Math.max(1, Number(goal) || 1);
+  const safeValue = Math.max(0, Math.min(safeGoal, Number(value) || 0));
+  const pct = Math.round((safeValue / safeGoal) * 100);
+  return `<div class="meter" role="progressbar" aria-valuenow="${safeValue}" aria-valuemin="0" aria-valuemax="${safeGoal}" aria-valuetext="${safeValue} of ${safeGoal}"><span style="width:${pct}%"></span></div><small class="meter-count">${safeValue} / ${safeGoal}</small>`;
+}
+
+function colorSwatches(selected) {
+  return COLORS.map(
+    (name) =>
+      `<button type="button" class="swatch ${esc(name)}" data-action="set-color" data-color="${esc(name)}" aria-pressed="${selected === name ? "true" : "false"}" aria-label="${esc(name)}"></button>`
+  ).join("");
+}
+
+function unlockCloseness(progress) {
+  const goal = Math.max(1, Number(progress?.goal) || 1);
+  const value = Math.max(0, Number(progress?.value) || 0);
+  return {
+    remaining: Math.max(0, goal - value),
+    ratio: value / goal,
+  };
+}
+
+function sortedHeroWeapons(quest, stats, weaponKey) {
+  return Object.entries(quest.weapons)
+    .map(([key, weapon]) => {
+      const progress = quest.weaponProgress(key, stats) || { value: 0, goal: 1 };
+      const open = quest.weaponUnlocked(key, stats);
+      const equipped = key === weaponKey;
+      const close = unlockCloseness(progress);
+      return { key, weapon, progress, open, equipped, ...close };
+    })
+    .sort((a, b) => {
+      if (a.equipped !== b.equipped) return a.equipped ? -1 : 1;
+      if (a.open !== b.open) return a.open ? -1 : 1;
+      if (!a.open && !b.open) {
+        // Started weapons first, closest to done by percent; untouched ones last, easiest goal first.
+        const aStarted = a.ratio > 0;
+        const bStarted = b.ratio > 0;
+        if (aStarted !== bStarted) return aStarted ? -1 : 1;
+        if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+        if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+      }
+      return a.weapon.name.localeCompare(b.weapon.name);
+    });
+}
+
+function sortedHeroAchievements(quest, stats, achievementProgress) {
+  const earned = Array.isArray(db.hero?.achievements) ? db.hero.achievements : [];
+  const earnedAt = new Map(earned.map((key, index) => [key, index]));
+  return quest.achievements
+    .map((medal) => {
+      const progress = achievementProgress[medal.key] || { value: 0, goal: medal.goal, done: false };
+      const done = Boolean(progress.done);
+      const close = unlockCloseness(progress);
+      return { medal, progress, done, earnedIndex: earnedAt.has(medal.key) ? earnedAt.get(medal.key) : -1, ...close };
+    })
+    .sort((a, b) => {
+      if (a.done !== b.done) return a.done ? -1 : 1;
+      if (a.done && b.done) return b.earnedIndex - a.earnedIndex;
+      if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+      if (b.ratio !== a.ratio) return b.ratio - a.ratio;
+      return a.medal.name.localeCompare(b.medal.name);
+    });
+}
+
+function achievementCard(entry) {
+  const { medal, progress } = entry;
+  return `<article class="medal${progress.done ? " done" : ""}">
+    <canvas data-quest-badge="${esc(medal.key)}" width="12" height="15" aria-hidden="true"></canvas>
+    <div>
+      <strong>${esc(medal.name)}</strong>
+      <p class="tiny muted">${esc(medal.desc)} · ${esc(medal.tier)}</p>
+      ${meter(progress.value, progress.goal)}
+    </div>
+  </article>`;
+}
+
+function heroPetsBoard(child) {
+  const owned = ownedPets();
+  if (!owned.length) return "";
+  const equipped = normalizePet(child?.pet || db.hero?.pet) || "";
+  const rows = [
+    ...owned.filter((key) => key === equipped),
+    ...owned.filter((key) => key !== equipped),
+  ].map((key) => {
+    const info = PET_CATALOG[key];
+    const active = key === equipped;
+    return `<div class="item pet-loot">
+      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${active ? "Equipped" : "Owned"}</div></div>
+      ${active
+        ? `<button class="btn small ghost" data-action="set-pet" data-pet="">Unequip</button>`
+        : `<button class="btn small leaf" data-action="set-pet" data-pet="${esc(key)}">Equip</button>`}
+    </div>`;
+  }).join("");
+  return `<section class="card stack">
+    <h2 class="page-title">Purchased Pets</h2>
+    <p class="lede">Equip one buddy for the trail. Buy more in the Market.</p>
+    <div class="pet-market">${rows}</div>
+  </section>`;
+}
+
+function heroBoard() {
+  const quest = questCatalog();
+  const stats = heroStats();
+  const child = kid();
+  const heroKey = quest.heroes[db.hero?.hero] ? db.hero.hero : "knight";
+  const weaponKey = quest.weapons[db.hero?.weapon] ? db.hero.weapon : "broom";
+  const achievementProgress = quest.achievementProgress(stats);
+  // King and Queen are parent heroes; kids pick from the kid heroes only.
+  const kidHeroes = Object.entries(quest.heroes).filter(([key]) => KID_HEROES.includes(key));
+  const heroes = kidHeroes.map(([key, hero]) => `
+    <button type="button" class="hero-pick" data-action="set-hero" data-hero="${esc(key)}" aria-pressed="${key === heroKey ? "true" : "false"}">
+      <canvas data-quest-hero="${esc(key)}" width="14" height="16" aria-hidden="true"></canvas>
+      <span>${esc(hero.name)}</span>
+    </button>`).join("");
+  const weapons = sortedHeroWeapons(quest, stats, weaponKey);
+  const medals = sortedHeroAchievements(quest, stats, achievementProgress);
+  const lastMedal = medals.find((entry) => entry.done) || null;
+  const medalsOpen = Boolean(heroExpand.achievements);
+  const chooseOpen = Boolean(heroExpand.choose);
+  const shownMedals = medalsOpen ? medals : lastMedal ? [lastMedal] : medals.slice(0, 1);
+  const monsters = SPRITES.map((sprite) => {
+    const count = Number(stats.chores?.[sprite.id]) || 0;
+    const info = quest.monsters[sprite.id];
+    return `<figure class="monster-count${count ? " beaten" : ""}">
+      <canvas data-sprite="${esc(sprite.id)}" width="16" height="16" aria-hidden="true"></canvas>
+      <figcaption><strong>${esc(info?.name || sprite.name)}</strong><small>${count}</small></figcaption>
+    </figure>`;
+  }).join("");
+  const color = heroColorName();
+  const moreMedals = Math.max(0, medals.length - shownMedals.length);
+  const heroName = quest.heroes[heroKey]?.name || "Adventurer";
+  return `<section class="card stack collapsible-card${chooseOpen ? "" : " collapsed"}">
+      <div class="card-head">
+        <h2 class="page-title">Choose your hero</h2>
+        <span class="card-head-tools">
+          ${chooseOpen ? "" : `<span class="tiny muted">${esc(heroName)} · ${esc(color.charAt(0).toUpperCase() + color.slice(1))}</span>`}
+          <button type="button" class="section-toggle" data-action="toggle-hero-section" data-section="choose" aria-expanded="${chooseOpen ? "true" : "false"}" aria-label="${chooseOpen ? "Hide" : "Show"} hero choices"><i aria-hidden="true"></i></button>
+        </span>
+      </div>
+      <div class="hero-picks">${heroes}</div>
+      <div>
+        <div class="field-label">Color</div>
+        <div class="swatches hero-swatches">${colorSwatches(color)}</div>
+      </div>
+      <p class="hint">${stats.battles} quests finished · ${stats.streak}-day streak</p>
+    </section>
+    ${heroGearBoard(child, weapons)}
+    <section class="card stack">
+      <div class="section-title">
+        <h2 class="page-title">Achievements</h2>
+        <button type="button" class="btn small ghost" data-action="toggle-hero-section" data-section="achievements" aria-expanded="${medalsOpen ? "true" : "false"}">${medalsOpen ? "Show less" : moreMedals ? `Show all (${medals.length})` : "Show all"}</button>
+      </div>
+      <p class="lede">${medalsOpen ? "Newest unlocks first, then closest to earning." : lastMedal ? "Your latest unlock. Tap Show all to see the rest." : "Progress toward your next badge."}</p>
+      <div class="medal-list">${shownMedals.map(achievementCard).join("") || `<p class="muted">No achievements yet.</p>`}</div>
+    </section>
+    ${heroPetsBoard(child)}
+    <section class="card stack">
+      <h2 class="page-title">Monsters defeated</h2>
+      <div class="monster-log">${monsters}</div>
+    </section>
+    ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}`;
+}
+
+function parentHeroBoard() {
+  const quest = questCatalog();
+  const me = parent();
+  const heroKey = parentLook(me?.hero, me?.name);
+  const weaponKey = quest.weapons[me?.weapon] ? me.weapon : "broom";
+  const equippedPet = normalizePet(me?.pet) || "";
+  const color = heroColorName();
+  const heroes = Object.entries(PARENT_HEROES)
+    .map(
+      ([key, hero]) => `<button type="button" class="hero-pick" data-action="set-hero" data-hero="${esc(key)}" aria-pressed="${key === heroKey ? "true" : "false"}">
+      <canvas data-quest-hero="${esc(key)}" width="14" height="16" aria-hidden="true"></canvas>
+      <span>${esc(hero.name)}</span>
+    </button>`
+    )
+    .join("");
+  // Parents keep every weapon, helmet and piece of armour unlocked.
+  const weapons = Object.entries(quest.weapons)
+    .map(([key, weapon]) => ({ key, weapon, open: true, equipped: key === weaponKey, progress: { value: 1, goal: 1 } }))
+    .sort((a, b) => (a.equipped !== b.equipped ? (a.equipped ? -1 : 1) : a.weapon.name.localeCompare(b.weapon.name)));
+  const gear = gearCard({
+    weapons,
+    worn: { head: me?.helmet || null, body: me?.armor || null },
+    owned: GEAR_KEYS,
+    look: heroKey,
+    weaponKey,
+    lede: "Parents keep all gear unlocked. Tap a slot to swap your weapon, helmet or armour.",
+  });
+  const pets = PET_KEYS.map((key) => {
+    const info = PET_CATALOG[key];
+    const active = key === equippedPet;
+    return `<div class="item pet-loot">
+      <canvas class="pet-thumb" data-pet="${esc(key)}" width="40" height="32" aria-hidden="true"></canvas>
+      <div class="loot-copy"><strong>${esc(info.name)}</strong><div class="tiny muted">${active ? "Equipped" : "Unlocked"}</div></div>
+      ${active
+        ? `<button class="btn small ghost" data-action="set-pet" data-pet="">Unequip</button>`
+        : `<button class="btn small leaf" data-action="set-pet" data-pet="${esc(key)}">Equip</button>`}
+    </div>`;
+  }).join("");
+  return `<section class="card stack">
+      <h2 class="page-title">Choose your hero</h2>
+      <p class="lede">This look shows on the front door and the trail parade.</p>
+      <div class="hero-picks parent-hero-picks">${heroes}</div>
+      <div>
+        <div class="field-label">Color</div>
+        <div class="swatches hero-swatches">${colorSwatches(color)}</div>
+      </div>
+    </section>
+    ${gear}
+    <section class="card stack">
+      <h2 class="page-title">Pets</h2>
+      <p class="lede">Parents keep every buddy unlocked for the door parade.</p>
+      <div class="pet-market">${pets}</div>
+    </section>
+    ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}`;
+}
+
+function paintQuestArt(root) {
+  if (!root.querySelector("[data-quest-hero], [data-quest-weapon], [data-quest-badge]")) return;
+  const quest = questCatalog();
+  const swap = (slot, art) => {
+    if (!art) return;
+    art.className = slot.className;
+    art.setAttribute("aria-hidden", "true");
+    slot.replaceWith(art);
+  };
+  const tint = COLOR_HEX[heroColorName()] || COLOR_HEX.leaf;
+  const me = db.session?.role === "parent" ? parent() : null;
+  const kidGear = db.session?.role === "kid" ? db.gear : me ? { head: me.helmet, body: me.armor } : null;
+  root.querySelectorAll("canvas[data-quest-hero]").forEach((slot) => {
+    paintHeroBadge(slot, slot.dataset.questHero, null, tint, null, kidGear?.head || null, kidGear?.body || null);
+    slot.style.width = "42px";
+    slot.style.height = "auto";
+  });
+  root.querySelectorAll("canvas[data-quest-weapon]").forEach((slot) => swap(slot, quest.weaponIcon(slot.dataset.questWeapon, 3)));
+  root.querySelectorAll("canvas[data-quest-badge]").forEach((slot) => swap(slot, quest.badgeIcon(slot.dataset.questBadge, 3)));
+}
+
+function noteApprovals(line) {
+  const serverRank = new Map((db.fights || []).map((fight, index) => [fight.id, index]));
+  const fresh = line
+    .filter((chore) => chore.approved && !approvedOrder.includes(chore.id))
+    .sort((a, b) => (serverRank.get(a.id) ?? Infinity) - (serverRank.get(b.id) ?? Infinity));
+  const inLine = new Set(line.map((chore) => chore.id));
+  approvedOrder = [...approvedOrder.filter((id) => inLine.has(id)), ...fresh.map((chore) => chore.id)];
+}
+
+function applyBattleLine(line) {
+  battleLine = line.filter((chore) => chore?.id && !finishedIds.has(chore.id));
+  lineIds = battleLine.map((chore) => chore.id);
+  noteApprovals(battleLine);
+  playChores = splitBattleLine(battleLine, approvedOrder).plays;
+  const kidId = db.session?.role === "kid" ? db.session.id : "";
+  const onStage = playChores[0]?.id;
+  if (kidId) saveTracked(kidId, battleLine.filter((chore) => chore.id !== onStage));
+  paintStage();
+}
+
+function resetBattleMemory() {
+  clearInterval(pollTimer);
+  pollTimer = 0;
+  clearInterval(parentPollTimer);
+  parentPollTimer = 0;
+  lastParentSig = "";
+  battleLine = [];
+  playChores = [];
+  finishedIds = new Set();
+  lineIds = [];
+  approvedOrder = [];
+  summonWanted = new Set();
+  lastKidSig = "";
+}
+
+function seenFlee() {
+  try {
+    const ids = JSON.parse(sessionStorage.getItem("chart-seen-flee") || "[]");
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markFleeSeen(id) {
+  const seen = seenFlee();
+  seen.add(id);
+  sessionStorage.setItem("chart-seen-flee", JSON.stringify([...seen]));
+}
+
+function onFightDone(id) {
+  finishedIds.add(id);
+  const chore = (db.chores || []).find((item) => item.id === id);
+  if (db.session?.role === "kid") {
+    // The fight has been watched: tell the server so it does not replay on the next sign-in.
+    if (db.fights?.some((fight) => fight.id === id)) {
+      db.fights = db.fights.filter((fight) => fight.id !== id);
+      supabase.rpc("kid_ack_fight", { p_token: kidToken(), p_chore: id }).then(() => {}, () => {});
+    }
+  }
+  if (chore?.verdict === "flee") {
+    if (db.session?.role === "kid") {
+      chore.verdict = "";
+      // Supabase calls only run once awaited or chained.
+      supabase.rpc("kid_ack_verdict", { p_token: kidToken(), p_chore: id }).then(() => {}, () => {});
+    } else {
+      markFleeSeen(id);
+    }
+  }
+  applyBattleLine(battleLine.filter((item) => item.id !== id));
+}
+
+function syncBattles() {
+  if (db.session?.role !== "kid") return;
+  const kidId = db.session.id;
+  const submitted = (db.chores || []).filter((chore) => chore.status === "submitted").map(actor);
+  const fleeing = (db.chores || [])
+    .filter((chore) => chore.verdict === "flee" && !finishedIds.has(chore.id))
+    .map((chore) => ({ ...actor(chore), flee: true, approved: true }));
+  const line = mergeBattleLine({
+    order: lineIds,
+    stored: [...loadTracked(kidId), ...(db.fights || [])].map(actor),
+    memory: battleLine,
+    submitted,
+    finished: [...finishedIds],
+  });
+  const fleeIds = new Set(fleeing.map((chore) => chore.id));
+  const before = new Set(playChores.map((chore) => chore.id));
+  applyBattleLine([...fleeing, ...line.filter((chore) => !fleeIds.has(chore.id))]);
+  for (const chore of playChores) if (!before.has(chore.id) && !chore.flee) summonWanted.add(chore.id);
+}
+
+const SUMMON_ROUTES = new Set(["today", "hero", "kid-shop", "me"]);
+
+/* A parent approved while the app is open: bring the kid to the Quest board, scrolled to the top, so the fight plays.
+   Inside the arena (or with a dialog open) it waits and tries again on the next poll. */
+function summonBattle() {
+  const playing = new Set(playChores.map((chore) => chore.id));
+  summonWanted = new Set([...summonWanted].filter((id) => playing.has(id)));
+  if (!summonWanted.size || busy || db.session?.role !== "kid") return;
+  const child = kid();
+  if (!SUMMON_ROUTES.has(route.name) || grounded(child) || pendingWarn(child) || document.querySelector("dialog[open]")) return;
+  summonWanted.clear();
+  if (route.name !== "today") go("today");
+  const scroller = document.getElementById("scroller");
+  scroller?.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function pollKid() {
+  if (busy || db.session?.role !== "kid") return;
+  const ok = await loadKid();
+  if (!ok || db.session?.role !== "kid") return;
+  const me = kid();
+  const sig = `${me?.points}|${me?.hearts}|${me?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
+  syncBattles();
+  if (sig !== lastKidSig) {
+    lastKidSig = sig;
+    render();
+  } else {
+    paintStage();
+  }
+  summonBattle();
+}
+
+function ensurePoll() {
+  if (pollTimer || db.session?.role !== "kid") return;
+  pollTimer = setInterval(pollKid, 5000);
+}
+
+function parentSig() {
+  return [
+    (db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(","),
+    (db.requests || []).map((req) => req.id).join(","),
+    (db.kids || []).map((child) => `${child.id}:${child.points}:${child.hearts}:${child.groundedUntil || ""}:${child.groundProgress}:${child.cashCents}:${child.minutes}`).join(","),
+    (db.familyRewards || []).map((reward) => `${reward.id}:${reward.total}:${reward.status}`).join(","),
+  ].join("|");
+}
+
+/* Parents never had to tap Done, so nothing reloaded their screen: check for new tasks in the background.
+   Never redraw while a parent is typing, has a dialog open, or is playing the practice arena. */
+function parentCanRedraw() {
+  if (busy || db.session?.role !== "parent" || document.hidden || route.name === "arena" || dragState) return false;
+  if (document.querySelector("dialog[open]")) return false;
+  const tag = document.activeElement?.tagName;
+  return tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT";
+}
+
+let parentPolling = false;
+async function pollParent() {
+  if (parentPolling || !parentCanRedraw()) return;
+  parentPolling = true;
+  try {
+    const ok = await loadParent();
+    if (!ok) return;
+    const sig = parentSig();
+    if (sig === lastParentSig) return;
+    if (!parentCanRedraw()) return;
+    lastParentSig = sig;
+    render();
+  } catch {
+    /* try again on the next tick */
+  } finally {
+    parentPolling = false;
+  }
+}
+
+function ensureParentPoll() {
+  if (parentPollTimer || db.session?.role !== "parent") return;
+  parentPollTimer = setInterval(pollParent, 10000);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  if (db.session?.role === "parent") pollParent();
+  else if (db.session?.role === "kid") pollKid();
+});
+
+function hudStats(child) {
+  return `<div class="hud-stats">
+    <span class="stat coins"><i class="ico-chest" aria-hidden="true"></i><b>${child.points}</b><small>coins</small></span>
+    <span class="stat cash"><i class="ico-bill" aria-hidden="true"></i><b>${money(child.cashCents)}</b><small>cash</small></span>
+    <span class="stat time"><i class="ico-timer" aria-hidden="true"></i><b>${child.minutes}</b><small>min</small></span>
+  </div>`;
+}
+
+function celebrate() {
+  const layer = document.createElement("div");
+  layer.className = "fx";
+  layer.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 16; i += 1) {
+    const bit = document.createElement("span");
+    bit.textContent = i % 3 === 0 ? "★" : "●";
+    bit.style.left = `${8 + Math.random() * 84}%`;
+    bit.style.animationDelay = `${Math.random() * 0.18}s`;
+    bit.style.setProperty("--dx", `${-50 + Math.random() * 100}px`);
+    layer.appendChild(bit);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 1100);
+}
+
+/* Sound on/off chips in the game header. Choices are remembered on this device. */
+function soundButton() {
+  const s = soundState();
+  const muted = !s.sfx && !s.music;
+  const waves = muted
+    ? `<path d="M11 5.5l4 5M15 5.5l-4 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>`
+    : `<path d="M11 5.5c.9.7 1.4 1.5 1.4 2.5s-.5 1.8-1.4 2.5M13 3.5c1.6 1.2 2.4 2.7 2.4 4.5s-.8 3.3-2.4 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/>`;
+  return `<button class="sound-btn${muted ? " muted" : ""}" type="button" data-action="open-sound" aria-haspopup="dialog" aria-label="Sound settings" title="Sound">
+    <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path d="M1.5 6h3l4-3.2v10.4l-4-3.2h-3z" fill="currentColor"/>${waves}</svg>
+  </button>`;
+}
+
+function soundDialog() {
+  const s = soundState();
+  return `<dialog class="balance-dialog sound-dialog" aria-label="Sound">
+    <div class="stack">
+      <div class="section-title"><h2>Sound</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
+      <label class="sound-option"><input type="checkbox" data-sound="music" ${s.music ? "checked" : ""}><span>Music</span></label>
+      <label class="sound-option"><input type="checkbox" data-sound="sfx" ${s.sfx ? "checked" : ""}><span>Sound FX</span></label>
+      <p class="tiny muted">Saved on this device.</p>
+    </div>
+  </dialog>`;
+}
+
+function shell(title, sub, body, nav) {
+  const play = PLAY_ROUTES.has(route.name);
+  const signedIn = Boolean(db.session);
+  const child = play && db.session?.role === "kid" ? kid() : null;
+  return `
+    <header class="top${play ? " hud" : ""}">
+      <button class="brand" data-action="home">
+        ${child ? heroPortrait(child) : mark()}
+        <span><h1>${esc(title)}</h1><p>${esc(sub)} <span class="ver-tag">v${APP_VERSION}</span></p></span>
+      </button>
+      <span class="top-actions">
+        ${soundButton()}
+        ${signedIn ? `<button class="btn ghost small" data-action="sign-out">${play ? "Exit" : "Sign out"}</button>` : ""}
+      </span>
+    </header>
+    ${child ? hudStats(child) : ""}
+    ${play ? "" : nav || ""}
+    ${notice ? `<div class="banner info toast">${esc(notice)}</div>` : ""}
+    ${body}
+    ${play ? nav || "" : ""}
+    ${child ? proofDialogHtml() : ""}
+    ${child ? contributeDialogHtml() : ""}
+    ${soundDialog()}
+    ${play ? "" : `<footer class="note">Saved in Supabase. Screen Time still gets set by a parent in Settings.</footer>`}`;
+}
+
+function parentNav(current) {
+  const waiting = (db.chores || []).filter((chore) => chore.status === "submitted").length;
+  return `<nav class="nav">${[
+    ["chart", waiting ? `Approve (${waiting})` : "Approve"],
+    ["log", "Log"],
+    ["chores", "Tasks"],
+    ["shop", "Shop"],
+    ["family", "Family"],
+    ["parent-hero", "My Hero"],
+    ["parent-arena", "Arena"],
+  ]
+    .map(
+      ([id, label]) =>
+        `<button data-action="goto" data-to="${id}" ${current === id ? 'aria-current="page"' : ""}>${label}</button>`
+    )
+    .join("")}</nav>`;
+}
+
+function kidNav(current) {
+  return `<nav class="nav play-nav">${[
+    ["today", "Quests"],
+    ["hero", "My Hero"],
+    ["arena", "Arena"],
+    ["kid-shop", "Market"],
+    ["me", "Player"],
+  ]
+    .map(
+      ([id, label]) =>
+        `<button data-action="goto" data-to="${id}" ${current === id ? 'aria-current="page"' : ""}>${label}</button>`
+    )
+    .join("")}</nav>`;
+}
+
+function balances(child) {
+  return `<div class="balances">
+    <div class="balance points"><span>Points</span><b>${child.points}</b></div>
+    <div class="balance cash"><span>Cash</span><b>${money(child.cashCents)}</b></div>
+    <div class="balance time"><span>Device</span><b>${child.minutes} min</b></div>
+  </div>`;
+}
+
+function torontoToday() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(new Date());
+}
+
+/* A daily task from an earlier day is only still around while it waits for a parent (or to show a rejection). */
+function fromPastDay(chore) {
+  return Boolean(chore?.choreDay) && chore.choreDay < torontoToday();
+}
+
+function pastDayLabel(chore) {
+  if (!fromPastDay(chore)) return "";
+  const yesterday = new Date(`${torontoToday()}T12:00:00`);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (chore.choreDay === ymd(yesterday)) return "From yesterday";
+  return `From ${new Date(`${chore.choreDay}T12:00:00`).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric" })}`;
+}
+
+function torontoMidnightIso() {
+  const day = torontoToday();
+  const start = new Date(`${day}T00:00:00Z`);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Toronto",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(start).map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return new Date(start.getTime() - (asUtc - start.getTime())).toISOString();
+}
+
+function dayLetter(iso) {
+  const [year, month, day] = String(iso).slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", { weekday: "narrow", timeZone: "UTC" });
+}
+
+function ring(pct, color, value, label, hint) {
+  const radius = 46;
+  const turn = 2 * Math.PI * radius;
+  const offset = turn * (1 - Math.max(0, Math.min(1, pct)));
+  return `<div class="ring-card">
+    <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+      <circle cx="60" cy="60" r="${radius}" class="ring-track"></circle>
+      <circle cx="60" cy="60" r="${radius}" class="ring-value" stroke="${color}" stroke-dasharray="${turn.toFixed(2)}" stroke-dashoffset="${turn.toFixed(2)}" data-offset="${offset.toFixed(2)}"></circle>
+    </svg>
+    <div class="ring-copy"><b>${value}</b><span>${label}</span><small>${esc(hint)}</small></div>
+  </div>`;
+}
+
+function kidCharts(child) {
+  const perDollar = db.family.pointsPerDollar || 10;
+  const perTime = db.family.pointsPer30 || 4;
+  const dollarsReady = Math.floor(child.points / perDollar);
+  const intoDollar = child.points % perDollar;
+  const dollarFull = dollarsReady > 0 && intoDollar === 0;
+  const dollarPct = child.points === 0 ? 0 : dollarFull ? 1 : intoDollar / perDollar;
+  const dollarHint = child.points === 0 ? `Fill this to earn $1` : dollarFull ? `Ready to cash $${dollarsReady}` : `${perDollar - intoDollar} points until $1`;
+  const packsReady = Math.floor(child.points / perTime);
+  const intoTime = child.points % perTime;
+  const timeFull = packsReady > 0 && intoTime === 0;
+  const timePct = child.points === 0 ? 0 : timeFull ? 1 : intoTime / perTime;
+  const timeHint = child.points === 0 ? `Fill this for 30 minutes` : timeFull ? `Ready for ${packsReady * 30} minutes` : `${perTime - intoTime} points until 30 minutes`;
+  const dollars = Math.floor(child.cashCents / 100);
+  const bills = Math.min(dollars, 8);
+  const week = db.week.length ? db.week : [];
+  const peak = Math.max(1, ...week.map((day) => Number(day.points) || 0));
+  return `<section class="card stack power">
+    <h2 class="page-title">Power</h2>
+    <div class="rings">
+      ${ring(dollarPct, "#e3a31a", child.points, "Points", dollarHint)}
+      ${ring(timePct, "#3c7f92", `${child.minutes}`, "Minutes", timeHint)}
+    </div>
+    <div class="cash-card">
+      <div><span>Cash</span><b>${money(child.cashCents)}</b></div>
+      <div class="bills" aria-hidden="true">${bills ? Array.from({ length: bills }, () => `<i></i>`).join("") : `<i class="empty"></i>`}${dollars > bills ? `<span>+${dollars - bills}</span>` : ""}</div>
+    </div>
+    <div class="week" aria-label="Points earned this week">
+      ${week
+        .map((day) => {
+          const height = Math.max(8, Math.round(((Number(day.points) || 0) / peak) * 88));
+          const today = String(day.day).slice(0, 10) === torontoToday();
+          return `<div class="week-col${today ? " today" : ""}"><i style="height:${height}px"></i><span>${esc(dayLetter(day.day))}</span></div>`;
+        })
+        .join("")}
+    </div>
+    <p class="hint">The bars are points a parent approved this week.</p>
+  </section>`;
+}
+
+function isSpecial(chore) {
+  return chore.special === true;
+}
+
+function clockLabel(minute) {
+  const m = ((Number(minute) % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(m / 60)).padStart(2, "0");
+  const mm = String(m % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function clockValue(value) {
+  const match = String(value || "").trim().match(/(\d{1,2})\D+(\d{2})/);
+  if (!match) return "";
+  let hh = Math.min(23, Math.max(0, Number(match[1]) || 0));
+  const mm = Math.min(59, Math.max(0, Number(match[2]) || 0));
+  const ampm = String(value || "").match(/\b(am|pm)\b/i)?.[1]?.toLowerCase();
+  if (ampm === "pm" && hh < 12) hh += 12;
+  if (ampm === "am" && hh === 12) hh = 0;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function minutesFromClock(value) {
+  const normalized = clockValue(value);
+  if (!normalized) return null;
+  const [hh, mm] = normalized.split(":").map(Number);
+  return hh * 60 + mm;
+}
+
+function minutesFromInput(input) {
+  if (!input) return null;
+  if (input.type === "time" && Number.isFinite(input.valueAsNumber)) {
+    return Math.floor(input.valueAsNumber / 60000) % 1440;
+  }
+  return minutesFromClock(input.value);
+}
+
+function sectionOpen(section, nowMinute = torontoMinute()) {
+  if (!section) return true;
+  const start = Number(section.startMinute);
+  const end = Number(section.endMinute);
+  if (start === end) return true;
+  if (start < end) return nowMinute >= start && nowMinute < end;
+  return nowMinute >= start || nowMinute < end;
+}
+
+function torontoMinute() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 60 + minute;
+}
+
+const DAY_LABELS = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const COLLAPSED_SECTIONS = "tasks-collapsed-sections";
+
+function torontoWeekday() {
+  const day = new Intl.DateTimeFormat("en-US", { timeZone: "America/Toronto", weekday: "short" }).format(new Date());
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(day);
+}
+
+function sectionDays(section) {
+  const days = Array.isArray(section?.days) ? section.days.map(Number).filter((day) => day >= 0 && day <= 6) : [];
+  return days.length ? [...new Set(days)].sort() : ALL_DAYS;
+}
+
+function sectionToday(section, weekday = torontoWeekday()) {
+  return sectionDays(section).includes(weekday);
+}
+
+function daysLabel(days) {
+  const key = days.join(",");
+  if (days.length === 7) return "Every day";
+  if (key === "1,2,3,4,5") return "Weekdays";
+  if (key === "0,6") return "Weekends";
+  return days.map((day) => DAY_LABELS[day]).join(" ");
+}
+
+function sectionKidIds(section) {
+  return (section?.kidIds || []).filter((id) => kidById(id));
+}
+
+function sectionKidsLabel(section) {
+  const names = sectionKidIds(section).map((id) => kidById(id).name);
+  return names.length ? names.join(", ") : "All kids";
+}
+
+function sectionStatus(section, nowMinute, weekday) {
+  if (!sectionToday(section, weekday)) return "Off today";
+  return sectionOpen(section, nowMinute) ? "Open now" : "Closed now";
+}
+
+function dayPicker(days = ALL_DAYS) {
+  return `<fieldset class="picks"><legend>Days</legend>${DAY_LABELS.map(
+    (label, day) => `<label class="pick"><input type="checkbox" name="days" value="${day}" ${days.includes(day) ? "checked" : ""}><span>${label}</span></label>`
+  ).join("")}</fieldset>`;
+}
+
+function kidPicker(kidIds = []) {
+  const picked = new Set(kidIds);
+  return `<fieldset class="picks"><legend>Who</legend><label class="pick"><input type="checkbox" name="allKids" value="1" ${picked.size ? "" : "checked"}><span>All kids</span></label>${db.kids
+    .map((child) => `<label class="pick"><input type="checkbox" name="kids" value="${esc(child.id)}" ${picked.has(child.id) ? "checked" : ""}><span>${esc(child.name)}</span></label>`)
+    .join("")}</fieldset>`;
+}
+
+function pickedDays(form) {
+  return [...form.querySelectorAll('input[name="days"]:checked')].map((input) => Number(input.value));
+}
+
+function pickedKids(form) {
+  if (form.querySelector('input[name="allKids"]')?.checked) return [];
+  return [...form.querySelectorAll('input[name="kids"]:checked')].map((input) => input.value);
+}
+
+function formError(form, message) {
+  if (!form.closest("dialog")) {
+    route = { ...route, error: message };
+    render();
+    return;
+  }
+  let note = form.querySelector(".form-error");
+  if (!note) {
+    note = document.createElement("p");
+    note.className = "error form-error";
+    form.appendChild(note);
+  }
+  note.textContent = message;
+}
+
+function collapsedSections() {
+  try {
+    const keys = JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS) || "[]");
+    return new Set(Array.isArray(keys) ? keys : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function setSectionCollapsed(key, collapsed) {
+  const keys = collapsedSections();
+  if (collapsed) keys.add(key);
+  else keys.delete(key);
+  localStorage.setItem(COLLAPSED_SECTIONS, JSON.stringify([...keys]));
+}
+
+function sortedSections() {
+  return [...(db.sections || [])].sort((a, b) => (a.sortOrder - b.sortOrder) || a.title.localeCompare(b.title));
+}
+
+function templatesInSection(sectionId, kind = "daily") {
+  return (db.templates || [])
+    .filter((chore) => (kind === "daily" ? chore.kind !== "special" : chore.kind === kind))
+    .filter((chore) => (chore.sectionId || null) === (sectionId || null))
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.title).localeCompare(String(b.title)));
+}
+
+function specialTemplates() {
+  return (db.templates || [])
+    .filter((chore) => chore.kind === "special")
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || String(a.title).localeCompare(String(b.title)));
+}
+
+/* Small "Rename" link under a task on the Tasks page; it opens the shared rename dialog. */
+function renameButton(chore) {
+  return `<button type="button" class="link-btn" data-action="open-rename" data-id="${esc(chore.id)}" data-title="${esc(chore.title)}">Rename</button>`;
+}
+
+function priorityToggle(chore) {
+  const on = Boolean(chore.priority);
+  return `<button type="button" class="btn small priority-toggle${on ? " on" : ""}" data-action="toggle-priority" data-id="${esc(chore.id)}" aria-pressed="${on ? "true" : "false"}" title="A Priority task must be done before any other task or the arena">${on ? "★ Priority" : "☆ Priority"}</button>`;
+}
+
+function firstComeToggle(chore) {
+  const on = Boolean(chore.firstCome);
+  return `<button type="button" class="btn small priority-toggle first-come-toggle${on ? " on" : ""}" data-action="toggle-first-come" data-id="${esc(chore.id)}" aria-pressed="${on ? "true" : "false"}" title="The first kid to mark it done keeps it. It disappears for the others.">${on ? "⚡ First come" : "⚡ First come?"}</button>`;
+}
+
+function dragHandle() {
+  return `<button type="button" class="drag-handle" draggable="true" aria-label="Drag to rearrange">⋮⋮</button>`;
+}
+
+/* Open Priority Tasks for the signed-in kid. While any are open, every other Done button and the arena are locked. */
+function openPriority(child = kid()) {
+  if (!child) return [];
+  return (db.chores || []).filter((chore) => chore.kidId === child.id && chore.priority && chore.status === "open" && !fromPastDay(chore));
+}
+
+function priorityLocked(child = kid()) {
+  return db.session?.role === "kid" && openPriority(child).length > 0;
+}
+
+function questBlock(list, empty, locked = false) {
+  if (!list.length) return `<p class="muted">${empty}</p>`;
+  return list
+    .map((chore) => {
+      const sprite = taskSprite(chore);
+      const waiting = chore.status === "submitted";
+      return `<div class="quest${waiting ? " waiting-quest" : ""}">
+        <span class="quest-pay">+${Number(chore.points) || 0}</span>
+        <div class="quest-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">${payLabel(chore)}${chore.firstCome ? " · First come, first served!" : ""}${fromPastDay(chore) ? ` · ${esc(pastDayLabel(chore))}` : ""}</div></div>
+        <div class="quest-lane" aria-hidden="true">
+          <canvas data-quest-walker="${esc(sprite)}" width="96" height="44"></canvas>
+        </div>
+        ${waiting ? `<span class="chip">Waiting</span>` : locked ? `<button class="btn small leaf locked-done" type="button" disabled title="Finish your Priority Quest first">Done</button>` : `<button class="btn small leaf" data-action="done" data-id="${chore.id}">Done</button>`}
+      </div>`;
+    })
+    .join("");
+}
+
+/* The Priority Quest card: always above every other section, with a marching pixel border. */
+function kidPriorityBoard(list) {
+  const top = list.filter((chore) => chore.priority);
+  if (!top.length) return "";
+  const open = top.some((chore) => chore.status === "open");
+  return `<section class="card priority-card${open ? " is-open" : ""}">
+    <div class="priority-head"><span class="priority-bang" aria-hidden="true">!</span><h2 class="page-title">Priority Quest</h2></div>
+    <p class="lede">${open ? "Do this first! Your other quests and the arena unlock when it's done." : "Nice! Waiting for a parent to check it. Your other quests are unlocked."}</p>
+    ${questBlock(top, "")}
+  </section>`;
+}
+
+function kidDailyBoard(list, locked = false) {
+  const dailies = list.filter((chore) => !isSpecial(chore));
+  if (!dailies.length) return `<section class="card"><h2 class="page-title">Daily tasks</h2><p class="muted">No daily tasks right now. They come back each day.</p></section>`;
+  const groups = new Map();
+  for (const chore of dailies) {
+    const key = chore.sectionId || "anytime";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(chore);
+  }
+  const sectionMeta = new Map((db.sections || []).map((section) => [section.id, section]));
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (a === "anytime") return -1;
+    if (b === "anytime") return 1;
+    return (sectionMeta.get(a)?.sortOrder || 0) - (sectionMeta.get(b)?.sortOrder || 0);
+  });
+  return keys
+    .map((key) => {
+      const chores = groups.get(key) || [];
+      const section = key === "anytime" ? null : sectionMeta.get(key);
+      const title = section?.title || (chores[0]?.sectionTitle) || "Anytime";
+      const window = section
+        ? `${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)}`
+        : chores[0]?.sectionStart != null
+          ? `${clockLabel(chores[0].sectionStart)}–${clockLabel(chores[0].sectionEnd)}`
+          : "All day";
+      return `<section class="card">
+        <h2 class="page-title">${esc(title)}</h2>
+        <p class="lede">${esc(window)}</p>
+        ${questBlock(chores, "Nothing in this window right now.", locked)}
+      </section>`;
+    })
+    .join("");
+}
+
+function payLabel(chore) {
+  const parts = [];
+  if (chore.points) parts.push(`${chore.points} pts`);
+  if (chore.cashCents) parts.push(money(chore.cashCents));
+  if (chore.minutes) parts.push(`${chore.minutes} min`);
+  return parts.join(" · ") || "No pay set";
+}
+
+function monsterChoice(sprite, templateId) {
+  const id = normalizeSprite(sprite);
+  return `<button type="button" class="monster-choice" data-action="open-monster"${templateId ? ` data-id="${esc(templateId)}"` : ""}>
+    <canvas data-sprite="${esc(id)}" width="16" height="16"></canvas>
+    <span>${esc(spriteName(id))}</span>
+  </button>`;
+}
+
+function monsterDialog() {
+  return `<dialog class="monster-dialog">
+    <div class="section-title"><h2>Choose a monster</h2><button type="button" class="btn small ghost" data-action="close-monster">Close</button></div>
+    <div class="sprite-library">
+      ${SPRITES.map((sprite) => `<button type="button" class="sprite-card monster-option" data-action="choose-monster" data-sprite="${esc(sprite.id)}"><canvas data-sprite="${esc(sprite.id)}" width="16" height="16"></canvas><span>${esc(sprite.name)}</span></button>`).join("")}
+    </div>
+  </dialog>`;
+}
+
+function spriteLibrary() {
+  return `<details class="card library"${libraryOpen ? " open" : ""}>
+    <summary>Sprite library</summary>
+    <p class="lede">Each task gets one monster. It waits on the trail when a kid taps Done, and the fight plays when you approve it.</p>
+    <div class="sprite-library">
+      ${SPRITES.map((sprite) => `<figure class="sprite-card"><canvas data-sprite="${sprite.id}" width="16" height="16" aria-hidden="true"></canvas><figcaption>${esc(sprite.name)}</figcaption></figure>`).join("")}
+    </div>
+  </details>`;
+}
+
+function assigneeName(chore) {
+  const id = chore.assigneeId || chore.assignee_id;
+  if (!id) return "Everybody";
+  return kidById(id)?.name || "One kid";
+}
+
+let pinHold = false;
+
+const SKY_THEME = {
+  morning: "#f0a070",
+  day: "#7eb8c9",
+  evening: "#c86058",
+  night: "#171f33",
+};
+
+function paintVersion() {
+  let el = document.querySelector(".app-version");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "app-version";
+    document.body.appendChild(el);
+  }
+  el.textContent = `v${APP_VERSION}`;
+  el.removeAttribute("aria-hidden");
+  el.setAttribute("title", `App version ${APP_VERSION}`);
+  document.querySelectorAll(".ver-tag").forEach((tag) => {
+    tag.textContent = `v${APP_VERSION}`;
+  });
+}
+
+function render() {
+  pinHold = true;
+  app.querySelector("dialog.pin-dialog[open]")?.close();
+  const view = views[route.name] || views.welcome;
+  const play = PLAY_ROUTES.has(route.name);
+  document.body.classList.toggle("play", play);
+  // A grounded kid sees the page background turn into a dark, rainy jail cell to match the caged stage.
+  const jailed = play && db.session?.role === "kid" && Boolean(grounded(kid()));
+  document.body.classList.toggle("grounded", jailed);
+  const theme = applySeasonTheme();
+  paintForestBackdrop(document.querySelector(".forest-bg"));
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", jailed ? "#0b0d18" : play ? SKY_THEME[theme.sky] || SKY_THEME.day : "#f3efe4");
+  const host = document.querySelector(".stage");
+  if (host) document.body.appendChild(host);
+  app.innerHTML = view();
+  mountStage();
+  const arenaSlot = app.querySelector(".arena-slot");
+  if (arenaSlot && db.session?.role === "kid") mountArena(arenaSlot, arenaContext());
+  else if (arenaSlot && db.session?.role === "parent") {
+    // Parents have no colosseum gate: the arena is open as soon as they pick the tab.
+    if (!arenaRevealed()) revealArena();
+    mountArena(arenaSlot, parentArenaContext());
+  } else leaveArena();
+  if (db.session?.role === "kid") {
+    syncBattles();
+    lastKidSig = `${kid()?.points}|${kid()?.hearts}|${kid()?.warnSeq}|${(db.chores || []).map((chore) => chore.id + chore.status + (chore.verdict || "")).join(",")}`;
+    ensurePoll();
+  } else {
+    paintStage();
+    if (db.session?.role === "parent") {
+      lastParentSig = parentSig();
+      ensureParentPoll();
+    }
+  }
+  paintSpriteIcons(app);
+  paintQuestArt(app);
+  paintPortraits(app);
+  animateLiveThumbs();
+  mountQuestWalkers(app);
+  app.querySelectorAll("canvas[data-look]").forEach((icon) =>
+    paintHeroBadge(
+      icon,
+      icon.dataset.look,
+      heldWeapon(icon.dataset.weapon),
+      icon.dataset.color || COLOR_HEX.leaf,
+      icon.dataset.pet || "",
+      icon.dataset.head || null,
+      icon.dataset.body || null
+    )
+  );
+  app.querySelectorAll("canvas[data-gear]").forEach((icon) => drawGearIcon(icon, icon.dataset.gear, 3));
+  paintVersion();
+  pinHold = false;
+  const pin = app.querySelector("dialog.pin-dialog");
+  if (pin) pin.showModal();
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".ring-value").forEach((el) => {
+      if (el.dataset.offset) el.setAttribute("stroke-dashoffset", el.dataset.offset);
+    });
+  });
+}
+
+const views = {
+  loading() {
+    return `<div class="card"><h1>${esc(BRAND_TITLE)}</h1><p class="lede">Loading…</p></div>`;
+  },
+
+  welcome() {
+    if (!schemaReady) {
+      return `
+        <header class="top"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)} <span class="ver-tag">v${APP_VERSION}</span></p></span></div></header>
+        <section class="hero">
+          <h2>Chores, rewards, and device time.</h2>
+          <p class="lede">Parents keep the accounts. Kids open the chart with a PIN.</p>
+        </section>
+        <div class="card stack">
+          <h2 class="page-title">Supabase is connected</h2>
+          <p>The family tables are not in the project yet, so accounts cannot be saved. Open the SQL editor for this project and run <strong>kids/schema.sql</strong>, then <strong>longofam/setup-longo.sql</strong> (see longofam/SETUP.md), then reload this page.</p>
+          ${notice ? `<p class="error">${esc(notice)}</p>` : ""}
+        </div>`;
+    }
+    return `
+      <header class="top hud"><div class="brand">${mark()}<span><h1>${esc(BRAND_TITLE)}</h1><p>${esc(BRAND_TAGLINE)} <span class="ver-tag">v${APP_VERSION}</span></p></span></div></header>
+      ${worldScene("sun")}
+      <section class="hero">
+        <h2>Who's here?</h2>
+        <p class="lede">Tap your name and enter your PIN.</p>
+      </section>
+      ${roster()}`;
+  },
+
+  "parent-auth"() {
+    return shell(
+      BRAND_TITLE,
+      "Parent sign in",
+      `<form class="card stack" data-action="parent-auth-submit">
+        <div class="section-title"><h2>Parent sign in</h2></div>
+        <p class="lede">Use the email and password for this parent. A new parent is added from the Family page.</p>
+        <label>Email<input name="email" type="email" autocomplete="username" required value="${esc(draft.email || route.email || "")}"></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+        <button class="btn leaf wide" type="submit">Sign in</button>
+        <button class="btn ghost wide" type="button" data-action="goto" data-to="welcome">Back</button>
+      </form>`
+    );
+  },
+
+  "kid-gate"() {
+    const selected = route.kidId || "";
+    const picked = kidById(selected);
+    return shell(
+      "Players",
+      "Who's playing?",
+      `<div class="stack">
+        ${selected ? "" : worldScene(picked?.color || "leaf")}
+        ${
+          gateKids.length
+            ? `<div class="kid-grid">${gateKids
+                .map(
+                  (child) => `<button class="kid-pick" data-action="pick-kid" data-id="${child.id}" aria-pressed="${selected === child.id}">
+                    ${face(child.color)}
+                    <strong>${esc(child.name)}</strong>
+                  </button>`
+                )
+                .join("")}</div>`
+            : `<p class="hint">A parent adds each kid on the Family page. Then the name shows up here.</p>`
+        }
+        ${
+          selected
+            ? pinDialog(pinPad(`PIN for ${esc(picked?.name || "")}`))
+            : ""
+        }
+        <button class="btn ghost" data-action="goto" data-to="welcome">Back</button>
+      </div>`
+    );
+  },
+
+  family() {
+    const me = parent();
+    return shell(
+      db.family.name,
+      me?.name || "",
+      `<div class="stack">
+        <div class="split">
+          <section class="card">
+            <div class="section-title"><h2>Parents</h2><button class="btn small leaf" data-action="goto" data-to="add-parent">Add</button></div>
+            ${me?.hasPin ? "" : `<p class="lede">Choose a 4-digit PIN on your name. That is how you open the chart from the front page.</p>`}
+            ${db.parents
+              .map(
+                (person) => `<div class="person">
+                  <div><strong>${esc(person.name)}</strong><div class="tiny muted">${esc(person.email)}${person.id === me?.id ? " · You" : ""}${person.hasPin ? "" : " · no door PIN"}</div></div>
+                  <div class="row">
+                    <button class="btn ghost small" data-action="edit-parent-pin" data-id="${person.id}">PIN</button>
+                    ${person.id === me?.id ? "" : `<button class="btn ghost small" data-action="remove-parent" data-id="${person.id}">Remove</button>`}
+                  </div>
+                </div>`
+              )
+              .join("")}
+          </section>
+          <section class="card">
+            <div class="section-title"><h2>Kids</h2><button class="btn small sun" data-action="goto" data-to="add-kid">Add</button></div>
+            ${
+              db.kids.length
+                ? db.kids
+                    .map(
+                      (child) => `<div class="person">
+                        <div class="who"><span class="swatch ${esc(child.color)}"></span><div><strong>${esc(child.name)}</strong><div class="tiny muted">${child.points} pts · ${money(child.cashCents)} · ${child.minutes} min${grounded(child) ? " · grounded" : ""}</div></div></div>
+                        <button class="btn ghost small" data-action="edit-pin" data-id="${child.id}">PIN &amp; birthday</button>
+                      </div>`
+                    )
+                    .join("")
+                : `<p class="muted">No kids yet. Add the first one.</p>`
+            }
+          </section>
+        </div>
+      </div>`,
+      parentNav("family")
+    );
+  },
+
+  "add-parent"() {
+    return shell(
+      db.family.name,
+      "Add a parent",
+      `<form class="card stack" data-action="add-parent-submit">
+        <p class="lede">They tap their name on the front page and enter this PIN. Supabase still emails them to confirm the account.</p>
+        <label>Name<input name="name" required value="${esc(draft.name || "")}"></label>
+        <label>Email<input name="email" type="email" required value="${esc(draft.email || "")}"></label>
+        <label>Password<input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+        <label>4-digit PIN<input name="pin" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required value="${esc(draft.pin || "")}"></label>
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+        <button class="btn leaf" type="submit">Save parent</button>
+        <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
+      </form>`,
+      parentNav("family")
+    );
+  },
+
+  "add-kid"() {
+    const color = draft.color || COLORS[db.kids.length % COLORS.length];
+    draft.color = color;
+    return shell(
+      db.family.name,
+      "Add a kid",
+      `<form class="card stack" data-action="add-kid-submit">
+        <p class="lede">They tap their name on the front page and enter this PIN.</p>
+        <label>Name<input name="name" required value="${esc(draft.name || "")}"></label>
+        <div>
+          <div class="field-label">Color</div>
+          <div class="swatches">
+            ${COLORS.map(
+              (colorName) =>
+                `<button type="button" class="swatch ${colorName}" data-action="color" data-color="${colorName}" aria-pressed="${color === colorName}" aria-label="${colorName}"></button>`
+            ).join("")}
+          </div>
+        </div>
+        <label>4-digit PIN<input name="pin" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required value="${esc(draft.pin || "")}"></label>
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+        <button class="btn sun" type="submit">Save kid</button>
+        <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
+      </form>`,
+      parentNav("family")
+    );
+  },
+
+  "edit-parent-pin"() {
+    const person = db.parents.find((parentRow) => parentRow.id === route.id);
+    if (!person) return views.family();
+    return shell(
+      db.family.name,
+      `PIN for ${person.name}`,
+      `<form class="card stack" data-action="save-parent-pin">
+        <p class="lede">${esc(person.name)} uses this 4-digit PIN on the front page.</p>
+        <label>4-digit PIN<input name="pin" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label>
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+        <div class="row">
+          <button class="btn leaf" type="submit">Save PIN</button>
+          <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
+        </div>
+      </form>`,
+      parentNav("family")
+    );
+  },
+
+  "edit-pin"() {
+    const child = kidById(route.id);
+    if (!child) return views.family();
+    return shell(
+      db.family.name,
+      `PIN and birthday for ${child.name}`,
+      `<form class="card stack" data-action="save-pin">
+        <label>New 4-digit PIN<input name="pin" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" required></label>
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+        <div class="row">
+          <button class="btn leaf" type="submit">Save PIN</button>
+          <button class="btn clay" type="button" data-action="remove-kid" data-id="${child.id}">Remove ${esc(child.name)}</button>
+          <button class="btn ghost" type="button" data-action="goto" data-to="family">Cancel</button>
+        </div>
+      </form>
+      <form class="card stack" data-action="save-birth">
+        <h2 class="page-title">Birthday</h2>
+        <p class="lede">The Monster Arena picks questions by age. Now: ${esc(ARENA_LEVEL_NAMES[arenaLevelFor(child.birthDate)])}${child.birthDate ? "" : " (no birthday saved yet)"}.</p>
+        <label>Birthday<input name="birth" type="date" value="${esc(child.birthDate || "")}" max="${esc(torontoToday())}"></label>
+        <div class="row"><button class="btn leaf" type="submit">Save birthday</button></div>
+      </form>`,
+      parentNav("family")
+    );
+  },
+
+  chores() {
+    const specials = specialTemplates();
+    const sections = sortedSections();
+    const now = torontoMinute();
+    const weekday = torontoWeekday();
+    const collapsed = collapsedSections();
+    const scheduleCollapsed = collapsed.has("card:schedule");
+    const kidChoices = `<option value="">Everybody</option>${db.kids.map((child) => `<option value="${esc(child.id)}">${esc(child.name)}</option>`).join("")}`;
+    const sectionChoices = `<option value="">Anytime</option>${sections.map((section) => `<option value="${esc(section.id)}">${esc(section.title)}</option>`).join("")}`;
+    const dailyRow = (chore) => {
+      const sprite = taskSprite(chore);
+      const on = chore.active !== false;
+      return `<form class="chore daily-chore${on ? "" : " off"}" data-action="save-daily" data-drag-item="${esc(chore.id)}" draggable="false">
+        <input type="hidden" name="id" value="${chore.id}">
+        ${dragHandle()}
+        <div class="daily-tools">
+          <button type="button" class="switch" data-action="toggle-daily" data-id="${chore.id}" aria-pressed="${on ? "true" : "false"}" aria-label="${on ? "Daily task on" : "Daily task off"}"><i></i></button>
+          <button type="button" class="btn small ghost" data-action="send-once" data-id="${chore.id}">Send once</button>
+          ${priorityToggle(chore)}
+          ${chore.priority ? firstComeToggle(chore) : ""}
+        </div>
+        <div class="chore-copy"><strong>${esc(chore.title)}</strong><div class="tiny muted">Once a day${chore.priority ? " · Priority: do this first" : ""}${chore.priority && chore.firstCome ? " · First come, first served" : ""}${on ? "" : " · Hidden from the daily board"}</div>${renameButton(chore)}</div>
+        ${monsterChoice(sprite, chore.id)}
+        <label class="points-field">Points<input name="points" type="number" min="0" value="${Number(chore.points) || 0}"></label>
+        <button class="btn small leaf" type="submit">Save</button>
+        <button class="btn small ghost" type="button" data-action="remove-daily" data-id="${chore.id}">Remove</button>
+      </form>`;
+    };
+    const dailyGroups = [
+      { id: "", title: "Anytime", hint: "Shows all day", open: true, chores: templatesInSection(null) },
+      ...sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        hint: `${clockLabel(section.startMinute)}–${clockLabel(section.endMinute)} · ${daysLabel(sectionDays(section))} · ${sectionKidsLabel(section)} · ${sectionStatus(section, now, weekday)}`,
+        open: sectionToday(section, weekday) && sectionOpen(section, now),
+        chores: templatesInSection(section.id),
+      })),
+    ].map((group) => ({ ...group, key: group.id || "anytime", collapsed: collapsed.has(group.id || "anytime") }));
+    return shell(
+      db.family.name,
+      "Tasks",
+      `<div class="stack">
+        <p class="lede">Finished tasks are paid on the Approve page, after a kid taps Done. Drag the dots to rearrange.</p>
+        ${spriteLibrary()}
+        <section class="card collapsible-card${scheduleCollapsed ? " collapsed" : ""}">
+          <div class="card-head">
+            <h2 class="page-title">Schedule sections</h2>
+            <span class="card-head-tools">
+              ${scheduleCollapsed ? `<span class="tiny muted">${sections.length} section${sections.length === 1 ? "" : "s"}</span>` : ""}
+              <button class="btn small leaf" type="button" data-action="open-dialog" data-dialog="add-section-dialog">Add section</button>
+              <button type="button" class="section-toggle" data-action="toggle-task-section" data-key="card:schedule" aria-expanded="${scheduleCollapsed ? "false" : "true"}" aria-label="${scheduleCollapsed ? "Expand" : "Collapse"} schedule sections"><i aria-hidden="true"></i></button>
+            </span>
+          </div>
+          <p class="lede">Kids only see a section on its days, during its hours (Toronto time), and only if they are picked under Who. Submitted tasks still stay visible.</p>
+          <div class="section-list" data-drop-kind="sections">
+            ${
+              sections.length
+                ? sections
+                    .map(
+                      (section) => `<form class="schedule-row" data-action="save-section" data-drag-item="${esc(section.id)}" data-drag-kind="section" data-id="${esc(section.id)}">
+                        ${dragHandle()}
+                        <label class="schedule-name">Name<input name="title" required value="${esc(section.title)}"></label>
+                        <label>Starts<input name="start" type="time" step="60" required value="${esc(clockLabel(section.startMinute))}"></label>
+                        <label>Ends<input name="end" type="time" step="60" required value="${esc(clockLabel(section.endMinute))}"></label>
+                        ${dayPicker(sectionDays(section))}
+                        ${kidPicker(sectionKidIds(section))}
+                        <span class="tiny muted schedule-status">${sectionStatus(section, now, weekday)}</span>
+                        <button class="btn small leaf" type="submit">Save</button>
+                        <button class="btn small ghost" type="button" data-action="remove-section" data-id="${esc(section.id)}">Remove</button>
+                      </form>`
+                    )
+                    .join("")
+                : `<p class="muted">No timed sections yet. Tap Add section for Morning, After school, or Bedtime.</p>`
+            }
+          </div>
+        </section>
+        <dialog class="balance-dialog add-section-dialog">
+          <form class="stack" data-action="add-section">
+            <div class="section-title"><h2>Add section</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
+            <label>Section name<input name="title" required placeholder="Morning"></label>
+            <div class="two-up">
+              <label>Starts<input name="start" type="time" step="60" required value="07:00"></label>
+              <label>Ends<input name="end" type="time" step="60" required value="09:00"></label>
+            </div>
+            ${dayPicker()}
+            ${kidPicker()}
+            <span class="row"><button class="btn leaf" type="submit">Add section</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
+          </form>
+        </dialog>
+        <section class="card">
+          <div class="card-head">
+            <h2 class="page-title">Special task board</h2>
+            <button class="btn small sun" type="button" data-action="open-dialog" data-dialog="add-special-dialog">Add bonus task</button>
+          </div>
+          <p class="lede">Bonus chores, one time. Pick one kid or everybody. They stay until that kid finishes them or you remove them.</p>
+          <div class="task-list" data-drop-kind="special" data-section="">
+            ${
+              specials.length
+                ? specials
+                    .map((chore) => {
+                      const sprite = taskSprite(chore);
+                      return `<div class="chore" data-drag-item="${esc(chore.id)}" data-drag-kind="special">${dragHandle()}<div><strong>${esc(chore.title)}</strong><div class="tiny muted">${Number(chore.points) || 0} pts · One time · ${esc(assigneeName(chore))} · ${esc(spriteName(sprite))}${chore.priority ? " · Priority" : ""}${chore.firstCome ? " · First come, first served" : ""}</div>${renameButton(chore)}</div>${priorityToggle(chore)}${firstComeToggle(chore)}<button class="btn small ghost" type="button" data-action="remove-special" data-id="${chore.id}">Remove</button>${monsterChoice(sprite, chore.id)}</div>`;
+                    })
+                    .join("")
+                : `<p class="muted">No bonus tasks yet.</p>`
+            }
+          </div>
+        </section>
+        <dialog class="balance-dialog rename-task-dialog">
+          <form class="stack" data-action="rename-task">
+            <div class="section-title"><h2>Rename task</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
+            <input type="hidden" name="id" value="">
+            <label>Task name<input name="title" required maxlength="80" autocomplete="off"></label>
+            <p class="tiny muted">Today's open copies get the new name too. Finished tasks in the log keep the old one.</p>
+            <span class="row"><button class="btn leaf" type="submit">Save name</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
+          </form>
+        </dialog>
+        <dialog class="balance-dialog add-special-dialog">
+          <form class="stack" id="add-special-form" data-action="add-special">
+            <div class="section-title"><h2>Add bonus task</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
+            <label>Bonus task<input name="title" required placeholder="Wash the car"></label>
+            <label>Points<input name="points" type="number" min="0" value="5" required></label>
+            <label>Who<select name="kidId">${kidChoices}</select></label>
+            <input type="hidden" name="sprite" value="dust">
+            ${monsterChoice("dust")}
+            <span class="row"><button class="btn sun" type="submit">Add once</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
+          </form>
+        </dialog>
+        <section class="card">
+          <div class="card-head">
+            <h2 class="page-title">Daily tasks</h2>
+            <button class="btn small leaf" type="button" data-action="open-dialog" data-dialog="add-daily-dialog">Add task</button>
+          </div>
+          <p class="lede">Every kid can do these once a day. Drop a task into a section to move it. Turn one off to hide it from the daily board.</p>
+          ${dailyGroups
+            .map(
+              (group) => `<div class="daily-section${group.open ? "" : " closed"}${group.collapsed ? " collapsed" : ""}" data-drop-kind="daily" data-section="${esc(group.id)}">
+                <div class="daily-section-head">
+                  <strong>${esc(group.title)}</strong>
+                  <span class="daily-section-meta">
+                    <span class="tiny muted">${esc(group.hint)}${group.collapsed ? ` · ${group.chores.length} task${group.chores.length === 1 ? "" : "s"}` : ""}</span>
+                    <button type="button" class="section-toggle" data-action="toggle-task-section" data-key="${esc(group.key)}" aria-expanded="${group.collapsed ? "false" : "true"}" aria-label="${group.collapsed ? "Expand" : "Collapse"} ${esc(group.title)}"><i aria-hidden="true"></i></button>
+                  </span>
+                </div>
+                ${group.chores.length ? group.chores.map(dailyRow).join("") : `<p class="muted drop-empty">Drop tasks here</p>`}
+              </div>`
+            )
+            .join("")}
+        </section>
+        <dialog class="balance-dialog add-daily-dialog">
+          <form class="stack" id="add-daily-form" data-action="add-daily">
+            <div class="section-title"><h2>Add daily task</h2><button type="button" class="btn small ghost" data-action="close-dialog">Close</button></div>
+            <label>Task<input name="title" required placeholder="Make the bed"></label>
+            <label>Points<input name="points" type="number" min="0" value="2" required></label>
+            <label>Section<select name="sectionId">${sectionChoices}</select></label>
+            <input type="hidden" name="sprite" value="dust">
+            ${monsterChoice("dust")}
+            <span class="row"><button class="btn leaf" type="submit">Add daily task</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></span>
+          </form>
+        </dialog>
+        ${monsterDialog()}
+        ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+      </div>`,
+      parentNav("chores")
+    );
+  },
+
+  chart() {
+    const waiting = db.chores.filter((chore) => chore.status === "submitted");
+    return shell(
+      db.family.name,
+      "Approve",
+      `<div class="stack">
+        ${worldScene("leaf")}
+        <section class="card">
+          <h2 class="page-title">Waiting for approval</h2>
+          <p class="lede">This is where finished chores get paid. A kid taps Done, then you tap Approve.</p>
+          ${
+            waiting.length
+              ? waiting
+                  .map((chore) => {
+                    const child = kidById(chore.kidId);
+                    const thumb = proofUrl(chore.proofPath || chore.proof_path);
+                    return `<div class="chore waiting">
+                      <div class="waiting-copy">
+                        <div><strong>${esc(chore.title)}</strong><div class="tiny muted">${esc(child?.name || "")} · ${isSpecial(chore) ? "Special" : "Daily"} · ${payLabel(chore)}${fromPastDay(chore) ? ` · <b>${esc(pastDayLabel(chore))}</b>` : ""}</div></div>
+                        <span class="row"><button class="btn small leaf" data-action="approve-chore" data-id="${chore.id}">Approve</button><button class="btn small clay" data-action="reject-chore" data-id="${chore.id}">Reject</button></span>
+                      </div>
+                      ${
+                        thumb
+                          ? `<a class="proof-thumb" href="${esc(thumb)}" target="_blank" rel="noopener"><img src="${esc(thumb)}" alt="Proof photo" loading="lazy" decoding="async"></a>`
+                          : `<div class="proof-thumb empty" aria-hidden="true"></div>`
+                      }
+                    </div>`;
+                  })
+                  .join("")
+              : `<p class="muted">Nothing is waiting. When a kid taps Done, it shows up here.</p>`
+          }
+        </section>
+        ${
+          db.kids.length
+            ? `<div class="chart-kids">${db.kids
+                .map((child) => {
+                  const goal = Number(db.family.ungroundPoints) || 0;
+                  const look = kidHero(child.hero);
+                  const weapon = child.weapon || "broom";
+                  const tint = COLOR_HEX[child.color] || COLOR_HEX.leaf;
+                  return `<section class="card stack kid-column" data-kid-id="${esc(child.id)}">
+                    <div class="kid-hero-toggle" aria-hidden="true">
+                      <canvas class="hero-icon" data-look="${esc(look)}" data-weapon="${esc(weapon)}" data-color="${esc(tint)}" width="40" height="34"></canvas>
+                    </div>
+                    <div class="kid-column-head">
+                      <div class="who"><strong>${esc(child.name)}</strong>${heartMarks(child.hearts)}</div>
+                      <button class="btn small ${child.hearts === 1 ? "clay" : "ghost"}" type="button" data-action="warn-kid" data-id="${child.id}" ${child.hearts <= 0 ? "disabled" : ""}>${child.hearts === 1 ? "Ground" : "Warn"}</button>
+                      <button class="btn small ghost" type="button" data-action="give-heart" data-id="${child.id}" ${child.hearts >= 3 || grounded(child) ? "disabled" : ""} title="${grounded(child) ? "Use Lift to open the cage" : "Give one heart back"}">Give heart</button>
+                    </div>
+                    <div class="kid-column-balances">${balances(child)}</div>
+                    ${
+                      grounded(child)
+                        ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Cage progress ${child.groundProgress}/${goal || "—"} coins.${goal ? "" : " Set a coin goal below, or lift now."} Match that in Screen Time. <span class="row"><button class="btn small ghost" data-action="lift-one" data-id="${child.id}">Lift</button><button class="btn small ghost" data-action="open-edit-ground" data-id="${child.id}">Edit</button></span></div>`
+                        : ""
+                    }
+                  </section>`;
+                })
+                .join("")}</div>`
+            : `<div class="card">Add a kid on the Family page first.</div>`
+        }
+        ${db.templates.length ? "" : `<button class="btn leaf" data-action="goto" data-to="chores">Add tasks</button>`}
+        <section class="card stack">
+          <h2 class="page-title">Reward or deduct</h2>
+          <div class="reward-deduct-actions">
+            <button class="btn sun" type="button" data-action="open-reward" ${db.kids.length ? "" : "disabled"}>Reward</button>
+            <button class="btn clay" type="button" data-action="open-deduct" ${db.kids.length ? "" : "disabled"}>Deduct</button>
+            <button class="btn clay ground-action" type="button" data-action="open-ground" ${db.kids.length ? "" : "disabled"}>Ground</button>
+          </div>
+          <dialog class="balance-dialog reward-dialog">
+            <form class="stack" data-action="grant">
+              <div class="section-title"><h2>Reward</h2><button type="button" class="btn small ghost" data-action="close-reward">Close</button></div>
+              <p class="lede">Add coins, cash, or minutes for a good report.</p>
+              <div class="two">
+                <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
+                <label>Points<input name="points" type="number" min="0" value="0"></label>
+                <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
+                <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
+              </div>
+              <label>Note<input name="note" placeholder="Good report"></label>
+              <span class="row"><button class="btn sun" type="submit" ${db.kids.length ? "" : "disabled"}>Grant reward</button><button class="btn ghost" type="button" data-action="close-reward">Cancel</button></span>
+            </form>
+          </dialog>
+          <dialog class="balance-dialog deduct-dialog">
+            <form class="stack" data-action="spend">
+              <div class="section-title"><h2>Deduct</h2><button type="button" class="btn small ghost" data-action="close-deduct">Close</button></div>
+              <p class="lede">Take coins off when they get spent. Take minutes off when you cash in screen time and add it in Screen Time. Take cash off when you pay it out.</p>
+              <div class="two">
+                <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
+                <label>Coins<input name="points" type="number" min="0" value="0"></label>
+                <label>Cash $<input name="dollars" type="number" min="0" step="0.01" value="0"></label>
+                <label>Minutes<input name="minutes" type="number" min="0" value="0"></label>
+              </div>
+              <label>Note<input name="note" placeholder="Ice cream, or screen time used"></label>
+              <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Take off</button><button class="btn ghost" type="button" data-action="close-deduct">Cancel</button></span>
+            </form>
+          </dialog>
+          <dialog class="balance-dialog ground-dialog">
+            <form class="stack" data-action="ground">
+              <div class="section-title"><h2>Ground</h2><button type="button" class="btn small ghost" data-action="close-ground">Close</button></div>
+              <p class="lede">Lock a hero in the cage until a set time. Match the end time in Screen Time.</p>
+              <label>Kid<select name="kidId">${db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")}</select></label>
+              <label>Until<input name="until" type="datetime-local" required></label>
+              <label>Reason<input name="reason" required placeholder="What happened"></label>
+              <label class="row" style="font-weight:700"><input type="checkbox" name="clearMinutes" style="width:auto"> Clear device minutes</label>
+              <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Save grounding</button><button class="btn ghost" type="button" data-action="close-ground">Cancel</button></span>
+            </form>
+          </dialog>
+          <dialog class="balance-dialog edit-ground-dialog">
+            <form class="stack" data-action="edit-ground">
+              <div class="section-title"><h2>Edit cage</h2><button type="button" class="btn small ghost" data-action="close-edit-ground">Close</button></div>
+              <p class="lede">Change the end time, or raise or lower the cage coin progress. Match any new end time in Screen Time.</p>
+              <input type="hidden" name="kidId">
+              <label>Until<input name="until" type="datetime-local" required></label>
+              <label>Cage coins<input name="progress" type="number" min="0" step="1" required></label>
+              <p class="tiny muted">Goal is ${Number(db.family.ungroundPoints) || 0} coins. Hitting the goal frees them.</p>
+              <span class="row"><button class="btn clay" type="submit">Save</button><button class="btn ghost" type="button" data-action="close-edit-ground">Cancel</button></span>
+            </form>
+          </dialog>
+          <h2 class="page-title">Cage release</h2>
+          <p class="lede">When the last heart is gone, the hero is locked up. While locked, approved chore coins go to this goal instead of the coin balance. Hitting the goal frees them for good and restores three hearts. Set 0 if only a parent can lift.</p>
+          <form class="two" data-action="save-cage-goal">
+            <label>Coins to free the cage<input name="points" type="number" min="0" value="${Number(db.family.ungroundPoints) || 0}" required></label>
+            <button class="btn leaf" type="submit">Save cage goal</button>
+          </form>
+          ${route.error ? `<p class="error">${esc(route.error)}</p>` : ""}
+        </section>
+        <section class="card stack">
+          <h2 class="page-title">Reset child</h2>
+          <p class="lede">Start one kid over. This clears coins, cash, minutes, finished tasks, shop requests, achievements, and monster counts.</p>
+          <button class="btn clay wide" type="button" data-action="open-reset-child" ${db.kids.length ? "" : "disabled"}>Reset child</button>
+        </section>
+        <dialog class="reset-child-dialog">
+          <form class="stack" data-action="confirm-reset-child">
+            <div class="section-title"><h2>Reset child</h2><button type="button" class="btn small ghost" data-action="close-reset-child">Close</button></div>
+            <p class="lede">Which child should start over? Hearts come back full, the cage lifts, and today's tasks show as not done.</p>
+            <label>Child<select name="kidId" required ${db.kids.length ? "" : "disabled"}>${
+              db.kids.map((child) => `<option value="${child.id}">${esc(child.name)}</option>`).join("")
+            }</select></label>
+            <span class="row"><button class="btn clay" type="submit" ${db.kids.length ? "" : "disabled"}>Reset</button><button class="btn ghost" type="button" data-action="close-reset-child">Cancel</button></span>
+          </form>
+        </dialog>
+      </div>`,
+      parentNav("chart")
+    );
+  },
+
+  log() {
+    const rows = filteredActivity();
+    const kidOptions = `<option value="">Everybody</option>${db.kids
+      .map((child) => `<option value="${esc(child.id)}" ${logKidFilter === child.id ? "selected" : ""}>${esc(child.name)}</option>`)
+      .join("")}`;
+    const typeOptions = `<option value="">All actions</option>${LOG_TYPES.map(
+      ([id, label]) => `<option value="${esc(id)}" ${logTypeFilter === id ? "selected" : ""}>${esc(label)}</option>`
+    ).join("")}`;
+    return shell(
+      db.family.name,
+      "Log",
+      `<div class="stack">
+        <section class="card stack">
+          <h2 class="page-title">Log</h2>
+          <p class="lede">Everything that happened for the family. Filter by child or action type.</p>
+          <div class="log-filters">
+            <label>Child<select name="logKid">${kidOptions}</select></label>
+            <label>Action<select name="logType">${typeOptions}</select></label>
+          </div>
+          <div class="list">
+            ${
+              rows.length
+                ? rows
+                    .map((row) => {
+                      const type = activityType(row.text);
+                      const child = row.kidId ? kidById(row.kidId) : null;
+                      return `<div class="item log-entry">
+                        <div class="log-meta">
+                          <span class="log-type">${esc(activityTypeLabel(type))}</span>
+                          ${child ? `<span class="tiny muted">${esc(child.name)}</span>` : ""}
+                          <span class="tiny muted">${esc(when(row.at))}</span>
+                        </div>
+                        <div>${esc(row.text)}</div>
+                      </div>`;
+                    })
+                    .join("")
+                : `<p class="muted">${db.activity?.length ? "Nothing matches those filters." : "No actions yet."}</p>`
+            }
+          </div>
+        </section>
+      </div>`,
+      parentNav("log")
+    );
+  },
+
+  shop() {
+    const pending = db.requests.filter((req) => req.status === "pending");
+    return shell(
+      db.family.name,
+      "Shop",
+      `<div class="stack">
+        <section class="card">
+          <h2 class="page-title">Packs</h2>
+          <p class="lede">Kids can cash points in right away. ${db.family.pointsPerDollar} points = $1. ${db.family.pointsPer30} points = 30 device minutes. After you add those minutes in Screen Time, take them off on Approve.</p>
+          <form class="two" data-action="save-rates">
+            <label>Points per $1<input name="pointsPerDollar" type="number" min="1" value="${db.family.pointsPerDollar}"></label>
+            <label>Points per 30 min<input name="pointsPer30" type="number" min="1" value="${db.family.pointsPer30}"></label>
+            <button class="btn ghost" type="submit">Save rates</button>
+          </form>
+        </section>
+        <section class="card">
+          <h2 class="page-title">Monster Arena</h2>
+          <p class="lede">Kids pay the entry fee below for their first run each day. Every try after that doubles until tomorrow (so 2, then 4, then 8…). Each monster beaten pays coins. The run ends when their hearts run out. Set a birthday for each kid on the Family page.</p>
+          <form class="two" data-action="save-arena">
+            <label>First entry today (coins)<input name="entry" type="number" min="0" max="1000" value="${Number(db.family.arenaEntry ?? 2)}"></label>
+            <label>Coins per monster<input name="perKill" type="number" min="0" max="100" value="${Number(db.family.arenaPerKill ?? 1)}"></label>
+            <button class="btn ghost" type="submit">Save arena</button>
+          </form>
+        </section>
+        <section class="card">
+          <div class="section-title"><h2>Requests</h2></div>
+          ${
+            pending.length
+              ? pending
+                  .map((req) => {
+                    const child = kidById(req.kidId);
+                    const item = db.items.find((entry) => entry.id === req.itemId);
+                    return `<div class="item"><div><strong>${esc(item?.name || "Item")}</strong><div class="tiny muted">${esc(child?.name || "")} · ${req.cost} pts on hold</div></div><span class="row"><button class="btn small leaf" data-action="fulfill" data-id="${req.id}">Got it</button><button class="btn small ghost" data-action="deny" data-id="${req.id}">Return points</button></span></div>`;
+                  })
+                  .join("")
+              : `<p class="muted">No one is waiting on an item.</p>`
+          }
+        </section>
+        <section class="card">
+          <div class="section-title"><h2>Custom items</h2></div>
+          ${db.items.map((item) => {
+            const savers = (db.itemSavings || [])
+              .filter((row) => row.item_id === item.id)
+              .map((row) => `${esc(kidById(row.kid_id)?.name || "A kid")} ${Number(row.amount) || 0}`)
+              .join(", ");
+            return `<div class="item"><div><strong>${esc(item.name)}</strong><div class="tiny muted">${item.cost} points${savers ? ` · Saved: ${savers}` : ""}</div></div><button class="btn ghost small" data-action="remove-item" data-id="${item.id}">Remove</button></div>`;
+          }).join("") || `<p class="muted">Add something they can ask for.</p>`}
+          <form class="two" data-action="add-item" style="margin-top:12px">
+            <label>Item<input name="name" required placeholder="Ice cream"></label>
+            <label>Point cost<input name="cost" type="number" min="1" value="15" required></label>
+            <button class="btn leaf" type="submit">Add item</button>
+          </form>
+        </section>
+        ${parentFamilyRewardsBoard()}
+        ${parentPetPricesBoard()}
+      </div>`,
+      parentNav("shop")
+    );
+  },
+
+  today() {
+    const child = kid();
+    const mine = db.chores.filter((chore) => chore.kidId === child.id && chore.status !== "approved" && !(fromPastDay(chore) && chore.status === "open"));
+    const rest = mine.filter((chore) => !chore.priority);
+    const locked = priorityLocked(child);
+    return shell(
+      child.name,
+      "Quest board",
+      `<div class="stack">
+        ${worldScene(child.color)}
+        ${kidPriorityBoard(mine)}
+        ${kidCharts(child)}
+        ${
+          grounded(child)
+            ? `<div class="banner">Locked in the cage until ${esc(when(child.groundedUntil))}. Earn ${(Number(db.family.ungroundPoints) || 0) > 0 ? `${child.groundProgress}/${db.family.ungroundPoints} coins` : "approved coins"} to break out and get three hearts back. Chore coins go to the cage until then.</div>`
+            : ""
+        }
+        ${kidDailyBoard(rest, locked)}
+        <section class="card">
+          <h2 class="page-title">Special board</h2>
+          ${questBlock(rest.filter((chore) => isSpecial(chore)), "No bonus tasks right now.", locked)}
+        </section>
+      </div>`,
+      kidNav("today")
+    );
+  },
+
+  "kid-shop"() {
+    const child = kid();
+    return shell(
+      "Market",
+      child.name,
+      `<div class="stack">
+        ${worldScene(child.color)}
+        <section class="card stack">
+          <h2 class="page-title">Trade coins</h2>
+          <p class="lede">${db.family.pointsPerDollar} coins become $1.00 in your cash.</p>
+          <button class="btn leaf" data-action="cash-out" ${child.points >= db.family.pointsPerDollar ? "" : "disabled"}>Cash out ${db.family.pointsPerDollar} coins</button>
+        </section>
+        <section class="card stack">
+          <h2 class="page-title">Screen time</h2>
+          <p class="lede">${db.family.pointsPer30} coins become 30 minutes. A parent adds that time in Screen Time.</p>
+          ${
+            grounded(child)
+              ? `<div class="banner">Device packs are closed while you are grounded.</div>`
+              : `<button class="btn sun" data-action="buy-time" ${child.points >= db.family.pointsPer30 ? "" : "disabled"}>Buy 30 minutes</button>`
+          }
+        </section>
+        <section class="card">
+          <h2 class="page-title">Treasure</h2>
+          ${db.items.length ? `<p class="lede">Save coins toward a treasure a little at a time. When it's full, a parent gets your ask.</p>` : ""}
+          ${
+            db.items.length
+              ? db.items
+                  .map((item) => {
+                    const held = db.requests.some((req) => req.itemId === item.id && req.status === "pending");
+                    const coins = Math.max(0, Number(child.points) || 0);
+                    const cost = Math.max(1, Number(item.cost) || 1);
+                    const saved = itemSaved(item.id);
+                    const ready = coins + saved >= cost;
+                    return `<div class="item loot${ready ? " ready" : ""}"><div class="loot-copy"><strong>${esc(item.name)}</strong><div class="tiny muted">${cost} coins${saved ? ` · ${saved} saved` : ""}</div>${meter(saved, cost)}</div>${
+                      held
+                        ? `<span class="chip">Asked</span>`
+                        : `<span class="row"><button class="btn small sun" type="button" data-action="open-save-item" data-id="${item.id}" ${coins > 0 ? "" : "disabled"}>Save</button><button class="btn small" data-action="ask" data-id="${item.id}" ${ready ? "" : "disabled"}>Ask</button></span>`
+                    }</div>`;
+                  })
+                  .join("")
+              : `<p class="muted">No extra items yet.</p>`
+          }
+        </section>
+        ${familyRewardsBoard(child)}
+        ${gearMarketBoard(child)}
+        ${petMarketBoard(child)}
+      </div>`,
+      kidNav("kid-shop")
+    );
+  },
+
+  arena() {
+    const child = kid();
+    const closed = priorityLocked(child) && !grounded(child) && !arenaRevealed();
+    const closedCard = closed
+      ? `<section class="card stack arena-closed">
+          <h2 class="page-title">Monster Arena</h2>
+          <div class="banner">CLOSED until your Priority Quest is done.</div>
+          <button class="btn sun wide" type="button" disabled>Enter the arena</button>
+          <button class="btn ghost" type="button" data-action="goto" data-to="today">Go to my Priority Quest</button>
+        </section>`
+      : "";
+    return shell(child.name, "Monster Arena", `<div class="stack">${arenaRevealed() ? "" : worldScene(child.color)}${closedCard}<div class="arena-slot"></div></div>`, kidNav("arena"));
+  },
+
+  hero() {
+    const child = kid();
+    return shell(
+      child.name,
+      "My Hero",
+      `<div class="stack">
+        ${worldScene(child.color)}
+        ${heroBoard()}
+      </div>`,
+      kidNav("hero")
+    );
+  },
+
+  "parent-arena"() {
+    const me = parent();
+    if (!me) return views.family();
+    return shell(me.name, "Monster Arena", `<div class="stack"><div class="arena-slot"></div></div>`, parentNav("parent-arena"));
+  },
+
+  "parent-hero"() {
+    const me = parent();
+    if (!me) return views.family();
+    return shell(
+      me.name,
+      "My Hero",
+      `<div class="stack">
+        ${parentHeroBoard()}
+      </div>`,
+      parentNav("parent-hero")
+    );
+  },
+
+  me() {
+    const child = kid();
+    return shell(
+      child.name,
+      "Player card",
+      `<div class="stack">
+        ${worldScene(child.color)}
+        <section class="card">
+          <h2 class="page-title">Log</h2>
+          ${db.activity.map((row) => `<div class="item"><div>${esc(row.text)}</div></div>`).join("") || `<p class="muted">When you finish a quest, it shows up here.</p>`}
+        </section>
+      </div>`,
+      kidNav("me")
+    );
+  },
+};
+
+app.addEventListener("toggle", (event) => {
+  if (event.target.classList?.contains("library")) libraryOpen = event.target.open;
+});
+
+app.addEventListener("change", (event) => {
+  if (event.target.dataset?.sound) {
+    if (event.target.dataset.sound === "music") setMusicOn(event.target.checked);
+    else setSfx(event.target.checked);
+    const btn = app.querySelector(".sound-btn");
+    if (btn) btn.outerHTML = soundButton();
+    return;
+  }
+  if (event.target.name === "allKids" || event.target.name === "kids") {
+    const picks = event.target.closest(".picks");
+    const all = picks?.querySelector('input[name="allKids"]');
+    const kids = [...(picks?.querySelectorAll('input[name="kids"]') || [])];
+    if (!all) return;
+    if (event.target === all) {
+      if (all.checked) kids.forEach((input) => { input.checked = false; });
+      else if (!kids.some((input) => input.checked)) all.checked = true;
+    } else {
+      all.checked = !kids.some((input) => input.checked);
+    }
+    return;
+  }
+  if (event.target.name === "logKid") {
+    logKidFilter = event.target.value || "";
+    render();
+    return;
+  }
+  if (event.target.name === "logType") {
+    logTypeFilter = event.target.value || "";
+    render();
+  }
+});
+
+app.addEventListener("input", (event) => {
+  if (event.target.name) draft[event.target.name] = event.target.value;
+  if (event.target.name !== "title") return;
+  const form = event.target.closest("form");
+  if (!form || form.dataset.spritePicked === "1") return;
+  const sprite = guessSprite(event.target.value);
+  const input = form.querySelector('input[name="sprite"]');
+  if (input) input.value = sprite;
+  const button = form.querySelector("[data-action='open-monster']");
+  const canvas = button?.querySelector("canvas");
+  const label = button?.querySelector("span");
+  if (canvas) canvas.dataset.sprite = sprite;
+  if (label) label.textContent = spriteName(sprite);
+  if (button) paintSpriteIcons(button);
+});
+
+app.addEventListener("close", (event) => {
+  if (pinHold || !event.target.matches?.("dialog.pin-dialog")) return;
+  if (!route.playerId && !route.kidId) return;
+  route = { name: route.name === "kid-gate" ? "kid-gate" : "welcome", error: "" };
+  draft = {};
+  render();
+});
+
+app.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-action]");
+  if (!btn || btn.tagName === "FORM") return;
+  const action = btn.dataset.action;
+  if (action === "goto") {
+    const to = btn.dataset.to;
+    if (route.name === "arena" && to !== "arena" && arenaRevealed()) {
+      if (leavingArena) return;
+      leavingArena = true;
+      fadeOutArena().then(() => {
+        leavingArena = false;
+        go(to);
+        fadeInStage();
+      });
+    } else {
+      go(to);
+    }
+  }
+  if (action === "open-sound") {
+    const dialog = document.querySelector("dialog.sound-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+    return;
+  }
+  if (action === "home") go(db.session?.role === "kid" ? "today" : db.session ? "chart" : "welcome");
+  if (action === "auth-mode") go("parent-auth", { mode: btn.dataset.mode, email: draft.email || "" });
+  if (action === "kids-door") openKidGate();
+  if (action === "pick-player") {
+    route = { name: "welcome", playerId: btn.dataset.id, playerKind: btn.dataset.kind, error: "" };
+    draft = {};
+    notice = "";
+    render();
+  }
+  if (action === "close-pin") {
+    route = { name: route.name === "kid-gate" ? "kid-gate" : "welcome", error: "" };
+    draft = {};
+    render();
+  }
+  if (action === "edit-parent-pin") go("edit-parent-pin", { id: btn.dataset.id });
+  if (action === "sign-out") signOut();
+  if (action === "pick-kid") {
+    route = { ...route, kidId: btn.dataset.id, error: "" };
+    draft.pin = "";
+    render();
+  }
+  if (action === "pin") onPin(btn.dataset.key);
+  if (action === "color") {
+    draft.color = btn.dataset.color;
+    render();
+  }
+  if (action === "remove-parent") run(() => rpc("remove_parent", { p_parent: btn.dataset.id }), "Parent removed.", "family");
+  if (action === "edit-pin") go("edit-pin", { id: btn.dataset.id });
+  if (action === "remove-kid") run(() => rpc("remove_kid", { p_kid: btn.dataset.id }), "Kid removed.", "family");
+  if (action === "approve-chore") {
+    const chore = (db.chores || []).find((item) => item.id === btn.dataset.id);
+    const caged = grounded(kidById(chore?.kidId));
+    run(() => rpc("approve_chore", { p_chore: btn.dataset.id }), caged ? "Approved. The coins went toward the cage, not the coin balance." : "Approved. Add any new device minutes in Screen Time.");
+  }
+  if (action === "give-heart") {
+    const kidId = btn.dataset.id;
+    const child = kidById(kidId);
+    run(
+      async () => {
+        const hearts = await rpc("give_heart", { p_kid: kidId });
+        // give_heart bumps warn_seq by one, so the parent's scene and the kid's scene share the same key.
+        queueParentWarn(kidId, { hearts: Number(hearts) || Math.min(3, (child?.hearts ?? 0) + 1), warn_seq: (Number(child?.warnSeq) || 0) + 1, locked: false }, "heart");
+      },
+      "Heart given back.",
+      "chart"
+    );
+  }
+  if (action === "open-dialog") {
+    const dialog = document.querySelector(`dialog.${btn.dataset.dialog}`);
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "open-rename") {
+    const dialog = document.querySelector("dialog.rename-task-dialog");
+    if (dialog) {
+      dialog.querySelector('input[name="id"]').value = btn.dataset.id || "";
+      const field = dialog.querySelector('input[name="title"]');
+      field.value = btn.dataset.title || "";
+      if (!dialog.open) dialog.showModal();
+      field.focus();
+      field.select();
+    }
+  }
+  if (action === "close-dialog") btn.closest("dialog")?.close();
+  if (action === "toggle-task-section") {
+    const zone = btn.closest(".daily-section, .collapsible-card");
+    const collapse = !zone.classList.contains("collapsed");
+    setSectionCollapsed(btn.dataset.key, collapse);
+    render();
+  }
+  if (action === "lift-one") run(() => rpc("lift_grounding", { p_kid: btn.dataset.id }), "Cage open. Three hearts are back. Turn it off in Screen Time too.");
+  if (action === "open-edit-ground") {
+    const dialog = document.querySelector(".edit-ground-dialog");
+    const child = kidById(btn.dataset.id);
+    if (!dialog || !child) return;
+    const kidField = dialog.querySelector('input[name="kidId"]');
+    const untilField = dialog.querySelector('input[name="until"]');
+    const progressField = dialog.querySelector('input[name="progress"]');
+    if (kidField) kidField.value = child.id;
+    if (untilField) untilField.value = localInputValue(child.groundedUntil);
+    if (progressField) progressField.value = String(Math.max(0, Number(child.groundProgress) || 0));
+    if (!dialog.open) dialog.showModal();
+  }
+  if (action === "close-edit-ground") document.querySelector(".edit-ground-dialog")?.close();
+  if (action === "warn-kid") {
+    let warnNote = "Warning saved. One heart is gone.";
+    const kidId = btn.dataset.id;
+    run(
+      async () => {
+        const result = await rpc("warn_kid", { p_kid: kidId, p_reason: "" });
+        queueParentWarn(kidId, result || {});
+        if (result?.locked) warnNote = "Last heart gone. The Chore Patrol locked the hero in the cage.";
+      },
+      () => warnNote,
+      "chart"
+    );
+  }
+  if (action === "set-hero") {
+    if (db.session?.role === "parent") run(() => rpc("parent_set_hero", { p_hero: btn.dataset.hero }), "Hero saved.", "parent-hero");
+    else run(() => rpc("kid_set_hero", { p_token: kidToken(), p_hero: btn.dataset.hero }), "Hero saved.", "hero");
+  }
+  if (action === "set-color") {
+    if (db.session?.role === "parent") run(() => rpc("parent_set_color", { p_color: btn.dataset.color }), "Color saved.", "parent-hero");
+    else run(() => rpc("kid_set_color", { p_token: kidToken(), p_color: btn.dataset.color }), "Color saved.", "hero");
+  }
+  if (action === "set-weapon") {
+    heroExpand["gear-weapon"] = false;
+    if (db.session?.role === "parent") run(() => rpc("parent_set_weapon", { p_weapon: btn.dataset.weapon }), "Weapon equipped.", "parent-hero");
+    else run(() => rpc("kid_set_weapon", { p_token: kidToken(), p_weapon: btn.dataset.weapon }), "Weapon equipped.", "hero");
+  }
+  if (action === "toggle-hero-section") {
+    const section = btn.dataset.section;
+    if (section === "choose" || section === "achievements") {
+      heroExpand[section] = !heroExpand[section];
+      render();
+    }
+  }
+  if (action === "pick-sprite") {
+    const form = btn.closest("form");
+    const input = form?.querySelector('input[name="sprite"]');
+    if (input) input.value = btn.dataset.sprite;
+    form?.setAttribute("data-sprite-picked", "1");
+    form?.querySelectorAll("[data-action='pick-sprite']").forEach((pick) => {
+      pick.setAttribute("aria-pressed", pick === btn ? "true" : "false");
+    });
+  }
+  if (action === "open-monster") {
+    const dialog = document.querySelector(".monster-dialog");
+    if (!dialog) return;
+    dialog.dataset.templateId = btn.dataset.id || "";
+    dialog.dataset.formId = btn.closest("form")?.id || "";
+    paintSpriteIcons(dialog);
+    if (!dialog.open) dialog.showModal();
+  }
+  if (action === "close-monster") document.querySelector(".monster-dialog")?.close();
+  if (action === "choose-monster") {
+    const dialog = document.querySelector(".monster-dialog");
+    const sprite = normalizeSprite(btn.dataset.sprite);
+    const templateId = dialog?.dataset.templateId || "";
+    const form = dialog?.dataset.formId ? document.getElementById(dialog.dataset.formId) : null;
+    dialog?.close();
+    if (templateId) {
+      run(() => rpc("set_chore_sprite", { p_id: templateId, p_sprite: sprite }), "Monster saved.", "chores");
+    } else if (form) {
+      form.dataset.spritePicked = "1";
+      const input = form.querySelector('input[name="sprite"]');
+      if (input) input.value = sprite;
+      const choice = form.querySelector("[data-action='open-monster']");
+      const canvas = choice?.querySelector("canvas");
+      const label = choice?.querySelector("span");
+      if (canvas) canvas.dataset.sprite = sprite;
+      if (label) label.textContent = spriteName(sprite);
+      if (choice) paintSpriteIcons(choice);
+    }
+  }
+  if (action === "toggle-priority") {
+    const turningOn = btn.getAttribute("aria-pressed") !== "true";
+    run(
+      () => rpc("set_chore_priority", { p_id: btn.dataset.id, p_on: turningOn }),
+      turningOn ? "Priority on. Kids must finish it before other tasks or the arena." : "Priority off.",
+      "chores"
+    );
+  }
+  if (action === "toggle-first-come") {
+    const turningOn = btn.getAttribute("aria-pressed") !== "true";
+    run(
+      () => rpc("set_chore_first_come", { p_id: btn.dataset.id, p_on: turningOn }),
+      turningOn ? "First come, first served. The first kid to mark it done keeps it." : "Everyone can do it again.",
+      "chores"
+    );
+  }
+  if (action === "toggle-daily") {
+    const turningOn = btn.getAttribute("aria-pressed") !== "true";
+    run(() => rpc("set_daily_active", { p_id: btn.dataset.id, p_on: turningOn }), turningOn ? "Back on the daily board." : "Hidden from the daily board.", "chores");
+  }
+  if (action === "send-once") {
+    const chore = db.templates.find((item) => item.id === btn.dataset.id);
+    if (!chore) return;
+    const form = btn.closest("form");
+    const points = form ? Number(new FormData(form).get("points")) : Number(chore.points) || 0;
+    const parentName = parent()?.name || "A parent";
+    run(
+      async () => {
+        await rpc("add_special_chore", { p_title: chore.title, p_points: points, p_sprite: taskSprite(chore), p_kid: null });
+        await sendAdventurePush(supabase, {
+          audience: "kids",
+          kid_ids: null,
+          title: "Bonus task",
+          body: `${parentName} added a bonus task`,
+          url: "./",
+          tag: "bonus-chore",
+        });
+      },
+      "Sent to the special board once, for everybody.",
+      "chores"
+    );
+  }
+  if (action === "open-reset-child") {
+    const dialog = document.querySelector(".reset-child-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-reset-child") document.querySelector(".reset-child-dialog")?.close();
+  if (action === "open-reward") {
+    const dialog = document.querySelector(".reward-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-reward") document.querySelector(".reward-dialog")?.close();
+  if (action === "open-deduct") {
+    const dialog = document.querySelector(".deduct-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-deduct") document.querySelector(".deduct-dialog")?.close();
+  if (action === "open-ground") {
+    const dialog = document.querySelector(".ground-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-ground") document.querySelector(".ground-dialog")?.close();
+  if (action === "reject-chore") run(() => rpc("reject_chore", { p_chore: btn.dataset.id }), "Sent back. The hero gets knocked down and the monster runs off.", "chart");
+  if (action === "undo-approval") run(() => rpc("undo_approval", { p_chore: btn.dataset.id }), "Approval undone. It is waiting again.", "chart");
+  if (action === "done") {
+    const dialog = document.querySelector(".proof-dialog");
+    const field = dialog?.querySelector('input[name="choreId"]');
+    if (!dialog || !field) return;
+    field.value = btn.dataset.id || "";
+    if (!dialog.open) dialog.showModal();
+  }
+  if (action === "close-proof") document.querySelector(".proof-dialog")?.close();
+  if (action === "open-contribute" || action === "open-save-item") {
+    calcKind = action === "open-save-item" ? "item" : "family";
+    calcReward = btn.dataset.id || null;
+    calcValue = "";
+    paintCalc();
+    const dialog = document.querySelector(".calc-dialog");
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+  if (action === "close-contribute") document.querySelector(".calc-dialog")?.close();
+  if (action === "calc-key") {
+    const k = btn.dataset.k;
+    if (k === "C") calcValue = "";
+    else if (k === "⌫") calcValue = calcValue.slice(0, -1);
+    else if (k === "max") calcValue = String(calcLimit() || "");
+    else if (/^\d$/.test(k) && calcValue.length < 5) calcValue = (calcValue + k).replace(/^0+/, "");
+    sfx("tap");
+    paintCalc();
+  }
+  if (action === "calc-submit") {
+    const amount = Number(calcValue) || 0;
+    const rewardId = calcReward;
+    if (!rewardId || amount < 1) return;
+    document.querySelector(".calc-dialog")?.close();
+    if (calcKind === "item") {
+      const item = (db.items || []).find((row) => row.id === rewardId);
+      const child = kid();
+      let note = "Coins saved!";
+      run(async () => {
+        const result = await rpc("kid_save_item", { p_token: kidToken(), p_item: rewardId, p_amount: amount });
+        sfx("coin");
+        if (result?.asked) {
+          note = `${item?.name || "Your treasure"} is fully saved! A parent has your ask.`;
+          marketThrow({ type: "gift", text: `${item?.name || "Your treasure"} is fully saved!`, thanks: "A parent will hand it over soon." });
+          await sendAdventurePush(supabase, {
+            audience: "parents",
+            kid_token: kidToken(),
+            title: "Market ask",
+            body: `${child?.name || "A kid"} saved up for ${item?.name || "an item"}.`,
+            url: "./",
+            tag: "market-ask",
+          });
+        } else {
+          marketThrow({ type: "money", text: `${result?.given ?? amount} coins in the bank. ${Math.max(0, (Number(result?.cost) || 0) - (Number(result?.saved) || 0))} to go!` });
+        }
+      }, () => note);
+      return;
+    }
+    let note = "Coins added to the family goal!";
+    run(async () => {
+      const result = await rpc("kid_contribute", { p_token: kidToken(), p_reward: rewardId, p_amount: amount });
+      sfx("coin");
+      if (result?.reached) {
+        note = "You filled the bar! Goal reached!";
+        marketThrow({ type: "gift", text: "Goal reached! Way to go, team!" });
+      } else {
+        marketThrow({ type: "money", text: `${result?.given ?? amount} coins in. Thanks!` });
+      }
+    }, () => note);
+  }
+  if (action === "claim-family") run(() => rpc("claim_family_reward", { p_id: btn.dataset.id }), "Marked as given. Enjoy!");
+  if (action === "remove-family") {
+    if (!window.confirm("Remove this family reward? Coins go back to the kids if the goal wasn't reached.")) return;
+    run(() => rpc("remove_family_reward", { p_id: btn.dataset.id }), "Family reward removed.");
+  }
+  if (action === "proof-camera" || action === "proof-library") {
+    const dialog = document.querySelector(".proof-dialog");
+    const choreId = dialog?.querySelector('input[name="choreId"]')?.value || "";
+    if (!choreId) return;
+    const chore = (db.chores || []).find((item) => item.id === choreId);
+    const child = kid();
+    run(
+      async () => {
+        const file = await pickProofFile({ camera: action === "proof-camera" });
+        const blob = await compressProof(file);
+        const path = await uploadChoreProof(choreId, blob);
+        await rpc("kid_mark_done", { p_token: kidToken(), p_chore: choreId, p_proof_path: path });
+        dialog?.close();
+        await sendAdventurePush(supabase, {
+          audience: "parents",
+          kid_token: kidToken(),
+          title: "Task waiting",
+          body: `${child?.name || "A kid"} marked ${chore?.title || "a task"} done.`,
+          url: "./",
+          tag: "task-done",
+        });
+      },
+      `Marked done. ${spriteName(taskSprite(chore))} is waiting until a parent approves it.`
+    );
+  }
+  if (action === "cash-out") {
+    run(async () => {
+      await rpc("kid_cash_out", { p_token: kidToken() });
+      marketThrow({ type: "money", text: "A whole dollar! Catch!" });
+    }, "$1.00 added to your cash balance.");
+  }
+  if (action === "buy-time") {
+    run(async () => {
+      await rpc("kid_buy_time", { p_token: kidToken() });
+      marketThrow({ type: "timer", label: "+30 MIN", text: "30 minutes of screen time, coming up!" });
+    }, "30 minutes added. A parent still turns that on in Screen Time.");
+  }
+  if (action === "ask") {
+    const item = (db.items || []).find((row) => row.id === btn.dataset.id);
+    const child = kid();
+    run(
+      async () => {
+        await rpc("kid_ask", { p_token: kidToken(), p_item: btn.dataset.id });
+        marketThrow({ type: "gift", text: `${item?.name || "Your treasure"} is on hold for you!`, thanks: "A parent will hand it over soon." });
+        await sendAdventurePush(supabase, {
+          audience: "parents",
+          kid_token: kidToken(),
+          title: "Market ask",
+          body: `${child?.name || "A kid"} asked for ${item?.name || "an item"}.`,
+          url: "./",
+          tag: "market-ask",
+        });
+      },
+      "Asked. A parent has the points until they say yes or hand them back."
+    );
+  }
+  if (action === "buy-gear") {
+    const key = btn.dataset.gear;
+    const name = GEAR[key]?.name || "New gear";
+    run(
+      async () => {
+        await rpc("kid_buy_gear", { p_token: kidToken(), p_gear: key });
+        marketThrow({ type: "gift", text: `${name}! Try it on!` });
+      },
+      `${name} bought and put on!`,
+      "kid-shop"
+    );
+  }
+  if (action === "open-gear-slot") {
+    const slotKey = `gear-${btn.dataset.slot}`;
+    heroExpand[slotKey] = !heroExpand[slotKey];
+    render();
+  }
+  if (action === "set-gear") {
+    const slot = btn.dataset.slot;
+    const key = btn.dataset.gear || null;
+    heroExpand[`gear-${slot}`] = false;
+    const asParent = db.session?.role === "parent";
+    run(
+      () => (asParent
+        ? rpc("parent_set_gear", { p_slot: slot, p_gear: key })
+        : rpc("kid_set_gear", { p_token: kidToken(), p_slot: slot, p_gear: key })),
+      key ? `${GEAR[key]?.name || "Gear"} on.` : `${slot === "head" ? "Helmet" : "Armour"} off.`,
+      asParent ? "parent-hero" : "hero"
+    );
+  }
+  if (action === "buy-pet") {
+    const key = btn.dataset.pet;
+    run(
+      async () => {
+        await rpc("kid_buy_pet", { p_token: kidToken(), p_pet: key });
+        marketThrow({ type: "pet", pet: key, text: `A new friend: the ${PET_CATALOG[key]?.name || "pet"}!` });
+      },
+      `${PET_CATALOG[key]?.name || "Pet"} bought and equipped!`,
+      "kid-shop"
+    );
+  }
+  if (action === "set-pet") {
+    const key = btn.dataset.pet || "";
+    if (db.session?.role === "parent") {
+      run(
+        () => rpc("parent_set_pet", { p_pet: key || null }),
+        key ? `${PET_CATALOG[key]?.name || "Pet"} equipped.` : "Pet unequipped.",
+        "parent-hero"
+      );
+    } else {
+      run(
+        () => rpc("kid_set_pet", { p_token: kidToken(), p_pet: key || null }),
+        key ? `${PET_CATALOG[key]?.name || "Pet"} equipped.` : "Pet unequipped.",
+        route.name === "hero" ? "hero" : "kid-shop"
+      );
+    }
+  }
+  if (action === "fulfill") run(() => rpc("fulfill_request", { p_request: btn.dataset.id }));
+  if (action === "deny") run(() => rpc("deny_request", { p_request: btn.dataset.id }), "Points returned.");
+  if (action === "remove-item") run(() => rpc("remove_item", { p_item: btn.dataset.id }));
+  if (action === "remove-daily") run(() => rpc("remove_daily_chore", { p_id: btn.dataset.id }), "Daily task removed.", "chores");
+  if (action === "remove-special") run(() => rpc("remove_special_chore", { p_id: btn.dataset.id }), "Bonus task removed.", "chores");
+  if (action === "remove-section") run(() => rpc("remove_chore_section", { p_id: btn.dataset.id }), "Section removed. Those tasks moved to Anytime.", "chores");
+});
+
+let dragState = null;
+
+function listIds(container) {
+  return [...container.querySelectorAll(":scope > [data-drag-item]")].map((node) => node.dataset.dragItem).filter(Boolean);
+}
+
+function dropKindOk(zone) {
+  if (!zone || !dragState) return false;
+  if (dragState.kind === "sections") return zone.dataset.dropKind === "sections";
+  if (dragState.kind === "special") return zone.dataset.dropKind === "special";
+  if (dragState.kind === "daily") return zone.dataset.dropKind === "daily";
+  return false;
+}
+
+function dragSlot() {
+  let slot = app.querySelector(".drag-slot");
+  if (slot) return slot;
+  slot = document.createElement("div");
+  slot.className = "drag-slot";
+  slot.setAttribute("aria-hidden", "true");
+  return slot;
+}
+
+function placeDragSlot(zone, event) {
+  const slot = dragSlot();
+  if (zone.classList.contains("collapsed")) {
+    if (slot.parentElement !== zone) zone.appendChild(slot);
+    return;
+  }
+  if (event.target.closest(".drag-slot") === slot && slot.parentElement === zone) return;
+  const over = event.target.closest("[data-drag-item]");
+  if (over && over !== dragState.node && over.parentElement === zone) {
+    const rect = over.getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    zone.insertBefore(slot, before ? over : over.nextSibling);
+    return;
+  }
+  const empty = zone.querySelector(":scope > .drop-empty");
+  if (empty) zone.insertBefore(slot, empty);
+  else zone.appendChild(slot);
+}
+
+function clearDragUi() {
+  app.querySelectorAll(".dragging, .drop-target").forEach((node) => node.classList.remove("dragging", "drop-target"));
+  app.querySelector(".drag-slot")?.remove();
+}
+
+async function persistDrop(container, movedId) {
+  const kind = container.dataset.dropKind;
+  if (kind === "sections") {
+    const ids = listIds(container);
+    await run(() => rpc("reorder_chore_sections", { p_ids: ids }), "Section order saved.", "chores");
+    return;
+  }
+  if (kind === "special") {
+    const ids = listIds(container);
+    if (movedId && !ids.includes(movedId)) ids.push(movedId);
+    await run(() => rpc("reorder_chore_templates", { p_ids: ids, p_section: null, p_kind: "special" }), "Order saved.", "chores");
+    return;
+  }
+  if (kind === "daily") {
+    const section = container.dataset.section || null;
+    const ids = listIds(container);
+    if (movedId && !ids.includes(movedId)) ids.push(movedId);
+    await run(
+      () => rpc("reorder_chore_templates", { p_ids: ids, p_section: section || null, p_kind: "daily" }),
+      "Moved.",
+      "chores"
+    );
+  }
+}
+
+app.addEventListener("dragstart", (event) => {
+  const handle = event.target.closest(".drag-handle");
+  const row = handle?.closest("[data-drag-item]") || event.target.closest("[data-drag-item]");
+  if (!row || !handle) return;
+  const from = row.closest("[data-drop-kind]");
+  if (!from) return;
+  dragState = { id: row.dataset.dragItem, kind: from.dataset.dropKind, node: row, dropped: false };
+  row.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", row.dataset.dragItem);
+});
+
+app.addEventListener("dragend", () => {
+  clearDragUi();
+  dragState = null;
+});
+
+app.addEventListener("dragover", (event) => {
+  const zone = event.target.closest("[data-drop-kind]");
+  if (!dropKindOk(zone)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  app.querySelectorAll(".drop-target").forEach((node) => {
+    if (node !== zone) node.classList.remove("drop-target");
+  });
+  zone.classList.add("drop-target");
+  placeDragSlot(zone, event);
+});
+
+app.addEventListener("dragleave", (event) => {
+  const zone = event.target.closest("[data-drop-kind]");
+  if (!zone || zone.contains(event.relatedTarget)) return;
+  zone.classList.remove("drop-target");
+  const slot = zone.querySelector(":scope > .drag-slot");
+  if (slot && !zone.contains(event.relatedTarget)) slot.remove();
+});
+
+app.addEventListener("drop", (event) => {
+  const zone = event.target.closest("[data-drop-kind]");
+  if (!dropKindOk(zone)) return;
+  event.preventDefault();
+  const movedId = dragState.id;
+  const node = dragState.node;
+  dragState.dropped = true;
+  const slot = zone.querySelector(":scope > .drag-slot") || app.querySelector(".drag-slot");
+  if (slot) slot.replaceWith(node);
+  else zone.appendChild(node);
+  zone.querySelector(":scope > .drop-empty")?.remove();
+  clearDragUi();
+  node.classList.remove("dragging");
+  dragState = null;
+  persistDrop(zone, movedId);
+});
+
+app.addEventListener("submit", (event) => {
+  const form = event.target.closest("form[data-action]");
+  if (!form) return;
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(form).entries());
+  const action = form.dataset.action;
+  if (action === "parent-auth-submit") parentAuth(data);
+  if (action === "add-parent-submit") addParent(data);
+  if (action === "add-kid-submit") addKid(data);
+  if (action === "save-pin") savePin(data);
+  if (action === "save-birth") run(() => rpc("set_kid_birth_date", { p_kid: route.id, p_birth: data.birth || null }), "Birthday saved.");
+  if (action === "save-arena") run(() => rpc("save_arena_settings", { p_entry: Number(data.entry) || 0, p_per_kill: Number(data.perKill) || 0 }), "Arena settings saved.");
+  if (action === "save-parent-pin") saveParentPin(data);
+  if (action === "add-section" || action === "save-section") {
+    const startMinute = minutesFromInput(form.querySelector('[name="start"]'));
+    const endMinute = minutesFromInput(form.querySelector('[name="end"]'));
+    if (startMinute == null || endMinute == null) {
+      formError(form, "Use times like 07:00 and 09:00.");
+      return;
+    }
+    const days = pickedDays(form);
+    const kids = pickedKids(form);
+    if (!days.length) {
+      formError(form, "Pick at least one day for the section.");
+      return;
+    }
+    if (action === "add-section") {
+      run(
+        () =>
+          rpc("add_chore_section", {
+            p_title: data.title,
+            p_start_minute: startMinute,
+            p_end_minute: endMinute,
+            p_days: days,
+            p_kids: kids,
+          }),
+        "Schedule section added.",
+        "chores"
+      );
+    } else {
+      const id = form.dataset.id || data.id;
+      run(
+        () =>
+          rpc("save_chore_section", {
+            p_id: id,
+            p_title: data.title,
+            p_start_minute: startMinute,
+            p_end_minute: endMinute,
+            p_days: days,
+            p_kids: kids,
+          }),
+        "Schedule section saved.",
+        "chores"
+      );
+    }
+  }
+  if (action === "add-daily") {
+    const sectionId = data.sectionId || null;
+    run(
+      () =>
+        rpc("add_daily_chore", {
+          p_title: data.title,
+          p_points: Number(data.points) || 0,
+          p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)),
+          p_section: sectionId,
+        }),
+      "Added for every kid. It comes back each day.",
+      "chores"
+    );
+  }
+  if (action === "add-special") {
+    const kidId = data.kidId || null;
+    const name = kidId ? db.kids.find((child) => child.id === kidId)?.name : "";
+    const parentName = parent()?.name || "A parent";
+    run(
+      async () => {
+        await rpc("add_special_chore", { p_title: data.title, p_points: Number(data.points) || 0, p_sprite: normalizeSprite(data.sprite || guessSprite(data.title)), p_kid: kidId });
+        await sendAdventurePush(supabase, {
+          audience: "kids",
+          kid_ids: kidId ? [kidId] : null,
+          title: "Bonus task",
+          body: `${parentName} added a bonus task`,
+          url: "./",
+          tag: "bonus-chore",
+        });
+      },
+      name ? `Added once for ${name}.` : "Added once for every kid.",
+      "chores"
+    );
+  }
+  if (action === "rename-task") {
+    if (!String(data.title || "").trim()) return;
+    run(() => rpc("rename_chore", { p_id: data.id, p_title: data.title }), "Task renamed.", "chores");
+  }
+  if (action === "save-daily") run(() => rpc("save_daily_chore", { p_id: data.id, p_points: Number(data.points) || 0 }), "Points updated for everybody.", "chores");
+  if (action === "confirm-reset-child") {
+    document.querySelector(".reset-child-dialog")?.close();
+    if (!data.kidId) return;
+    const name = kidById(data.kidId)?.name || "that child";
+    run(
+      () => rpc("reset_kid_progress", { p_kid: data.kidId }),
+      `Reset ${name}. Coins, cash, minutes, and the finished log are cleared. Today's tasks are not done again.`,
+      "chart"
+    );
+  }
+  if (action === "grant") {
+    document.querySelector(".reward-dialog")?.close();
+    run(
+      () =>
+        rpc("grant_reward", {
+          p_kid: data.kidId,
+          p_points: Number(data.points) || 0,
+          p_cash_cents: Math.round((Number(data.dollars) || 0) * 100),
+          p_minutes: Number(data.minutes) || 0,
+          p_note: data.note || "",
+        }),
+      "Reward saved. Match any new device minutes in Screen Time.",
+      "chart"
+    );
+  }
+  if (action === "spend") {
+    document.querySelector(".deduct-dialog")?.close();
+    run(
+      () =>
+        rpc("spend_balance", {
+          p_kid: data.kidId,
+          p_points: Number(data.points) || 0,
+          p_cash_cents: Math.round((Number(data.dollars) || 0) * 100),
+          p_minutes: Number(data.minutes) || 0,
+          p_note: data.note || "",
+        }),
+      "Taken off their balance.",
+      "chart"
+    );
+  }
+  if (action === "ground") {
+    document.querySelector(".ground-dialog")?.close();
+    run(
+      () =>
+        rpc("ground_kid", {
+          p_kid: data.kidId,
+          p_until: new Date(data.until).toISOString(),
+          p_reason: data.reason,
+          p_clear: Boolean(data.clearMinutes),
+        }),
+      "Grounding saved. Set the same end time in Screen Time.",
+      "chart"
+    );
+  }
+  if (action === "edit-ground") {
+    document.querySelector(".edit-ground-dialog")?.close();
+    let freed = false;
+    run(
+      async () => {
+        freed = Boolean(
+          await rpc("edit_grounding", {
+            p_kid: data.kidId,
+            p_until: new Date(data.until).toISOString(),
+            p_progress: Math.max(0, Number(data.progress) || 0),
+          })
+        );
+      },
+      () =>
+        freed
+          ? "Cage coins hit the goal. Three hearts are back. Turn it off in Screen Time too."
+          : "Cage updated. Match any new end time in Screen Time.",
+      "chart"
+    );
+  }
+  if (action === "save-rates") run(() => rpc("save_rates", { p_per_dollar: Number(data.pointsPerDollar), p_per_30: Number(data.pointsPer30) }), "Rates saved.");
+  if (action === "save-cage-goal") run(() => rpc("save_cage_goal", { p_points: Number(data.points) || 0 }), "Cage release goal saved.", "chart");
+  if (action === "add-family") run(() => rpc("add_family_reward", { p_title: data.title, p_goal: Number(data.goal) }), "Family reward added.");
+  if (action === "add-item") run(() => rpc("add_item", { p_name: data.name, p_cost: Number(data.cost) }), "Item added.");
+  if (action === "save-pet-price") {
+    const pet = form.dataset.pet || data.pet;
+    const name = PET_CATALOG[pet]?.name || "Pet";
+    run(
+      () => rpc("save_pet_price", { p_pet: pet, p_cost: Number(data.cost) || 0 }),
+      `${name} price saved.`,
+      "shop"
+    );
+  }
+});
+
+async function parentAuth(data) {
+  const email = data.email.trim().toLowerCase();
+  if (busy) return;
+  busy = true;
+  try {
+    const { error } = await supabase.auth.signInWithPassword({ email, password: data.password });
+    if (error) throw error;
+    const ok = await loadParent();
+    if (!ok) throw new Error("This login is not on a family yet.");
+    route = { name: "chart" };
+    notice = "";
+    render();
+    enableDevicePush();
+  } catch (error) {
+    route = { ...route, error: nice(error) };
+    render();
+  } finally {
+    busy = false;
+  }
+}
+
+async function addParent(data) {
+  const email = data.email.trim().toLowerCase();
+  const person = data.name.trim();
+  if (!/^[0-9]{4}$/.test(data.pin || "")) {
+    route = { ...route, error: "PIN must be 4 digits." };
+    render();
+    return;
+  }
+  if (busy) return;
+  busy = true;
+  try {
+    await rpc("invite_parent", { p_email: email });
+    const { data: created, error } = await sideAuth.auth.signUp({
+      email,
+      password: data.password,
+      options: { data: { name: person } },
+    });
+    if (error) throw error;
+    if (!created.user || created.user.identities?.length === 0) {
+      throw new Error("That email already has an account.");
+    }
+    await loadParent();
+    const createdParent = db.parents.find((row) => row.email.toLowerCase() === email);
+    if (!createdParent) throw new Error("That parent did not join the family.");
+    if (!/^[0-9]{4}$/.test(data.pin || "")) throw new Error("pin must be 4 digits");
+    await rpc("set_parent_pin", { p_parent: createdParent.id, p_pin: data.pin });
+    notice = `${person} can tap their name on the front page and enter that PIN.`;
+    route = { name: "family" };
+    draft = {};
+    render();
+  } catch (error) {
+    route = { ...route, error: nice(error) };
+    render();
+  } finally {
+    busy = false;
+  }
+}
+
+async function addKid(data) {
+  await run(
+    () => rpc("add_kid", { p_name: data.name.trim(), p_color: draft.color || "leaf", p_pin: data.pin }),
+    `${data.name.trim()} can tap their name on the front page and enter that PIN.`,
+    "family"
+  );
+}
+
+async function savePin(data) {
+  await run(() => rpc("set_kid_pin", { p_kid: route.id, p_pin: data.pin }), "PIN updated.", "family");
+}
+
+async function saveParentPin(data) {
+  await run(() => rpc("set_parent_pin", { p_parent: route.id, p_pin: data.pin }), "Door PIN saved.", "family");
+}
+
+async function parentPinSignIn(parentId, pin) {
+  if (busy) return;
+  busy = true;
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/parent-pin`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+      },
+      body: JSON.stringify({ parent_id: parentId, pin }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.access_token) throw new Error(body.error || "wrong pin");
+    const { error } = await supabase.auth.setSession({
+      access_token: body.access_token,
+      refresh_token: body.refresh_token,
+    });
+    if (error) throw error;
+    const ok = await loadParent();
+    if (!ok) throw new Error("This login is not on a family yet.");
+    notice = "";
+    route = { name: "chart" };
+    draft = {};
+    render();
+    enableDevicePush();
+  } catch (error) {
+    draft.pin = "";
+    route.error = nice(error);
+    render();
+    document.querySelector(".pin-card")?.classList.add("shake");
+  } finally {
+    busy = false;
+  }
+}
+
+async function openKidGate() {
+  draft = {};
+  gateKids = [];
+  if (schemaReady) {
+    const { data: rows, error } = await supabase.rpc("list_kids", { p_code: "" });
+    if (!error) gateKids = rows || [];
+  }
+  route = { name: "kid-gate" };
+  render();
+}
+
+async function onPin(key) {
+  if (busy) return;
+  draft.pin = draft.pin || "";
+  if (key === "clear") {
+    draft.pin = draft.pin.slice(0, -1);
+    route.error = "";
+    render();
+    return;
+  }
+  if (key !== "go") {
+    if (draft.pin.length >= 4) return;
+    draft.pin += key;
+    render();
+  }
+  if (draft.pin.length === 4) await submitPin();
+  else if (key === "go") {
+    route.error = "Enter all 4 digits.";
+    render();
+  }
+}
+
+async function submitPin() {
+  if (busy || (draft.pin || "").length !== 4) return;
+  if (route.playerKind === "parent") {
+    await parentPinSignIn(route.playerId, draft.pin);
+    return;
+  }
+  busy = true;
+  const { data: token, error } = await supabase.rpc("kid_sign_in", { p_kid: route.playerId || route.kidId, p_pin: draft.pin });
+  busy = false;
+  if (error || !token) {
+    draft.pin = "";
+    route.error = "That PIN does not match.";
+    render();
+    document.querySelector(".pin-card")?.classList.add("shake");
+    return;
+  }
+  // Start this kid's trail fresh so fights another session finished (like a parent approving) cannot hide theirs.
+  resetBattleMemory();
+  setKidToken(token);
+  await loadKid();
+  notice = "";
+  route = { name: "today" };
+  render();
+  celebrate();
+  enableDevicePush();
+}
+
+async function signOut() {
+  const role = db.session?.role;
+  const token = kidToken();
+  resetBattleMemory();
+  try {
+    if (role === "kid" && token) {
+      await clearPushSubscription({ role: "kid", supabase, kidToken: token });
+      await supabase.rpc("kid_sign_out", { p_token: token });
+    }
+    if (role === "parent") {
+      await clearPushSubscription({ role: "parent", supabase });
+      await supabase.auth.signOut();
+    }
+  } catch {
+    /* still clear local session */
+  }
+  clearKidToken();
+  db = blank();
+  notice = "";
+  await loadPlayers();
+  go("welcome");
+}
+
+blockPinchZoom();
+installPullToRefresh();
+setInterval(() => {
+  const before = `${document.body.dataset.season || ""}:${document.body.dataset.sky || ""}`;
+  const next = applySeasonTheme();
+  const key = `${next.season}:${next.sky}`;
+  if (before !== ":" && before !== key) render();
+}, 60_000);
+window.addEventListener("resize", () => paintForestBackdrop(document.querySelector(".forest-bg")));
+boot();
+
+function blockPinchZoom() {
+  const stop = (event) => event.preventDefault();
+  document.addEventListener("gesturestart", stop, { passive: false, capture: true });
+  document.addEventListener("gesturechange", stop, { passive: false, capture: true });
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches.length > 1) event.preventDefault();
+  }, { passive: false, capture: true });
+  document.addEventListener("wheel", (event) => {
+    if (event.ctrlKey) event.preventDefault();
+  }, { passive: false, capture: true });
+}
+
+function installPullToRefresh() {
+  const hint = document.createElement("div");
+  hint.className = "pull-refresh";
+  hint.hidden = true;
+  hint.innerHTML = "<span>Pull to refresh</span>";
+  document.body.appendChild(hint);
+  const label = hint.querySelector("span");
+
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+  let pulled = 0;
+
+  const reset = () => {
+    tracking = false;
+    pulled = 0;
+    hint.hidden = true;
+    hint.classList.remove("ready");
+    label.textContent = "Pull to refresh";
+    document.body.style.removeProperty("--pull-space");
+  };
+
+  const typing = () => {
+    const tag = document.activeElement?.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  };
+
+  // A fast flick up leaves momentum scrolling running; grabbing the page then must not start a pull
+  // (preventDefault during momentum and the body padding shift can strand fixed elements on iOS).
+  // Kid screens scroll inside #scroller (the document is locked); other screens scroll the document.
+  const scroller = document.getElementById("scroller");
+  const scrollPos = () => (scroller && getComputedStyle(scroller).position === "fixed" ? scroller.scrollTop : window.scrollY);
+  let lastScrollAt = 0;
+  window.addEventListener(
+    "scroll",
+    () => {
+      lastScrollAt = performance.now();
+      if (document.body.style.getPropertyValue("--pull-space") && !tracking) reset();
+    },
+    { passive: true, capture: true }
+  );
+
+  document.addEventListener(
+    "touchstart",
+    (event) => {
+      if (event.touches.length > 1) {
+        reset();
+        return;
+      }
+      if (performance.now() - lastScrollAt < 180) return;
+      if (event.touches.length !== 1 || scrollPos() > 2 || typing()) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      tracking = true;
+      pulled = 0;
+    },
+    { passive: true }
+  );
+
+  document.addEventListener(
+    "touchmove",
+    (event) => {
+      if (event.touches.length > 1) {
+        reset();
+        return;
+      }
+      if (!tracking) return;
+      if (scrollPos() > 2) {
+        reset();
+        return;
+      }
+      const touch = event.touches[0];
+      const dx = Math.abs(touch.clientX - startX);
+      const dy = touch.clientY - startY;
+      if (dy < 12 || dx > dy) return;
+      event.preventDefault();
+      pulled = Math.min(dy, 140);
+      const space = Math.min(pulled, 76);
+      hint.hidden = false;
+      hint.style.setProperty("--pull", `${space}px`);
+      document.body.style.setProperty("--pull-space", `${space}px`);
+      const ready = pulled >= 72;
+      hint.classList.toggle("ready", ready);
+      label.textContent = ready ? "Let go to refresh" : "Pull to refresh";
+    },
+    { passive: false }
+  );
+
+  const finish = () => {
+    if (!tracking) return;
+    if (pulled >= 72 && scrollPos() <= 2) {
+      hint.classList.add("ready");
+      label.textContent = "Refreshing…";
+      location.reload();
+      return;
+    }
+    reset();
+  };
+
+  document.addEventListener("touchend", finish);
+  document.addEventListener("touchcancel", reset);
+}
