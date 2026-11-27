@@ -1,7 +1,7 @@
--- One-time setup for the Longo family backend (getsthejobdone.ca/longofam).
--- Run in the Longo project's SQL editor AFTER kids/schema.sql and kids/migrations/20261031_push.sql.
--- Creates the "Longo Family" household with one parent, John, whose door PIN is 1234.
--- Safe to run twice: it stops if John already exists.
+-- One-time setup for the Longo family (getsthejobdone.ca/longofam), inside the shared /kids project.
+-- Run AFTER kids/migrations/20261127_family_door_code.sql.
+-- Creates the "Longo Family" household (door code 'longofam') with one parent, John, door PIN 1234.
+-- Safe to run twice: it stops if the Longo household already exists.
 
 do $$
 declare
@@ -9,8 +9,8 @@ declare
   pid uuid;
   login text := 'john.longo@example.com'; -- placeholder; John signs in with his PIN, no email is sent
 begin
-  if exists (select 1 from public.parents where name = 'John') then
-    raise notice 'John is already set up.';
+  if exists (select 1 from public.households where code = 'longofam') then
+    raise notice 'The Longo family is already set up.';
     return;
   end if;
 
@@ -37,8 +37,11 @@ begin
 
   select id into pid from public.parents where user_id = uid;
   if pid is null then
-    raise exception 'The parent row was not created. Run kids/schema.sql first.';
+    raise exception 'The parent row was not created.';
   end if;
+
+  update public.households set code = 'longofam'
+  where id = (select household_id from public.parents where id = pid);
 
   insert into private.parent_pins (parent_id, pin_hash)
   values (pid, extensions.crypt('1234', extensions.gen_salt('bf')));

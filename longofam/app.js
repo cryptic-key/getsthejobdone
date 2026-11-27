@@ -1,12 +1,12 @@
 import "./storage-ns.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
-import { APP_VERSION } from "./version.js?v=71";
-import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=71";
-import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=71";
-import { createChoreQuest } from "./chore-quest.js?v=71";
-import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=71";
-import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=71";
+import { FAMILY_CODE, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config.js";
+import { APP_VERSION } from "./version.js?v=72";
+import { DEFAULT_PET_PRICE, PET_CATALOG, PET_KEYS, SPRITES, applySeasonTheme, drawPetIcon, paintHeroPortrait, fadeInStage, guessSprite, marketThrow, mountQuestWalkers, normalizePet, normalizeSprite, paintForestBackdrop, paintHeroBadge, paintSpriteIcons, setStageScene, stageElement } from "./battle.js?v=72";
+import { mergeBattleLine, splitBattleLine } from "./battle-line.js?v=72";
+import { createChoreQuest } from "./chore-quest.js?v=72";
+import { ABILITIES, GEAR, GEAR_KEYS, drawGearIcon, normalizeGear } from "./gear.js?v=72";
+import { arenaRevealed, fadeOutArena, leaveArena, mountArena, revealArena } from "./arena.js?v=72";
 import { armAudio, play as sfx, setMusicOn, setSfx, soundState } from "./sound.js";
 import { clearPushSubscription, ensurePushSubscription, registerAdventureWorker, sendAdventurePush } from "./push.js";
 
@@ -470,7 +470,7 @@ async function boot() {
     registerAdventureWorker();
     const legacyKid = sessionStorage.getItem(KID_TOKEN);
     if (legacyKid && !localStorage.getItem(KID_TOKEN)) setKidToken(legacyKid);
-    const { error } = await supabase.rpc("list_kids", { p_code: "" });
+    const { error } = await supabase.rpc("list_kids", { p_code: FAMILY_CODE });
     schemaReady = !error || (error.code !== "PGRST202" && error.code !== "PGRST205" && !/schema cache/i.test(error.message || ""));
     if (!schemaReady) {
       route = { name: "welcome" };
@@ -926,7 +926,7 @@ function roster() {
 async function loadPlayers() {
   gateKids = [];
   gateParents = [];
-  const { data, error } = await supabase.rpc("list_players");
+  const { data, error } = await supabase.rpc("list_players", { p_code: FAMILY_CODE });
   if (!error && data) {
     gateKids = data.filter((row) => row.kind === "kid").map((row) => ({
       ...row,
@@ -943,7 +943,7 @@ async function loadPlayers() {
     }));
     return;
   }
-  const kids = await supabase.rpc("list_kids", { p_code: "" });
+  const kids = await supabase.rpc("list_kids", { p_code: FAMILY_CODE });
   if (!kids.error) gateKids = kids.data || [];
 }
 
@@ -4331,7 +4331,7 @@ async function openKidGate() {
   draft = {};
   gateKids = [];
   if (schemaReady) {
-    const { data: rows, error } = await supabase.rpc("list_kids", { p_code: "" });
+    const { data: rows, error } = await supabase.rpc("list_kids", { p_code: FAMILY_CODE });
     if (!error) gateKids = rows || [];
   }
   route = { name: "kid-gate" };
